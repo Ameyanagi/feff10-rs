@@ -5,6 +5,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Keep story state consistent by updating `scripts/ralph/prd.json` (`passes`) and appending `scripts/ralph/progress.txt` in the same commit.
 - For cross-cutting migration decisions, include explicit architecture and CI implications in `tasks/migration-decision-log.md` and mirror the decision status in PRD references.
 - When a policy must be machine-consumable, keep a canonical JSON artifact under `tasks/` and document comparator ingestion rules alongside the approval decision.
+- For warning/error compatibility decisions, define all three together: exit-code matrix, stderr/stdout formatting contract, and legacy failure-class to Rust error-category mapping.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -36,4 +37,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Comparator-facing governance decisions should include both a human-readable matrix in the decision log and a canonical machine-readable JSON file.
   - Gotchas encountered: Category ordering now matters (`first_match`); broad glob patterns must be kept below specific patterns to avoid unintended rule capture.
   - Useful context: Numeric parsing explicitly supports Fortran `D` exponents and defaults unmatched files to `exact_text`, which future comparator implementation should preserve.
+---
+## 2026-02-16 17:14:46 JST - US-004
+- Implemented decision `D-4` in `tasks/migration-decision-log.md` with a finalized warning/error compatibility contract, including exit-code mapping for success/failure modes, deterministic stderr/stdout behavior, and legacy failure-class mapping to Rust error categories.
+- Added architecture and CI implications for `D-4` to keep downstream implementation and validation stories aligned with the contract.
+- Added D-4 traceability in `tasks/prd-migrate-feff10-to-rust-improved.md`.
+- Quality checks: `cargo check` and `cargo test` passed.
+- Files changed: `tasks/migration-decision-log.md`, `tasks/prd-migrate-feff10-to-rust-improved.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Warning/error compatibility must capture both process semantics (exit code) and text-stream semantics (`stderr`/`stdout` prefixes) to avoid breaking legacy automation.
+  - Gotchas encountered: For compatibility stories, acceptance can require explicit mapping tables (legacy class to Rust category), not only prose decisions.
+  - Useful context: `D-4` now reserves exit codes `2`-`5` for fatal categories and keeps warning-only runs at exit code `0`.
 ---

@@ -55,6 +55,7 @@ Decision log reference:
 - D-1 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`.
 - D-2 status: Approved on 2026-02-16 as deferred-for-v1 in `tasks/migration-decision-log.md`.
 - D-3 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; machine-readable policy source is `tasks/numeric-tolerance-policy.json`.
+- D-4 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; includes exit-code mapping, stderr/stdout diagnostics contract, and legacy failure-class mapping.
 
 ## 6. Story Execution Order
 

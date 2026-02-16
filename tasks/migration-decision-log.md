@@ -72,6 +72,49 @@ This log records finalized migration governance decisions that unblock implement
 - Numeric tokenization must support Fortran exponent notation (`D`/`d` as `E`).
 - Mismatched line counts, token counts, or NaN/Inf mismatches are hard failures.
 
+## D-4: Warning and Error Compatibility Contract
+
+### Decision
+- Rust v1 must preserve FEFF10-compatible operational signaling by enforcing stable exit codes and deterministic diagnostic stream behavior.
+- Warnings are non-fatal and must not alter successful (`0`) process termination.
+- Fatal errors must use category-mapped non-zero exit codes and deterministic stderr prefixes.
+
+### Exit-code mapping contract
+
+| Exit code | Rust category | Legacy failure class coverage | Behavior contract |
+| --- | --- | --- | --- |
+| `0` | `Success` | Normal completion with or without warnings | All required outputs produced; warnings allowed on stderr |
+| `2` | `InputValidationError` | Invalid cards, missing required cards, malformed parameter values | Abort before scientific pipeline execution; emit deterministic validation diagnostics |
+| `3` | `IoSystemError` | Missing input files, unreadable paths, write failures, environment precondition failures | Abort at first unrecoverable IO/system failure; include failing path when available |
+| `4` | `ComputationError` | Numerical non-convergence, physics-domain fatal guardrails, module execution failure | Abort module pipeline at failure boundary; emit module identifier in diagnostics |
+| `5` | `InternalError` | Unexpected invariant breaks and uncategorized runtime faults | Emit stable top-level fatal diagnostic and preserve non-zero contract |
+
+### Diagnostic stream and formatting contract
+- `stdout` is reserved for canonical FEFF run progress and output-facing informational lines that existing automation may read.
+- All warnings and errors must be emitted on `stderr`.
+- Warning lines must start with `WARNING:` and include a stable category token (for example `WARNING: [IO.WARN] ...`).
+- Fatal error lines must start with `ERROR:` and include a stable category token that maps to the exit-code category (for example `ERROR: [INPUT.INVALID_CARD] ...`).
+- On fatal termination, emit exactly one summary line `FATAL EXIT CODE: <n>` on `stderr` after category diagnostics.
+
+### Legacy-to-Rust failure class mapping
+
+| Legacy class | Typical legacy condition | Rust error category | Exit code |
+| --- | --- | --- | --- |
+| `INPUT_FATAL` | Unrecognized/missing required FEFF cards or invalid value domains | `InputValidationError` | `2` |
+| `IO_FATAL` | Input open/read failure, output write/create failure | `IoSystemError` | `3` |
+| `RUN_FATAL` | Module-level computation abort or convergence failure | `ComputationError` | `4` |
+| `SYS_FATAL` | Unexpected runtime abort not attributable to input/IO/numerics | `InternalError` | `5` |
+
+### Architecture planning implications
+- Shared Rust error enums must expose the four fatal categories above plus `Success`, and pipelines must propagate category identity without string parsing.
+- CLI entrypoints must perform final error-to-exit-code mapping in one location to keep behavior consistent across module binaries.
+- Diagnostic emitters should use shared formatting helpers to guarantee prefix stability across parser and scientific modules.
+
+### CI planning implications
+- Regression and integration tests must assert both stderr prefix contract and exit-code behavior for representative failures in each category.
+- CI failure artifacts should include captured `stderr` for failing fixtures so compatibility drift in diagnostics is reviewable.
+- Warning-only fixtures must assert successful exit (`0`) while validating warning presence on `stderr`.
+
 ## Approval Record: D-1
 
 - Decision ID: `D-1`
@@ -101,3 +144,13 @@ This log records finalized migration governance decisions that unblock implement
 - Approved by: FEFF10 Rust migration lead
 - Scope: Applies to regression policy, fixture thresholds, and comparator implementation behavior
 - Review trigger: Re-open when a fixture category requires a tolerance change outside approved ranges
+
+## Approval Record: D-4
+
+- Decision ID: `D-4`
+- Decision title: Define warning and error compatibility contract
+- Status: `Approved`
+- Approved on: `2026-02-16`
+- Approved by: FEFF10 Rust migration lead
+- Scope: Applies to CLI/process signaling, diagnostics formatting, and legacy failure-class migration behavior
+- Review trigger: Re-open when legacy automation requires additional exit-code classes or diagnostic token changes
