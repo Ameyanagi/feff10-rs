@@ -17,6 +17,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
 - Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
 - FEFF deck parsing should treat numeric-leading lines as continuations of the preceding card (for example `ATOMS`, `POTENTIALS`, `ELNES`, `STRETCHES`) and only fail when such a line appears before any card.
+- Parser validation in `src/parser/mod.rs` is profile-driven: main decks require `TITLE|CIF`, `ATOMS|CIF`, and `POTENTIALS|POTENTIAL|CIF`, while DEBYE spring decks require `VDOS` and `STRETCHES`; missing `CONTROL`, `PRINT`, and `END` are synthesized with deterministic defaults.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -172,4 +173,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Parser output should include both typed card kinds and raw continuation rows so RDINP/module pipelines can consume structured cards without losing table data.
   - Gotchas encountered: Fixture manifests can reference archive-only entries that are not present in-repo (`REFERENCE/*.inp`), so parser coverage tests should skip missing files but still validate all available `.inp` entry files.
   - Useful context: Cards currently covered from approved fixtures include `ELNES`/`EXELFS`, `RIXS`, `COMPTON`, `CRPA`, `VDOS`, and `STRETCHES`, alongside core cards such as `POTENTIALS` and `ATOMS`.
+---
+## 2026-02-16 18:36:15 JST - US-015
+- Implemented parser validation profiles in `src/parser/mod.rs` so main FEFF decks and DEBYE spring decks enforce deterministic required-card and singleton-card rules.
+- Added optional-card defaults for `CONTROL`, `PRINT`, and `END`, and mapped parse-validation failures to shared D-4-compatible `InputValidationError` placeholders and exit code behavior.
+- Added deterministic parser snapshot coverage in `tests/parser_validation_snapshots.rs` with committed snapshots under `tests/snapshots/parser/`.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `src/parser/mod.rs`, `tests/parser_validation_snapshots.rs`, `tests/snapshots/parser/valid_main_deck_with_defaults.snap`, `tests/snapshots/parser/invalid_missing_required_cards.snap`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Parser validation now switches behavior by profile (`main` vs `spring`) so `feff.inp` and `spring.inp` contracts can coexist in one parser entrypoint.
+  - Gotchas encountered: In `zsh`, avoid using `path` as a loop variable because it overrides `PATH` and makes shell commands unavailable.
+  - Useful context: Parser snapshot tests compare pretty-JSON output against `tests/snapshots/parser/*.snap`, so parser contract changes should update those snapshot files in the same commit.
 ---

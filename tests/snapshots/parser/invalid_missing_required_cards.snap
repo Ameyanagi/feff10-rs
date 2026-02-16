@@ -1,0 +1,8 @@
+{
+  "category": "InputValidationError",
+  "diagnostic": "ERROR: [INPUT.MISSING_REQUIRED_CARD] missing required card: expected one of ATOMS, CIF",
+  "exitCode": 2,
+  "fatalExitLine": "FATAL EXIT CODE: 2",
+  "message": "missing required card: expected one of ATOMS, CIF",
+  "placeholder": "INPUT.MISSING_REQUIRED_CARD"
+}

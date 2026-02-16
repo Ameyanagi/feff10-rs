@@ -1,0 +1,94 @@
+{
+  "cardCount": 7,
+  "cards": [
+    {
+      "continuations": [],
+      "keyword": "TITLE",
+      "kind": "Title",
+      "sourceLine": 1,
+      "values": [
+        "Cu"
+      ]
+    },
+    {
+      "continuations": [],
+      "keyword": "EDGE",
+      "kind": "Edge",
+      "sourceLine": 2,
+      "values": [
+        "K"
+      ]
+    },
+    {
+      "continuations": [
+        {
+          "raw": "0 29 Cu",
+          "sourceLine": 4,
+          "values": [
+            "0",
+            "29",
+            "Cu"
+          ]
+        }
+      ],
+      "keyword": "POTENTIALS",
+      "kind": "Potentials",
+      "sourceLine": 3,
+      "values": []
+    },
+    {
+      "continuations": [
+        {
+          "raw": "0.0 0.0 0.0 0 Cu",
+          "sourceLine": 6,
+          "values": [
+            "0.0",
+            "0.0",
+            "0.0",
+            "0",
+            "Cu"
+          ]
+        }
+      ],
+      "keyword": "ATOMS",
+      "kind": "Atoms",
+      "sourceLine": 5,
+      "values": []
+    },
+    {
+      "continuations": [],
+      "keyword": "CONTROL",
+      "kind": "Control",
+      "sourceLine": 0,
+      "values": [
+        "1",
+        "1",
+        "1",
+        "1",
+        "1",
+        "1"
+      ]
+    },
+    {
+      "continuations": [],
+      "keyword": "PRINT",
+      "kind": "Print",
+      "sourceLine": 0,
+      "values": [
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0"
+      ]
+    },
+    {
+      "continuations": [],
+      "keyword": "END",
+      "kind": "End",
+      "sourceLine": 0,
+      "values": []
+    }
+  ]
+}
