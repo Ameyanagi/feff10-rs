@@ -53,6 +53,7 @@ These are treated as mandatory deliverables, not optional open questions:
 
 Decision log reference:
 - D-1 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`.
+- D-2 status: Approved on 2026-02-16 as deferred-for-v1 in `tasks/migration-decision-log.md`.
 
 ## 6. Story Execution Order
 
@@ -116,6 +117,7 @@ Decision log reference:
 - [ ] Workspace layout is defined for parsing, numerics, pipelines, CLI, and shared types.
 - [ ] Shared error types and result conventions are implemented.
 - [ ] Architecture document maps FEFF10 module boundaries to Rust crates/modules.
+- [ ] Architecture planning reflects D-2 by keeping serial-first execution and explicit orchestration boundaries for a future MPI executor.
 - [ ] Tests pass for new shared primitives.
 - [ ] Typecheck passes.
 
@@ -285,6 +287,7 @@ Decision log reference:
 **Acceptance Criteria:**
 - [ ] CI runs `cargo check`, `cargo test`, `cargo clippy -- -D warnings`, and `cargo fmt --check`.
 - [ ] CI runs fixture regression harness and fails on parity regressions.
+- [ ] CI planning reflects D-2 by making serial parity release-blocking and treating MPI validation as non-blocking until MPI scope is re-opened.
 - [ ] CI publishes regression diff artifacts on failure.
 - [ ] CI pipeline tests pass.
 - [ ] Typecheck passes.
@@ -343,7 +346,8 @@ Decision log reference:
 
 - Decide Rust numerical library strategy for FEFF10-equivalent math operations early.
 - Define deterministic output formatting rules with D-3 tolerance policy.
-- For MPI-in-scope decisions, freeze concurrency/runtime stack before parallel module work begins.
+- D-2 is currently deferred: keep serial execution as the only GA runtime path for v1.
+- Preserve execution-orchestration seams so MPI runtime integration can be added later without changing module-level scientific contracts.
 - Keep fixture runtime manageable by splitting CI into smoke and full parity stages if needed.
 
 ## 11. Success Metrics

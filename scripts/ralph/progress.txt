@@ -3,6 +3,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 ## Codebase Patterns
 - Store migration governance decisions under `tasks/` and add a reference from `tasks/prd-migrate-feff10-to-rust-improved.md` for traceability.
 - Keep story state consistent by updating `scripts/ralph/prd.json` (`passes`) and appending `scripts/ralph/progress.txt` in the same commit.
+- For cross-cutting migration decisions, include explicit architecture and CI implications in `tasks/migration-decision-log.md` and mirror the decision status in PRD references.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -13,4 +14,14 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Decision-level migration constraints should live in dedicated docs under `tasks/` and be linked from the PRD.
   - Gotchas encountered: `scripts/ralph/progress.txt` may start without a `Codebase Patterns` section; create it at the top before appending story entries.
   - Useful context: Story execution state is controlled only by `passes` in `scripts/ralph/prd.json`; update just the completed story.
+---
+## 2026-02-16 17:08:01 JST - US-002
+- Implemented decision `D-2` in `tasks/migration-decision-log.md`, explicitly deferring MPI parity for v1 and documenting fallback behavior plus a roadmap trigger.
+- Added MPI decision traceability in `tasks/prd-migrate-feff10-to-rust-improved.md`, including architecture-planning and CI-planning references to the approved D-2 scope.
+- Quality checks: `cargo check` and `cargo test` passed.
+- Files changed: `tasks/migration-decision-log.md`, `tasks/prd-migrate-feff10-to-rust-improved.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: MPI-scope decisions should include explicit fallback behavior and a concrete re-open trigger so later parity work has clear entry criteria.
+  - Gotchas encountered: Acceptance for decision stories can require references in multiple planning surfaces; update both architecture and CI sections, not only the decision log.
+  - Useful context: In this repo, architecture and CI planning context is captured in `tasks/prd-migrate-feff10-to-rust-improved.md`, so D-2 references belong there as well as in the decision log.
 ---
