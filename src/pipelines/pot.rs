@@ -1,20 +1,30 @@
 use super::PipelineExecutor;
 use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
 use std::fs;
+use std::path::{Path, PathBuf};
 
 const POT_REQUIRED_INPUTS: [&str; 2] = ["pot.inp", "geom.dat"];
-const POT_EXPECTED_OUTPUTS: [&str; 5] = [
+const POT_OUTPUT_CANDIDATES: [&str; 5] = [
     "pot.bin",
     "pot.dat",
     "log1.dat",
     "convergence.scf",
     "convergence.scf.fine",
 ];
+const POT_BASELINE_ROOT: &str = "artifacts/fortran-baselines";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PotPipelineInterface {
     pub required_inputs: Vec<PipelineArtifact>,
     pub expected_outputs: Vec<PipelineArtifact>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct PotFixtureBaseline {
+    baseline_dir: PathBuf,
+    expected_outputs: Vec<PipelineArtifact>,
+    pot_input_source: String,
+    geom_input_source: String,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -26,9 +36,10 @@ impl PotPipelineScaffold {
         request: &PipelineRequest,
     ) -> PipelineResult<PotPipelineInterface> {
         validate_request_shape(request)?;
+        let baseline = load_fixture_baseline(&request.fixture_id)?;
         Ok(PotPipelineInterface {
             required_inputs: artifact_list(&POT_REQUIRED_INPUTS),
-            expected_outputs: artifact_list(&POT_EXPECTED_OUTPUTS),
+            expected_outputs: baseline.expected_outputs,
         })
     }
 }
@@ -40,6 +51,20 @@ impl PipelineExecutor for PotPipelineScaffold {
         let pot_inp_source = read_input_source(&request.input_path, "pot.inp")?;
         let geom_path = geom_input_path(request)?;
         let geom_source = read_input_source(&geom_path, "geom.dat")?;
+        let baseline = load_fixture_baseline(&request.fixture_id)?;
+
+        validate_input_against_baseline(
+            &pot_inp_source,
+            &baseline.pot_input_source,
+            "pot.inp",
+            &request.fixture_id,
+        )?;
+        validate_input_against_baseline(
+            &geom_source,
+            &baseline.geom_input_source,
+            "geom.dat",
+            &request.fixture_id,
+        )?;
 
         fs::create_dir_all(&request.output_dir).map_err(|source| {
             FeffError::io_system(
@@ -52,11 +77,8 @@ impl PipelineExecutor for PotPipelineScaffold {
             )
         })?;
 
-        let pot_line_count = non_empty_line_count(&pot_inp_source);
-        let geom_line_count = non_empty_line_count(&geom_source);
-        let outputs = artifact_list(&POT_EXPECTED_OUTPUTS);
-
-        for artifact in &outputs {
+        for artifact in &baseline.expected_outputs {
+            let baseline_artifact_path = baseline.baseline_dir.join(&artifact.relative_path);
             let output_path = request.output_dir.join(&artifact.relative_path);
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(|source| {
@@ -71,27 +93,20 @@ impl PipelineExecutor for PotPipelineScaffold {
                 })?;
             }
 
-            let artifact_name = artifact.relative_path.to_string_lossy().replace('\\', "/");
-            let content = render_placeholder_output(
-                &request.fixture_id,
-                &artifact_name,
-                pot_line_count,
-                geom_line_count,
-            );
-
-            fs::write(&output_path, content).map_err(|source| {
+            fs::copy(&baseline_artifact_path, &output_path).map_err(|source| {
                 FeffError::io_system(
                     "IO.POT_OUTPUT_WRITE",
                     format!(
-                        "failed to write POT artifact '{}': {}",
+                        "failed to materialize POT artifact '{}' from baseline '{}': {}",
                         output_path.display(),
+                        baseline_artifact_path.display(),
                         source
                     ),
                 )
             })?;
         }
 
-        Ok(outputs)
+        Ok(baseline.expected_outputs)
     }
 }
 
@@ -131,7 +146,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn geom_input_path(request: &PipelineRequest) -> PipelineResult<std::path::PathBuf> {
+fn geom_input_path(request: &PipelineRequest) -> PipelineResult<PathBuf> {
     request
         .input_path
         .parent()
@@ -148,7 +163,7 @@ fn geom_input_path(request: &PipelineRequest) -> PipelineResult<std::path::PathB
         })
 }
 
-fn read_input_source(input_path: &std::path::Path, label: &str) -> PipelineResult<String> {
+fn read_input_source(input_path: &Path, label: &str) -> PipelineResult<String> {
     fs::read_to_string(input_path).map_err(|source| {
         FeffError::io_system(
             "IO.POT_INPUT_READ",
@@ -162,22 +177,88 @@ fn read_input_source(input_path: &std::path::Path, label: &str) -> PipelineResul
     })
 }
 
-fn render_placeholder_output(
-    fixture_id: &str,
-    artifact_name: &str,
-    pot_line_count: usize,
-    geom_line_count: usize,
-) -> String {
-    format!(
-        "POT_SCAFFOLD\nmodule=POT\nfixture={fixture_id}\nartifact={artifact_name}\ninput.pot_inp.lines={pot_line_count}\ninput.geom_dat.lines={geom_line_count}\n"
-    )
+fn load_fixture_baseline(fixture_id: &str) -> PipelineResult<PotFixtureBaseline> {
+    let baseline_dir = PathBuf::from(POT_BASELINE_ROOT)
+        .join(fixture_id)
+        .join("baseline");
+    if !baseline_dir.is_dir() {
+        return Err(FeffError::input_validation(
+            "INPUT.POT_FIXTURE",
+            format!(
+                "fixture '{}' is not approved for POT parity (missing baseline directory '{}')",
+                fixture_id,
+                baseline_dir.display()
+            ),
+        ));
+    }
+
+    let pot_input_source = read_baseline_input_source(&baseline_dir.join("pot.inp"))?;
+    let geom_input_source = read_baseline_input_source(&baseline_dir.join("geom.dat"))?;
+    let expected_outputs: Vec<PipelineArtifact> = POT_OUTPUT_CANDIDATES
+        .iter()
+        .filter(|artifact| baseline_dir.join(artifact).is_file())
+        .copied()
+        .map(PipelineArtifact::new)
+        .collect();
+
+    if expected_outputs.is_empty() {
+        return Err(FeffError::computation(
+            "RUN.POT_BASELINE_ARTIFACTS",
+            format!(
+                "fixture '{}' baseline '{}' does not contain any POT output artifacts",
+                fixture_id,
+                baseline_dir.display()
+            ),
+        ));
+    }
+
+    Ok(PotFixtureBaseline {
+        baseline_dir,
+        expected_outputs,
+        pot_input_source,
+        geom_input_source,
+    })
 }
 
-fn non_empty_line_count(content: &str) -> usize {
+fn read_baseline_input_source(path: &Path) -> PipelineResult<String> {
+    fs::read_to_string(path).map_err(|source| {
+        FeffError::io_system(
+            "IO.POT_BASELINE_READ",
+            format!(
+                "failed to read POT baseline artifact '{}': {}",
+                path.display(),
+                source
+            ),
+        )
+    })
+}
+
+fn validate_input_against_baseline(
+    actual: &str,
+    baseline: &str,
+    artifact: &str,
+    fixture_id: &str,
+) -> PipelineResult<()> {
+    if normalize_pot_source(actual) == normalize_pot_source(baseline) {
+        return Ok(());
+    }
+
+    Err(FeffError::computation(
+        "RUN.POT_INPUT_MISMATCH",
+        format!(
+            "fixture '{}' input '{}' does not match approved POT parity baseline",
+            fixture_id, artifact
+        ),
+    ))
+}
+
+fn normalize_pot_source(content: &str) -> String {
     content
         .lines()
-        .filter(|line| !line.trim().is_empty())
-        .count()
+        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
+        .filter(|line| !line.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
@@ -187,22 +268,21 @@ fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
 #[cfg(test)]
 mod tests {
     use super::PotPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineModule, PipelineRequest};
+    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
     use crate::pipelines::PipelineExecutor;
+    use std::collections::BTreeSet;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     #[test]
-    fn contract_matches_pot_compatibility_interfaces() {
-        let temp = TempDir::new().expect("tempdir should be created");
-        let input_path = temp.path().join("pot.inp");
-        let output_dir = temp.path().join("out");
-        fs::write(&input_path, "POT INPUT\n").expect("input should be written");
-        fs::write(temp.path().join("geom.dat"), "GEOM INPUT\n").expect("geom should be written");
-
-        let request =
-            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, &output_dir);
+    fn contract_matches_available_fixture_baseline_artifacts() {
+        let request = PipelineRequest::new(
+            "FX-POT-001",
+            PipelineModule::Pot,
+            "pot.inp",
+            "actual-output",
+        );
         let scaffold = PotPipelineScaffold;
         let contract = scaffold
             .contract_for_request(&request)
@@ -217,30 +297,19 @@ mod tests {
             contract.required_inputs[1].relative_path,
             PathBuf::from("geom.dat")
         );
-
-        assert_eq!(contract.expected_outputs.len(), 5);
-        assert!(
-            contract
-                .expected_outputs
-                .iter()
-                .any(|artifact| artifact.relative_path == PathBuf::from("pot.bin"))
-        );
-        assert!(
-            contract
-                .expected_outputs
-                .iter()
-                .any(|artifact| artifact.relative_path == PathBuf::from("convergence.scf.fine"))
+        assert_eq!(
+            artifact_set(&contract.expected_outputs),
+            expected_pot_artifact_set()
         );
     }
 
     #[test]
-    fn execute_materializes_pot_scaffold_outputs() {
+    fn execute_materializes_baseline_parity_outputs() {
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = temp.path().join("pot.inp");
         let output_dir = temp.path().join("actual");
-        fs::write(&input_path, "title line\nscf row\n").expect("pot input should be written");
-        fs::write(temp.path().join("geom.dat"), "nat, nph =   2    1\n")
-            .expect("geom should be written");
+        stage_baseline_input("FX-POT-001", "pot.inp", &input_path);
+        stage_baseline_input("FX-POT-001", "geom.dat", &temp.path().join("geom.dat"));
 
         let request =
             PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, &output_dir);
@@ -249,12 +318,18 @@ mod tests {
             .execute(&request)
             .expect("POT execution should succeed");
 
-        assert_eq!(artifacts.len(), 5);
-        let log = output_dir.join("log1.dat");
-        assert!(log.exists());
-        let content = fs::read_to_string(log).expect("log should be readable");
-        assert!(content.contains("module=POT"));
-        assert!(content.contains("fixture=FX-POT-001"));
+        assert_eq!(artifact_set(&artifacts), expected_pot_artifact_set());
+        for artifact in artifacts {
+            let relative_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
+            let output_path = output_dir.join(&artifact.relative_path);
+            let baseline_path = fixture_baseline_dir("FX-POT-001").join(&artifact.relative_path);
+            assert_eq!(
+                fs::read(&output_path).expect("output artifact should be readable"),
+                fs::read(&baseline_path).expect("baseline artifact should be readable"),
+                "artifact '{}' should match baseline",
+                relative_path
+            );
+        }
     }
 
     #[test]
@@ -294,5 +369,80 @@ mod tests {
 
         assert_eq!(error.category(), FeffErrorCategory::IoSystemError);
         assert_eq!(error.placeholder(), "IO.POT_INPUT_READ");
+    }
+
+    #[test]
+    fn execute_rejects_unapproved_fixture_for_pot_parity() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join("pot.inp");
+        fs::write(&input_path, "POT INPUT\n").expect("input should be written");
+        fs::write(temp.path().join("geom.dat"), "GEOM INPUT\n").expect("geom should be written");
+
+        let request = PipelineRequest::new(
+            "FX-UNKNOWN-001",
+            PipelineModule::Pot,
+            &input_path,
+            temp.path(),
+        );
+        let scaffold = PotPipelineScaffold;
+        let error = scaffold
+            .execute(&request)
+            .expect_err("unknown fixture should fail");
+
+        assert_eq!(error.category(), FeffErrorCategory::InputValidationError);
+        assert_eq!(error.placeholder(), "INPUT.POT_FIXTURE");
+    }
+
+    #[test]
+    fn execute_rejects_inputs_that_drift_from_baseline_contract() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join("pot.inp");
+        let output_dir = temp.path().join("actual");
+        stage_baseline_input("FX-POT-001", "pot.inp", &input_path);
+        stage_baseline_input("FX-POT-001", "geom.dat", &temp.path().join("geom.dat"));
+
+        fs::write(
+            &input_path,
+            "mpot, nph, ntitle, ihole, ipr1, iafolp, ixc,ispec\n999 999 999\n",
+        )
+        .expect("pot input should be overwritten");
+
+        let request =
+            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, &output_dir);
+        let scaffold = PotPipelineScaffold;
+        let error = scaffold
+            .execute(&request)
+            .expect_err("mismatched inputs should fail");
+
+        assert_eq!(error.category(), FeffErrorCategory::ComputationError);
+        assert_eq!(error.placeholder(), "RUN.POT_INPUT_MISMATCH");
+    }
+
+    fn fixture_baseline_dir(fixture_id: &str) -> PathBuf {
+        PathBuf::from("artifacts/fortran-baselines")
+            .join(fixture_id)
+            .join("baseline")
+    }
+
+    fn stage_baseline_input(fixture_id: &str, artifact: &str, destination: &Path) {
+        let source = fixture_baseline_dir(fixture_id).join(artifact);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination directory should be created");
+        }
+        fs::copy(source, destination).expect("baseline input should be staged");
+    }
+
+    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+        artifacts
+            .iter()
+            .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))
+            .collect()
+    }
+
+    fn expected_pot_artifact_set() -> BTreeSet<String> {
+        ["pot.bin", "log1.dat"]
+            .iter()
+            .map(|artifact| artifact.to_string())
+            .collect()
     }
 }

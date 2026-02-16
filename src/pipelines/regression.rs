@@ -932,8 +932,8 @@ mod tests {
         );
 
         let staged_dir = actual_root.join("FX-POT-001").join("actual");
-        write_file(&staged_dir.join("pot.inp"), "POT INPUT\n");
-        write_file(&staged_dir.join("geom.dat"), "GEOM INPUT\n");
+        copy_repo_fixture_file("FX-POT-001", "pot.inp", &staged_dir.join("pot.inp"));
+        copy_repo_fixture_file("FX-POT-001", "geom.dat", &staged_dir.join("geom.dat"));
 
         let config = RegressionRunnerConfig {
             manifest_path,
@@ -973,5 +973,16 @@ mod tests {
             fs::create_dir_all(parent).expect("parent dir should be created");
         }
         fs::write(path, content).expect("file should be written");
+    }
+
+    fn copy_repo_fixture_file(fixture_id: &str, relative_path: &str, destination: &Path) {
+        let source = Path::new("artifacts/fortran-baselines")
+            .join(fixture_id)
+            .join("baseline")
+            .join(relative_path);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination directory should be created");
+        }
+        fs::copy(&source, destination).expect("fixture file should be copied");
     }
 }
