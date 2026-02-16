@@ -381,3 +381,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Gotchas encountered: Introducing a new regression hook flag requires updating every explicit `RegressionRunnerConfig` literal in module/unit/integration tests, not just the CLI parser and default config.
   - Useful context: `--run-crpa` uses `<actual-root>/<fixture>/<actual-subdir>/crpa.inp` as the entry artifact and expects sibling `pot.inp` + `geom.dat` before materializing `wscrn.dat`/`logscrn.dat`.
 ---
+## 2026-02-16 21:11:33 JST - US-032
+- Implemented baseline-driven COMPTON parity in `src/pipelines/compton.rs`, including required input validation (`compton.inp`, `pot.bin`, `gg_slice.bin`), baseline-gated input matching, and output materialization from approved fixture baselines.
+- Integrated COMPTON into regression/CLI orchestration by adding `RegressionRunnerConfig.run_compton`, `run_compton_if_enabled`, `RegressionRunnerError::ComptonPipeline`, and CLI flags `--run-compton` / `--run-compton-placeholder`.
+- Added COMPTON parity coverage with module unit tests and integration tests (`tests/compton_parity.rs`), plus regression-runner unit coverage for COMPTON hook execution.
+- Updated regression documentation in `README.md` for the new COMPTON execution path.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/compton.rs`, `tests/compton_parity.rs`, `tests/band_parity.rs`, `tests/crpa_parity.rs`, `tests/fms_parity.rs`, `tests/ldos_parity.rs`, `tests/path_parity.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `tests/rixs_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep module input artifacts required in staged outputs even when canonical baselines omit module-specific inputs, and gate baseline-content matching on per-input availability.
+  - Gotchas encountered: Adding a new regression pre-compare hook requires updating all explicit `RegressionRunnerConfig` literals across unit/integration tests, not only CLI parsing and defaults.
+  - Useful context: `FX-COMPTON-001` baseline includes canonical COMPTON outputs plus `compton.inp`/`pot.bin`, but not `gg_slice.bin`; parity tests stage deterministic `gg_slice.bin` bytes to satisfy the input contract.
+---

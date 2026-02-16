@@ -153,6 +153,7 @@ fn band_regression_suite_passes() {
         run_ldos: false,
         run_rixs: false,
         run_crpa: false,
+        run_compton: false,
     };
 
     let report = run_regression(&config).expect("BAND regression suite should run");
