@@ -630,6 +630,344 @@ fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes
     }
 }
 
+#[test]
+fn oracle_command_runs_screen_parity_for_optional_screen_input_cases() {
+    if !command_available("jq") {
+        eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-SCREEN-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let fixture_input_dir = workspace_root.join("feff10/examples/MPSE/Cu_OPCONS");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["SCREEN"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+
+    let with_override_oracle_root = temp.path().join("oracle-root-with-override");
+    let with_override_actual_root = temp.path().join("actual-root-with-override");
+    let with_override_report_path = temp.path().join("report/oracle-screen-with-override.json");
+    let with_override_staged_output_dir = with_override_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "pot.inp",
+        &with_override_staged_output_dir.join("pot.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "geom.dat",
+        &with_override_staged_output_dir.join("geom.dat"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "ldos.inp",
+        &with_override_staged_output_dir.join("ldos.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "screen.inp",
+        &with_override_staged_output_dir.join("screen.inp"),
+    );
+
+    let with_override_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &with_override_oracle_root,
+        &with_override_actual_root,
+        &with_override_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-screen",
+        ],
+    );
+
+    assert_eq!(
+        with_override_output.status.code(),
+        Some(1),
+        "SCREEN oracle parity with optional screen.inp should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&with_override_output.stderr)
+    );
+    assert!(
+        with_override_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("screen.inp")
+            .is_file(),
+        "with-override case should include optional screen.inp for '{}'",
+        fixture_id
+    );
+    assert!(
+        with_override_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("wscrn.dat")
+            .is_file(),
+        "run-screen should materialize wscrn.dat for '{}'",
+        fixture_id
+    );
+    assert!(
+        with_override_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("logscreen.dat")
+            .is_file(),
+        "run-screen should materialize logscreen.dat for '{}'",
+        fixture_id
+    );
+
+    let with_override_stdout = String::from_utf8_lossy(&with_override_output.stdout);
+    assert!(
+        with_override_stdout.contains("Fixture FX-SCREEN-001 mismatches"),
+        "SCREEN oracle summary should include fixture mismatch details, stdout: {}",
+        with_override_stdout
+    );
+    assert!(
+        with_override_report_path.is_file(),
+        "SCREEN oracle parity should emit a report for optional-screen case"
+    );
+    let with_override_report: Value = serde_json::from_str(
+        &fs::read_to_string(&with_override_report_path).expect("report should be readable"),
+    )
+    .expect("report JSON should parse");
+    assert_eq!(
+        with_override_report["mismatch_fixture_count"],
+        Value::from(1)
+    );
+    let with_override_mismatch_fixtures = with_override_report["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let with_override_fixture = with_override_mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("SCREEN mismatch report should include fixture");
+    let with_override_artifacts = with_override_fixture["artifacts"]
+        .as_array()
+        .expect("fixture artifact list should be an array");
+    assert!(
+        with_override_artifacts.iter().all(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| !path.is_empty())
+                && artifact["reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty())
+        }),
+        "SCREEN mismatch artifacts should include deterministic path and reason fields"
+    );
+
+    let without_override_oracle_root = temp.path().join("oracle-root-without-override");
+    let without_override_actual_root = temp.path().join("actual-root-without-override");
+    let without_override_report_path = temp
+        .path()
+        .join("report/oracle-screen-without-override.json");
+    let staged_output_dir = without_override_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(fixture_id, "pot.inp", &staged_output_dir.join("pot.inp"));
+    stage_workspace_fixture_file(fixture_id, "geom.dat", &staged_output_dir.join("geom.dat"));
+    stage_workspace_fixture_file(fixture_id, "ldos.inp", &staged_output_dir.join("ldos.inp"));
+    assert!(
+        !staged_output_dir.join("screen.inp").exists(),
+        "test setup should omit optional screen.inp override input"
+    );
+
+    let without_override_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &without_override_oracle_root,
+        &without_override_actual_root,
+        &without_override_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-screen",
+        ],
+    );
+
+    assert_eq!(
+        without_override_output.status.code(),
+        Some(1),
+        "SCREEN oracle parity without optional screen.inp should still run and report mismatches, stderr: {}",
+        String::from_utf8_lossy(&without_override_output.stderr)
+    );
+    assert!(
+        !without_override_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("screen.inp")
+            .is_file(),
+        "run-screen should not require screen.inp to be present for '{}'",
+        fixture_id
+    );
+    assert!(
+        without_override_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("wscrn.dat")
+            .is_file(),
+        "run-screen should materialize wscrn.dat without optional override for '{}'",
+        fixture_id
+    );
+    assert!(
+        without_override_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("logscreen.dat")
+            .is_file(),
+        "run-screen should materialize logscreen.dat without optional override for '{}'",
+        fixture_id
+    );
+
+    let without_override_stdout = String::from_utf8_lossy(&without_override_output.stdout);
+    assert!(
+        without_override_stdout.contains("Fixture FX-SCREEN-001 mismatches"),
+        "SCREEN oracle summary should include fixture mismatch details, stdout: {}",
+        without_override_stdout
+    );
+    assert!(
+        without_override_report_path.is_file(),
+        "SCREEN oracle parity should emit a report for missing-optional-input case"
+    );
+    let without_override_report: Value = serde_json::from_str(
+        &fs::read_to_string(&without_override_report_path).expect("report should be readable"),
+    )
+    .expect("report JSON should parse");
+    assert_eq!(
+        without_override_report["mismatch_fixture_count"],
+        Value::from(1)
+    );
+    let without_override_mismatch_fixtures = without_override_report["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let without_override_fixture = without_override_mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("SCREEN mismatch report should include fixture");
+    let without_override_artifacts = without_override_fixture["artifacts"]
+        .as_array()
+        .expect("fixture artifact list should be an array");
+    let missing_optional_override_report = without_override_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("screen.inp"))
+        .expect("missing optional screen.inp should be reported deterministically");
+    assert_eq!(
+        missing_optional_override_report["reason"],
+        Value::from("Missing actual artifact"),
+        "optional screen.inp absence should map to deterministic report reason"
+    );
+}
+
+#[test]
+fn oracle_command_run_screen_input_mismatch_emits_deterministic_diagnostic_contract() {
+    if !command_available("jq") {
+        eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-SCREEN-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/MPSE/Cu_OPCONS");
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = temp.path().join("policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-report.json");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["SCREEN"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+    write_file(
+        &policy_path,
+        r#"
+        {
+          "defaultMode": "exact_text"
+        }
+        "#,
+    );
+
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &["--capture-runner", ":", "--run-screen"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "missing SCREEN required input should map to deterministic IO fatal exit code, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ERROR: [IO.SCREEN_INPUT_READ]"),
+        "stderr should include SCREEN input-contract placeholder, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("pot.inp"),
+        "stderr should identify the missing required SCREEN input artifact, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("FATAL EXIT CODE: 3"),
+        "stderr should include fatal exit summary line, stderr: {}",
+        stderr
+    );
+    assert!(
+        !report_path.exists(),
+        "fatal SCREEN input-contract failures should not emit an oracle report"
+    );
+}
+
 fn run_regression_command(
     manifest_path: &Path,
     policy_path: &Path,

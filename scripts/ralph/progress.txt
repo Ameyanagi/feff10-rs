@@ -8,6 +8,7 @@
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
+- For oracle parity tests that must cover optional module inputs, stage required artifacts directly into `actual-root/<fixture>/actual` and run only the target module hook (for example, `--run-screen`) so optional-file present/absent variants are deterministic.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - For multi-fixture oracle parity stories, assert `mismatch_fixtures` per required fixture (not only aggregate mismatch counts) so artifact-level reason coverage remains deterministic.
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
@@ -189,4 +190,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: SCREEN-compatible parsers should accept both RDINP `ldos.inp` variants (with and without `neldos`) to keep module command flows compatible across fixture sources.
   - Gotchas encountered: Runtime `screen` CLI execution depends on staged `pot.inp`/`geom.dat`/`ldos.inp`; invoking `screen` before `rdinp` and `pot` in a clean directory will fail input-contract validation.
   - Useful context: Until SCREEN oracle parity coverage lands, regression tests can stay deterministic by seeding temporary baseline trees from generated `RDINP -> POT -> SCREEN` outputs.
+---
+## [2026-02-17 08:57:11 JST] - US-016
+- Added SCREEN oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-SCREEN-001`, exercising both optional-input variants by running `feff10-rs oracle` with staged SCREEN required inputs once with `screen.inp` present and once with `screen.inp` omitted.
+- Added deterministic failure assertions for oracle reports and summaries (`mismatch_fixtures`, fixture mismatch lines, and `Missing actual artifact` for omitted optional `screen.inp`) while verifying `wscrn.dat` and `logscreen.dat` generation in both cases.
+- Added an oracle CLI diagnostic-contract test for missing SCREEN required inputs to assert deterministic stderr output (`IO.SCREEN_INPUT_READ`, missing `pot.inp`, `FATAL EXIT CODE: 3`) and no report emission on fatal pre-compare failure.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-016` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Optional-input oracle parity is most reliable when staged module inputs are explicit and the command runs only the target module hook.
+  - Gotchas encountered: Missing SCREEN required artifacts currently surface as `IO.SCREEN_INPUT_READ` (exit code 3), so deterministic CLI assertions must check IO-category diagnostics rather than INPUT placeholders.
+  - Useful context: This repository still has no local `AGENTS.md`; reusable module/testing conventions should continue to be recorded in `scripts/ralph/progress.txt`.
 ---
