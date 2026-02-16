@@ -5,6 +5,7 @@
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
+- CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
 - Parser invalid-input compatibility contracts are snapshot-locked in `tests/parser_validation_snapshots.rs` and `tests/snapshots/parser/*.snap`; update both when changing parser placeholders or diagnostic messages.
@@ -112,4 +113,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Use `write_text_artifact` for text outputs that must remain line-ending stable, and use `write_binary_artifact` for deterministic byte-for-byte artifact writes.
   - Gotchas encountered: `write_text_artifact` canonicalizes line endings and appends a trailing newline only when content is non-empty; use `write_binary_artifact` if exact raw bytes (including no trailing newline) are required.
   - Useful context: There are still no repository-local `AGENTS.md` files in this project, so reusable module/workflow notes should continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 07:57:42 JST] - US-010
+- Reworked `.github/workflows/rust-parity-gates.yml` to run `cargo run --locked -- oracle` instead of direct `regression`, including oracle/actual path wiring, capture-mode configuration, and oracle report/diff artifact handling.
+- Added `scripts/fortran/ci-oracle-capture-runner.sh` as the default CI capture runner so each fixture oracle output is seeded from committed baseline snapshots when a Fortran runner is not configured.
+- Updated `README.md` and `docs/developer-workflows.md` to align local parity instructions and CI workflow notes with the oracle-based parity lane and mismatch-focused report rendering.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-010` as passing in `scripts/ralph/prd.json`.
+- Files changed: `.github/workflows/rust-parity-gates.yml`, `scripts/fortran/ci-oracle-capture-runner.sh`, `README.md`, `docs/developer-workflows.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep oracle CI report summarization keyed off `mismatch_fixtures` so artifact-level oracle mismatches remain actionable even when fixture pass thresholds evolve.
+  - Gotchas encountered: `oracle` capture mode requires exactly one capture strategy; using an explicit default runner in CI avoids accidental usage errors and keeps parity artifact generation deterministic.
+  - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable notes continue to live in `scripts/ralph/progress.txt`.
 ---

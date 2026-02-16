@@ -44,40 +44,42 @@ Local command flow matching `.github/workflows/rust-parity-gates.yml`:
 
 ```bash
 mkdir -p artifacts/regression
-cargo run --locked -- regression \
+cargo run --locked -- oracle \
   --manifest tasks/golden-fixture-manifest.json \
   --policy tasks/numeric-tolerance-policy.json \
-  --baseline-root artifacts/fortran-baselines \
+  --oracle-root artifacts/fortran-oracle-capture \
+  --oracle-subdir outputs \
   --actual-root artifacts/fortran-baselines \
-  --baseline-subdir baseline \
   --actual-subdir baseline \
-  --report artifacts/regression/report.json \
-  > artifacts/regression/regression-summary.txt \
-  2> artifacts/regression/regression-stderr.txt
+  --report artifacts/regression/oracle-report.json \
+  --capture-runner "./scripts/fortran/ci-oracle-capture-runner.sh" \
+  --capture-allow-missing-entry-files \
+  > artifacts/regression/oracle-summary.txt \
+  2> artifacts/regression/oracle-stderr.txt
 
 jq -r '
   def status(v): if v then "PASS" else "FAIL" end;
-  "Regression status: \(status(.passed))",
+  "Oracle parity status: \(status(.passed))",
   "Failed fixtures: \(.failed_fixture_count)",
   "Failed artifacts: \(.failed_artifact_count)",
+  "Mismatched fixtures: \(.mismatch_fixture_count // 0)",
+  "Mismatched artifacts: \(.mismatch_artifact_count // 0)",
   "",
-  "Failed artifact details:",
+  "Mismatched artifact details:",
   (
-    .fixtures[]
-    | select(.passed | not)
+    (.mismatch_fixtures // [])[]
     | "Fixture \(.fixture_id):",
       (
         .artifacts[]
-        | select(.passed | not)
-        | "  - \(.artifact_path): \(.reason // (if .comparison then (.comparison.mode + \" mismatch\") else \"comparison failed\" end))"
+        | "  - \(.artifact_path): \(.reason // \"comparison failed\")"
       )
   )
-' artifacts/regression/report.json > artifacts/regression/regression-diff.txt
+' artifacts/regression/oracle-report.json > artifacts/regression/oracle-diff.txt
 ```
 
-When the regression command exits non-zero, CI uploads:
-- `artifacts/regression/report.json`
-- `artifacts/regression/regression-diff.txt`
+When the oracle command exits non-zero, CI uploads:
+- `artifacts/regression/oracle-report.json`
+- `artifacts/regression/oracle-diff.txt`
 
 ## CLI Compatibility Commands
 

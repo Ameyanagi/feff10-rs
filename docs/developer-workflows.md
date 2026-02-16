@@ -134,3 +134,14 @@ Optional capture behavior:
 - `--capture-allow-missing-entry-files` (records unresolved entry files in capture metadata and continues)
 
 This command is validation-only and is intentionally isolated from runtime CLI paths.
+
+### CI Oracle Parity Gate
+
+`.github/workflows/rust-parity-gates.yml` runs oracle parity with:
+- `--actual-root artifacts/fortran-baselines --actual-subdir baseline`
+- `--capture-runner scripts/fortran/ci-oracle-capture-runner.sh`
+- `--capture-allow-missing-entry-files`
+
+The default CI runner script replays committed fixture baselines into each capture output
+directory so the parity lane continuously validates oracle command plumbing and report artifacts
+without requiring a local Fortran toolchain on the primary Rust quality lane.
