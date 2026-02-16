@@ -3,6 +3,7 @@
 - Treat `tasks/migration-contract-reference.md` as the single release-blocking contract index; update it whenever any linked contract artifact changes.
 - On macOS arm64, run Rust quality gates with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures in test binaries.
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
+- Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -23,4 +24,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Governance constraints that span runtime and tooling should be anchored in `tasks/migration-decision-log.md` and linked from `tasks/migration-contract-reference.md` so they remain release-blocking.
   - Gotchas encountered: This repository currently has no in-repo `AGENTS.md`, so reusable learnings must be recorded in `scripts/ralph/progress.txt` instead.
   - Useful context: Current module parity pipelines still materialize baseline outputs; they are now explicitly classified as validation-only paths under D-5 until compute rewrites land.
+---
+## [2026-02-17 07:10:07 JST] - US-003
+- Added shared pipeline interfaces for runtime compute execution (`RuntimePipelineExecutor`) and validation execution (`ValidationPipelineExecutor`), plus a shared runtime dispatcher in `src/pipelines/mod.rs`.
+- Refactored CLI runtime paths (`feff`, `feffmpi`, module commands) to use the runtime dispatcher and fail fast with deterministic `RUN.RUNTIME_ENGINE_UNAVAILABLE` when a module has no runtime compute engine; regression validation paths remain unchanged.
+- Updated CLI compatibility tests and README runtime notes to reflect the runtime/validation split and current runtime-engine availability.
+- Marked `US-003` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/pipelines/mod.rs`, `src/cli/mod.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Runtime boundary wiring is centralized in `src/cli/mod.rs` and should call `execute_runtime_pipeline` only; module scaffolds remain reusable for regression hooks and parity tests.
+  - Gotchas encountered: On macOS arm64, `cargo test`/`cargo clippy` require `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures.
+  - Useful context: `feff`/`feffmpi` now report unsupported runtime modules early instead of falling through validation-style scaffold execution.
 ---

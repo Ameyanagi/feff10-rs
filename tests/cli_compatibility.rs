@@ -4,7 +4,7 @@ use std::process::{Command, Output};
 use tempfile::{Builder, TempDir};
 
 #[test]
-fn feff_command_runs_workflow_fixture_chain() {
+fn feff_command_fails_when_chain_includes_unported_runtime_module() {
     let temp = fixture_tempdir();
     stage_baseline_artifact(
         "FX-WORKFLOW-XAS-001",
@@ -14,42 +14,31 @@ fn feff_command_runs_workflow_fixture_chain() {
 
     let output = run_cli_command(temp.path(), &["feff"]);
 
-    assert!(
-        output.status.success(),
-        "feff command should succeed, stderr: {}",
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "feff should fail with computation category when runtime engine is unavailable, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    for artifact in [
-        "geom.dat",
-        "global.inp",
-        "pot.inp",
-        "xsph.inp",
-        "paths.inp",
-        "fms.inp",
-        "pot.bin",
-        "phase.bin",
-        "paths.dat",
-        "gg.bin",
-        "log.dat",
-        "log1.dat",
-        "log2.dat",
-        "log3.dat",
-        "log4.dat",
-    ] {
-        assert!(
-            temp.path().join(artifact).is_file(),
-            "core workflow artifact '{}' should exist in current directory",
-            artifact
-        );
-    }
+    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        !temp.path().join("FX-WORKFLOW-XAS-001").exists(),
-        "workflow outputs should be written directly into current directory, not nested fixture directories"
+        stderr.contains("RUN.RUNTIME_ENGINE_UNAVAILABLE"),
+        "missing runtime-engine diagnostic token, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("FATAL EXIT CODE: 4"),
+        "missing fatal exit summary for runtime-engine failure, stderr: {}",
+        stderr
+    );
+    assert!(
+        !temp.path().join("pot.inp").is_file(),
+        "feff should fail before writing partial artifacts when chain contains unsupported modules"
     );
 }
 
 #[test]
-fn feffmpi_command_accepts_nprocs_and_runs_serial_fallback() {
+fn feffmpi_command_reports_runtime_engine_failure_after_warning() {
     let temp = fixture_tempdir();
     stage_baseline_artifact(
         "FX-WORKFLOW-XAS-001",
@@ -59,9 +48,10 @@ fn feffmpi_command_accepts_nprocs_and_runs_serial_fallback() {
 
     let output = run_cli_command(temp.path(), &["feffmpi", "4"]);
 
-    assert!(
-        output.status.success(),
-        "feffmpi command should succeed, stderr: {}",
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "feffmpi should surface runtime compute-engine failure, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -71,13 +61,14 @@ fn feffmpi_command_accepts_nprocs_and_runs_serial_fallback() {
         stderr
     );
     assert!(
-        temp.path().join("phase.bin").is_file(),
-        "serial fallback should materialize core outputs"
+        stderr.contains("RUN.RUNTIME_ENGINE_UNAVAILABLE"),
+        "stderr should include runtime compute-engine failure token, stderr: {}",
+        stderr
     );
 }
 
 #[test]
-fn module_commands_support_fixture_workflows() {
+fn module_commands_enforce_runtime_compute_engine_boundary() {
     let temp = fixture_tempdir();
     stage_baseline_artifact(
         "FX-WORKFLOW-XAS-001",
@@ -97,14 +88,21 @@ fn module_commands_support_fixture_workflows() {
     );
 
     let pot = run_cli_command(temp.path(), &["pot"]);
-    assert!(
-        pot.status.success(),
-        "pot should succeed, stderr: {}",
+    assert_eq!(
+        pot.status.code(),
+        Some(4),
+        "pot should fail until runtime compute engine exists, stderr: {}",
         String::from_utf8_lossy(&pot.stderr)
     );
+    let pot_stderr = String::from_utf8_lossy(&pot.stderr);
     assert!(
-        temp.path().join("pot.bin").is_file(),
-        "pot should emit pot.bin"
+        pot_stderr.contains("RUN.RUNTIME_ENGINE_UNAVAILABLE"),
+        "missing runtime-engine failure token for pot command, stderr: {}",
+        pot_stderr
+    );
+    assert!(
+        !temp.path().join("pot.bin").is_file(),
+        "pot should not emit pot.bin"
     );
 }
 

@@ -113,6 +113,7 @@ Supported module commands are:
 All module commands run in the current working directory and do not accept positional arguments.
 Runtime commands (`feff`, `feffmpi`, and module commands) must not use `artifacts/fortran-baselines` as output-generation sources.
 Baseline snapshots are validation/test-only inputs for regression and fixture tooling.
+Runtime compute engines are currently available for `RDINP`; commands for modules that have not been ported to true-compute yet return `RUN.RUNTIME_ENGINE_UNAVAILABLE` with exit code `4`.
 
 MPI parity is still deferred for Rust v1 (`D-2`). `feffmpi <nprocs>` validates `<nprocs>` and runs the serial compatibility chain, emitting a deterministic warning when `nprocs > 1`.
 

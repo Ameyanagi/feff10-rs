@@ -1,22 +1,8 @@
 use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
-use crate::pipelines::PipelineExecutor;
-use crate::pipelines::band::BandPipelineScaffold;
-use crate::pipelines::compton::ComptonPipelineScaffold;
-use crate::pipelines::crpa::CrpaPipelineScaffold;
-use crate::pipelines::debye::DebyePipelineScaffold;
-use crate::pipelines::dmdw::DmdwPipelineScaffold;
-use crate::pipelines::eels::EelsPipelineScaffold;
-use crate::pipelines::fms::FmsPipelineScaffold;
-use crate::pipelines::fullspectrum::FullSpectrumPipelineScaffold;
-use crate::pipelines::ldos::LdosPipelineScaffold;
-use crate::pipelines::path::PathPipelineScaffold;
-use crate::pipelines::pot::PotPipelineScaffold;
-use crate::pipelines::rdinp::RdinpPipelineScaffold;
 use crate::pipelines::regression::{RegressionRunnerConfig, render_human_summary, run_regression};
-use crate::pipelines::rixs::RixsPipelineScaffold;
-use crate::pipelines::screen::ScreenPipelineScaffold;
-use crate::pipelines::self_energy::SelfEnergyPipelineScaffold;
-use crate::pipelines::xsph::XsphPipelineScaffold;
+use crate::pipelines::{
+    execute_runtime_pipeline, runtime_compute_engine_available, runtime_engine_unavailable_error,
+};
 use serde::Deserialize;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -26,7 +12,6 @@ use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MANIFEST_RELATIVE_PATH: &str = "tasks/golden-fixture-manifest.json";
-const BASELINE_RELATIVE_PATH: &str = "artifacts/fortran-baselines";
 
 #[derive(Debug, Clone, Copy)]
 struct ModuleCommandSpec {
@@ -306,6 +291,14 @@ fn run_feff_command(args: Vec<String>) -> Result<i32, CliError> {
         )));
     }
 
+    if let Some(module) = modules
+        .iter()
+        .copied()
+        .find(|module| !runtime_compute_engine_available(*module))
+    {
+        return Err(CliError::Pipeline(runtime_engine_unavailable_error(module)));
+    }
+
     for module in modules {
         if let Some(spec) = module_command_for_module(module) {
             println!("Running {}...", spec.module);
@@ -365,6 +358,11 @@ fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> Result<i32,
             module_usage_text(spec)
         )));
     }
+    if !runtime_compute_engine_available(spec.module) {
+        return Err(CliError::Pipeline(runtime_engine_unavailable_error(
+            spec.module,
+        )));
+    }
 
     let context = load_cli_context()?;
     let fixture_id =
@@ -392,10 +390,9 @@ fn load_cli_context() -> Result<CliContext, CliError> {
         CliError::Pipeline(FeffError::input_validation(
             "INPUT.CLI_WORKSPACE",
             format!(
-                "failed to locate workspace root from '{}'; expected to find '{}' and '{}'",
+                "failed to locate workspace root from '{}'; expected to find '{}'",
                 working_dir.display(),
-                MANIFEST_RELATIVE_PATH,
-                BASELINE_RELATIVE_PATH
+                MANIFEST_RELATIVE_PATH
             ),
         ))
     })?;
@@ -410,8 +407,7 @@ fn load_cli_context() -> Result<CliContext, CliError> {
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
     for candidate in start.ancestors() {
         let manifest = candidate.join(MANIFEST_RELATIVE_PATH);
-        let baseline_root = candidate.join(BASELINE_RELATIVE_PATH);
-        if manifest.is_file() && baseline_root.is_dir() {
+        if manifest.is_file() {
             return Some(candidate.to_path_buf());
         }
     }
@@ -458,9 +454,6 @@ fn select_serial_fixture(context: &CliContext) -> PipelineResult<CliManifestFixt
     if let Some(matched) = select_by_input_directory(context, &candidates) {
         return Ok(matched.clone());
     }
-    if let Some(matched) = select_by_input_content(context, &candidates, "feff.inp")? {
-        return Ok(matched.clone());
-    }
 
     candidates.sort_by(|a, b| a.id.cmp(&b.id));
     Ok(candidates[0].clone())
@@ -498,9 +491,6 @@ fn select_fixture_for_module(
 
     if spec.module == PipelineModule::Rdinp {
         if let Some(matched) = select_by_input_directory(context, &candidates) {
-            return Ok(matched.id.clone());
-        }
-        if let Some(matched) = select_by_input_content(context, &candidates, spec.input_artifact)? {
             return Ok(matched.id.clone());
         }
         if prefer_workflow {
@@ -616,69 +606,6 @@ fn select_by_input_directory<'a>(
     }
 }
 
-fn select_by_input_content<'a>(
-    context: &CliContext,
-    candidates: &'a [&'a CliManifestFixture],
-    input_artifact: &str,
-) -> PipelineResult<Option<&'a CliManifestFixture>> {
-    let local_input = context.working_dir.join(input_artifact);
-    if !local_input.is_file() {
-        return Ok(None);
-    }
-
-    let local_source = fs::read(&local_input).map_err(|source| {
-        FeffError::io_system(
-            "IO.CLI_INPUT_READ",
-            format!(
-                "failed to read command input '{}' while selecting fixture: {}",
-                local_input.display(),
-                source
-            ),
-        )
-    })?;
-
-    let mut matches = Vec::new();
-    for fixture in candidates {
-        let baseline_input = context
-            .workspace_root
-            .join(BASELINE_RELATIVE_PATH)
-            .join(&fixture.id)
-            .join("baseline")
-            .join(input_artifact);
-        if !baseline_input.is_file() {
-            continue;
-        }
-
-        let baseline_source = fs::read(&baseline_input).map_err(|source| {
-            FeffError::io_system(
-                "IO.CLI_BASELINE_READ",
-                format!(
-                    "failed to read baseline input '{}' while selecting fixture '{}': {}",
-                    baseline_input.display(),
-                    fixture.id,
-                    source
-                ),
-            )
-        })?;
-
-        if normalize_line_endings(&local_source) == normalize_line_endings(&baseline_source) {
-            matches.push(*fixture);
-        }
-    }
-
-    if matches.len() == 1 {
-        Ok(Some(matches[0]))
-    } else {
-        Ok(None)
-    }
-}
-
-fn normalize_line_endings(source: &[u8]) -> Vec<u8> {
-    String::from_utf8_lossy(source)
-        .replace("\r\n", "\n")
-        .into_bytes()
-}
-
 fn probe_module_for_fixture(
     context: &CliContext,
     spec: ModuleCommandSpec,
@@ -754,24 +681,7 @@ fn execute_pipeline_for_spec(
     spec: ModuleCommandSpec,
     request: &PipelineRequest,
 ) -> PipelineResult<Vec<PipelineArtifact>> {
-    match spec.module {
-        PipelineModule::Rdinp => RdinpPipelineScaffold.execute(request),
-        PipelineModule::Pot => PotPipelineScaffold.execute(request),
-        PipelineModule::Path => PathPipelineScaffold.execute(request),
-        PipelineModule::Fms => FmsPipelineScaffold.execute(request),
-        PipelineModule::Xsph => XsphPipelineScaffold.execute(request),
-        PipelineModule::Band => BandPipelineScaffold.execute(request),
-        PipelineModule::Ldos => LdosPipelineScaffold.execute(request),
-        PipelineModule::Rixs => RixsPipelineScaffold.execute(request),
-        PipelineModule::Crpa => CrpaPipelineScaffold.execute(request),
-        PipelineModule::Compton => ComptonPipelineScaffold.execute(request),
-        PipelineModule::Debye => DebyePipelineScaffold.execute(request),
-        PipelineModule::Dmdw => DmdwPipelineScaffold.execute(request),
-        PipelineModule::Screen => ScreenPipelineScaffold.execute(request),
-        PipelineModule::SelfEnergy => SelfEnergyPipelineScaffold.execute(request),
-        PipelineModule::Eels => EelsPipelineScaffold.execute(request),
-        PipelineModule::FullSpectrum => FullSpectrumPipelineScaffold.execute(request),
-    }
+    execute_runtime_pipeline(spec.module, request)
 }
 
 fn parse_pipeline_module(token: &str) -> Option<PipelineModule> {

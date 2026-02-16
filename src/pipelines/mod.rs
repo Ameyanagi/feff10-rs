@@ -18,12 +18,79 @@ pub mod self_energy;
 pub mod xsph;
 
 use crate::domain::{
-    InputCard, InputDeck, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult,
+    FeffError, InputCard, InputDeck, PipelineArtifact, PipelineModule, PipelineRequest,
+    PipelineResult,
 };
 use crate::numerics::{deterministic_argsort, distance3, stable_weighted_mean};
 
 pub trait PipelineExecutor {
     fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>>;
+}
+
+pub trait RuntimePipelineExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>>;
+}
+
+pub trait ValidationPipelineExecutor {
+    fn execute_validation(
+        &self,
+        request: &PipelineRequest,
+    ) -> PipelineResult<Vec<PipelineArtifact>>;
+}
+
+impl<T> ValidationPipelineExecutor for T
+where
+    T: PipelineExecutor,
+{
+    fn execute_validation(
+        &self,
+        request: &PipelineRequest,
+    ) -> PipelineResult<Vec<PipelineArtifact>> {
+        self.execute(request)
+    }
+}
+
+pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
+    matches!(module, PipelineModule::Rdinp)
+}
+
+pub fn runtime_engine_unavailable_error(module: PipelineModule) -> FeffError {
+    FeffError::computation(
+        "RUN.RUNTIME_ENGINE_UNAVAILABLE",
+        format!(
+            "runtime compute engine for module {} is not available yet; use validation parity flows until the module true-compute story lands",
+            module
+        ),
+    )
+}
+
+pub fn execute_runtime_pipeline(
+    module: PipelineModule,
+    request: &PipelineRequest,
+) -> PipelineResult<Vec<PipelineArtifact>> {
+    if request.module != module {
+        return Err(FeffError::input_validation(
+            "INPUT.RUNTIME_MODULE_MISMATCH",
+            format!(
+                "runtime dispatcher received module {} for request module {}",
+                module, request.module
+            ),
+        ));
+    }
+
+    match module {
+        PipelineModule::Rdinp => RuntimeRdinpExecutor.execute_runtime(request),
+        _ => Err(runtime_engine_unavailable_error(module)),
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeRdinpExecutor;
+
+impl RuntimePipelineExecutor for RuntimeRdinpExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        rdinp::RdinpPipelineScaffold.execute(request)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,11 +165,17 @@ pub fn cards_for_pipeline_request<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::{CorePipelineScaffold, PipelineExecutor, cards_for_pipeline_request};
+    use super::{
+        CorePipelineScaffold, PipelineExecutor, ValidationPipelineExecutor,
+        cards_for_pipeline_request, execute_runtime_pipeline, runtime_compute_engine_available,
+        runtime_engine_unavailable_error,
+    };
     use crate::domain::{
         FeffError, FeffErrorCategory, InputCard, InputCardKind, InputDeck, PipelineArtifact,
         PipelineModule, PipelineRequest,
     };
+    use std::path::Path;
+    use tempfile::TempDir;
 
     struct FailingExecutor;
 
@@ -126,6 +199,15 @@ mod tests {
             .expect_err("executor should fail");
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.exit_code(), 4);
+        assert_eq!(error.placeholder(), "RUN.PIPELINE");
+    }
+
+    #[test]
+    fn validation_executor_trait_adapts_pipeline_executor_types() {
+        let request = PipelineRequest::new("FX-001", PipelineModule::Rdinp, "feff.inp", "out");
+        let error = FailingExecutor
+            .execute_validation(&request)
+            .expect_err("validation adapter should preserve errors");
         assert_eq!(error.placeholder(), "RUN.PIPELINE");
     }
 
@@ -178,5 +260,53 @@ mod tests {
 
         assert!((average - 6.5).abs() < 1.0e-12);
         assert_eq!(scaffold.weighted_channel_average(&[1.0], &[0.0]), None);
+    }
+
+    #[test]
+    fn runtime_dispatch_reports_available_compute_modules() {
+        assert!(runtime_compute_engine_available(PipelineModule::Rdinp));
+        assert!(!runtime_compute_engine_available(PipelineModule::Pot));
+    }
+
+    #[test]
+    fn runtime_dispatch_rejects_modules_without_compute_engines() {
+        let request = PipelineRequest::new("FX-POT-001", PipelineModule::Pot, "pot.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Pot, &request)
+            .expect_err("unsupported runtime module should fail");
+        assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
+    }
+
+    #[test]
+    fn runtime_dispatch_rejects_module_mismatch_requests() {
+        let request = PipelineRequest::new("FX-001", PipelineModule::Rdinp, "feff.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Pot, &request)
+            .expect_err("module mismatch should fail before dispatch");
+        assert_eq!(error.placeholder(), "INPUT.RUNTIME_MODULE_MISMATCH");
+    }
+
+    #[test]
+    fn runtime_dispatch_executes_rdinp_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let request = PipelineRequest::new(
+            "FX-RDINP-001",
+            PipelineModule::Rdinp,
+            "feff10/examples/EXAFS/Cu/feff.inp",
+            temp.path(),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Rdinp, &request)
+            .expect("RDINP runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("pot.inp")),
+            "RDINP runtime should emit downstream deck artifacts"
+        );
+    }
+
+    #[test]
+    fn runtime_engine_unavailable_error_uses_computation_category() {
+        let error = runtime_engine_unavailable_error(PipelineModule::Path);
+        assert_eq!(error.category(), FeffErrorCategory::ComputationError);
+        assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
 }
