@@ -5,6 +5,8 @@
 - Developer workflows: `docs/developer-workflows.md`
 - User and operator guide: `docs/operator-guide.md`
 - Troubleshooting: `docs/troubleshooting.md`
+- Cutover rehearsal checklist: `docs/cutover-rehearsal-checklist.md`
+- Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-16.md`
 
 ## Rust Architecture Scaffolding
 

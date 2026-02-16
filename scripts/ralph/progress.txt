@@ -35,6 +35,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
 - Contract-level CLI integration tests for fatal paths should assert the full diagnostic pair (`ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>`) alongside the numeric exit code.
 - CLI compatibility commands that execute baseline-driven module scaffolds should resolve fixture IDs from `tasks/golden-fixture-manifest.json` and run pipeline execution with the workspace root as the process CWD so module-relative baseline paths (`artifacts/fortran-baselines/...`) resolve correctly.
+- CLI smoke rehearsals must run from a directory under the workspace root so `feff10-rs` workspace discovery can locate `tasks/golden-fixture-manifest.json` and `artifacts/fortran-baselines`.
 - FEFF deck parsing should treat numeric-leading lines as continuations of the preceding card (for example `ATOMS`, `POTENTIALS`, `ELNES`, `STRETCHES`) and only fail when such a line appears before any card.
 - Parser validation in `src/parser/mod.rs` is profile-driven: main decks require `TITLE|CIF`, `ATOMS|CIF`, and `POTENTIALS|POTENTIAL|CIF`, while DEBYE spring decks require `VDOS` and `STRETCHES`; missing `CONTROL`, `PRINT`, and `END` are synthesized with deterministic defaults.
 - Core-science pipeline scaffolds should consume deterministic helpers from `src/numerics/mod.rs` (`deterministic_argsort`, compensated aggregation helpers, and grid/interpolation helpers) instead of local float logic.
@@ -526,4 +527,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Keep migration/user-facing docs under `docs/` and link them from `README.md` so operational guidance is easy to discover.
   - Gotchas encountered: This repo currently has no dedicated docs lint/test tooling, so docs updates should still run full Rust quality gates to keep CI green.
   - Useful context: Runtime compatibility guarantees should be anchored to `tasks/feff10-compatibility-matrix.md` and the fatal diagnostic/exit-code contract implemented in `src/domain/errors.rs`.
+---
+## 2026-02-16 22:51:29 JST - US-044
+- Documented GA cutover rehearsal steps in docs/cutover-rehearsal-checklist.md, including platform scope, release-build commands, smoke fixture scope, and required output assertions.
+- Executed the checklist in rehearsal environments for both GA targets: native macOS arm64 and Ubuntu 22.04 x86_64 (docker --platform linux/amd64), including release builds, artifact checksum capture, and feff10-rs feff smoke validation.
+- Recorded rehearsal outcomes, artifact evidence, and unresolved issues in tasks/cutover-rehearsal-2026-02-16.md; updated documentation index links in README.md.
+- Quality checks: cargo check --locked, CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked, CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings, and cargo fmt --all -- --check passed.
+- Files changed: README.md, docs/cutover-rehearsal-checklist.md, tasks/cutover-rehearsal-2026-02-16.md, scripts/ralph/prd.json, scripts/ralph/progress.txt.
+- **Learnings for future iterations:**
+  - Patterns discovered: Cutover rehearsals are more repeatable when platform-specific build/smoke contracts and required output artifacts are captured in a dedicated checklist under docs/.
+  - Gotchas encountered: feff10-rs CLI workspace discovery fails when smoke tests run outside the repository tree; use workspace-descendant smoke directories.
+  - Useful context: Linux GA validation can be exercised on this arm64 host with ubuntu:22.04 plus --platform linux/amd64, but final GA sign-off should still re-run on native Ubuntu x86_64 infrastructure.
 ---
