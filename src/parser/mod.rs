@@ -1,41 +1,81 @@
-use crate::domain::{FeffError, InputCard, InputDeck, ParserResult};
+use crate::domain::{
+    FeffError, InputCard, InputCardContinuation, InputCardKind, InputDeck, ParserResult,
+};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputTokenLine {
+    pub source_line: usize,
+    pub raw: String,
+    pub tokens: Vec<String>,
+}
+
+pub fn tokenize_input_deck(source: &str) -> Vec<InputTokenLine> {
+    source
+        .lines()
+        .enumerate()
+        .filter_map(|(index, line)| tokenize_line(index + 1, line))
+        .collect()
+}
 
 pub fn parse_input_deck(source: &str) -> ParserResult<InputDeck> {
     let mut cards = Vec::new();
-    for (index, line) in source.lines().enumerate() {
-        if let Some(card) = parse_card(index + 1, line)? {
-            cards.push(card);
+    for token_line in tokenize_input_deck(source) {
+        let Some(first_token) = token_line.tokens.first().map(|token| token.as_str()) else {
+            continue;
+        };
+
+        if is_valid_keyword(first_token) {
+            let keyword = first_token.to_ascii_uppercase();
+            let kind = InputCardKind::from_keyword(&keyword);
+            let values = token_line.tokens.into_iter().skip(1).collect();
+            cards.push(InputCard::new(
+                keyword,
+                kind,
+                values,
+                token_line.source_line,
+            ));
+            continue;
         }
+
+        let Some(last_card) = cards.last_mut() else {
+            return Err(FeffError::input_validation(
+                "INPUT.INVALID_CARD",
+                format!(
+                    "invalid card keyword '{}' at line {}",
+                    first_token, token_line.source_line
+                ),
+            ));
+        };
+
+        last_card.continuations.push(InputCardContinuation {
+            source_line: token_line.source_line,
+            values: token_line.tokens,
+            raw: token_line.raw,
+        });
     }
 
     Ok(InputDeck { cards })
 }
 
-fn parse_card(source_line: usize, line: &str) -> ParserResult<Option<InputCard>> {
-    let trimmed = strip_inline_comment(line).trim();
-    if trimmed.is_empty() {
-        return Ok(None);
+fn tokenize_line(source_line: usize, line: &str) -> Option<InputTokenLine> {
+    let normalized = strip_inline_comment(line).trim();
+    if normalized.is_empty() {
+        return None;
     }
 
-    let mut parts = trimmed.split_whitespace();
-    let Some(keyword) = parts.next() else {
-        return Ok(None);
-    };
-    if !is_valid_keyword(keyword) {
-        return Err(FeffError::input_validation(
-            "INPUT.INVALID_CARD",
-            format!("invalid card keyword '{}' at line {}", keyword, source_line),
-        ));
+    let tokens: Vec<String> = normalized
+        .split_whitespace()
+        .map(ToOwned::to_owned)
+        .collect();
+    if tokens.is_empty() {
+        return None;
     }
 
-    let keyword = keyword.to_ascii_uppercase();
-    let values = parts.map(ToOwned::to_owned).collect();
-
-    Ok(Some(InputCard {
-        keyword,
-        values,
+    Some(InputTokenLine {
         source_line,
-    }))
+        raw: normalized.to_owned(),
+        tokens,
+    })
 }
 
 fn strip_inline_comment(line: &str) -> &str {
@@ -49,7 +89,7 @@ fn strip_inline_comment(line: &str) -> &str {
 fn is_valid_keyword(keyword: &str) -> bool {
     let mut chars = keyword.chars();
     match chars.next() {
-        Some(ch) if ch.is_ascii_alphabetic() => {}
+        Some(ch) if ch.is_ascii_alphabetic() || ch == '_' => {}
         _ => return false,
     }
 
@@ -58,8 +98,8 @@ fn is_valid_keyword(keyword: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_input_deck;
-    use crate::domain::FeffErrorCategory;
+    use super::{parse_input_deck, tokenize_input_deck};
+    use crate::domain::{FeffErrorCategory, InputCardKind};
 
     #[test]
     fn parser_normalizes_keywords_and_ignores_blank_lines() {
@@ -68,6 +108,7 @@ mod tests {
 
         assert_eq!(deck.cards.len(), 2);
         assert_eq!(deck.cards[0].keyword, "TITLE");
+        assert_eq!(deck.cards[0].kind, InputCardKind::Title);
         assert_eq!(deck.cards[0].values, vec!["copper", "test"]);
         assert_eq!(deck.cards[1].keyword, "EDGE");
         assert_eq!(deck.cards[1].source_line, 4);
@@ -81,13 +122,56 @@ mod tests {
         assert_eq!(deck.cards.len(), 1);
         assert_eq!(deck.cards[0].keyword, "CONTROL");
         assert_eq!(deck.cards[0].values, vec!["1", "1", "1"]);
+        assert!(deck.cards[0].continuations.is_empty());
     }
 
     #[test]
-    fn parser_reports_invalid_card_keyword_with_shared_error() {
-        let error = parse_input_deck("9bad 1 2 3").expect_err("invalid card should fail");
+    fn parser_preserves_unknown_card_tokens_for_diagnostics() {
+        let deck = parse_input_deck("futurecard 1 2 3").expect("unknown cards should be preserved");
+        assert_eq!(deck.cards.len(), 1);
+        assert_eq!(deck.cards[0].keyword, "FUTURECARD");
+        assert_eq!(
+            deck.cards[0].kind,
+            InputCardKind::Unknown("FUTURECARD".to_string())
+        );
+        assert_eq!(deck.cards[0].values, vec!["1", "2", "3"]);
+    }
+
+    #[test]
+    fn parser_attaches_numeric_continuation_lines_to_previous_card() {
+        let deck =
+            parse_input_deck("ELNES 5.0 0.05 0.05\n300\n0 0 1\nATOMS\n0.0 0.0 0.0 0 Cu\nEND\n")
+                .expect("deck with continuations should parse");
+
+        assert_eq!(deck.cards.len(), 3);
+        assert_eq!(deck.cards[0].kind, InputCardKind::Elnes);
+        assert_eq!(deck.cards[0].continuations.len(), 2);
+        assert_eq!(deck.cards[0].continuations[0].values, vec!["300"]);
+        assert_eq!(deck.cards[0].continuations[1].values, vec!["0", "0", "1"]);
+        assert_eq!(deck.cards[1].kind, InputCardKind::Atoms);
+        assert_eq!(deck.cards[1].continuations.len(), 1);
+        assert_eq!(
+            deck.cards[1].continuations[0].values,
+            vec!["0.0", "0.0", "0.0", "0", "Cu"]
+        );
+    }
+
+    #[test]
+    fn parser_reports_orphaned_continuation_with_shared_error() {
+        let error = parse_input_deck("300 0 1").expect_err("orphaned continuation should fail");
         assert_eq!(error.category(), FeffErrorCategory::InputValidationError);
         assert_eq!(error.placeholder(), "INPUT.INVALID_CARD");
         assert_eq!(error.exit_code(), 2);
+    }
+
+    #[test]
+    fn tokenizer_emits_normalized_non_comment_lines() {
+        let tokens = tokenize_input_deck("TITLE Cu\n* comment\nEDGE K * inline\n");
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].source_line, 1);
+        assert_eq!(tokens[0].raw, "TITLE Cu");
+        assert_eq!(tokens[0].tokens, vec!["TITLE", "Cu"]);
+        assert_eq!(tokens[1].source_line, 3);
+        assert_eq!(tokens[1].tokens, vec!["EDGE", "K"]);
     }
 }

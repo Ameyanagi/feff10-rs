@@ -112,21 +112,218 @@ pub struct InputDeck {
     pub cards: Vec<InputCard>,
 }
 
+impl InputDeck {
+    pub fn cards_for_module(&self, module: PipelineModule) -> Vec<&InputCard> {
+        self.cards
+            .iter()
+            .filter(|card| card.kind.applies_to_module(module))
+            .collect()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InputCard {
     pub keyword: String,
+    pub kind: InputCardKind,
     pub values: Vec<String>,
+    pub continuations: Vec<InputCardContinuation>,
     pub source_line: usize,
+}
+
+impl InputCard {
+    pub fn new(
+        keyword: impl Into<String>,
+        kind: InputCardKind,
+        values: Vec<String>,
+        source_line: usize,
+    ) -> Self {
+        Self {
+            keyword: keyword.into(),
+            kind,
+            values,
+            continuations: Vec::new(),
+            source_line,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InputCardContinuation {
+    pub source_line: usize,
+    pub values: Vec<String>,
+    pub raw: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum InputCardKind {
+    Title,
+    Edge,
+    S02,
+    Control,
+    Print,
+    Ldos,
+    Exafs,
+    Rpath,
+    Potentials,
+    Potential,
+    Atoms,
+    End,
+    Debye,
+    Exchange,
+    Scf,
+    Corehole,
+    Xanes,
+    Fms,
+    Cif,
+    Target,
+    Hubbard,
+    Unfreezef,
+    Rixs,
+    Xes,
+    Egrid,
+    EGrid,
+    KGrid,
+    Compton,
+    Cgrid,
+    Rhozzp,
+    Opcons,
+    Mpse,
+    Sfconv,
+    Corrections,
+    Exelfs,
+    Reciprocal,
+    Kmesh,
+    Strfac,
+    Elnes,
+    Magic,
+    Lattice,
+    Crpa,
+    Vdos,
+    Stretches,
+    Unknown(String),
+}
+
+impl InputCardKind {
+    pub fn from_keyword(keyword: &str) -> Self {
+        match keyword {
+            "TITLE" => Self::Title,
+            "EDGE" => Self::Edge,
+            "S02" => Self::S02,
+            "CONTROL" => Self::Control,
+            "PRINT" => Self::Print,
+            "LDOS" => Self::Ldos,
+            "EXAFS" => Self::Exafs,
+            "RPATH" => Self::Rpath,
+            "POTENTIALS" => Self::Potentials,
+            "POTENTIAL" => Self::Potential,
+            "ATOMS" => Self::Atoms,
+            "END" => Self::End,
+            "DEBYE" => Self::Debye,
+            "EXCHANGE" => Self::Exchange,
+            "SCF" => Self::Scf,
+            "COREHOLE" => Self::Corehole,
+            "XANES" => Self::Xanes,
+            "FMS" => Self::Fms,
+            "CIF" => Self::Cif,
+            "TARGET" => Self::Target,
+            "HUBBARD" => Self::Hubbard,
+            "UNFREEZEF" => Self::Unfreezef,
+            "RIXS" => Self::Rixs,
+            "XES" => Self::Xes,
+            "EGRID" => Self::Egrid,
+            "E_GRID" => Self::EGrid,
+            "K_GRID" => Self::KGrid,
+            "COMPTON" => Self::Compton,
+            "CGRID" => Self::Cgrid,
+            "RHOZZP" => Self::Rhozzp,
+            "OPCONS" => Self::Opcons,
+            "MPSE" => Self::Mpse,
+            "SFCONV" => Self::Sfconv,
+            "CORRECTIONS" => Self::Corrections,
+            "EXELFS" => Self::Exelfs,
+            "RECIPROCAL" => Self::Reciprocal,
+            "KMESH" => Self::Kmesh,
+            "STRFAC" => Self::Strfac,
+            "ELNES" => Self::Elnes,
+            "MAGIC" => Self::Magic,
+            "LATTICE" => Self::Lattice,
+            "CRPA" => Self::Crpa,
+            "VDOS" => Self::Vdos,
+            "STRETCHES" => Self::Stretches,
+            _ => Self::Unknown(keyword.to_owned()),
+        }
+    }
+
+    pub fn applies_to_module(&self, module: PipelineModule) -> bool {
+        match self {
+            Self::Compton | Self::Cgrid | Self::Rhozzp => {
+                matches!(
+                    module,
+                    PipelineModule::Compton | PipelineModule::FullSpectrum
+                )
+            }
+            Self::Crpa => matches!(module, PipelineModule::Crpa | PipelineModule::FullSpectrum),
+            Self::Rixs | Self::Xes => {
+                matches!(module, PipelineModule::Rixs | PipelineModule::FullSpectrum)
+            }
+            Self::Elnes | Self::Exelfs => {
+                matches!(module, PipelineModule::Eels | PipelineModule::FullSpectrum)
+            }
+            Self::Vdos | Self::Stretches => {
+                matches!(module, PipelineModule::Debye | PipelineModule::Dmdw)
+            }
+            Self::Opcons => matches!(
+                module,
+                PipelineModule::Screen | PipelineModule::Xsph | PipelineModule::FullSpectrum
+            ),
+            Self::Mpse | Self::Sfconv => matches!(
+                module,
+                PipelineModule::SelfEnergy | PipelineModule::Xsph | PipelineModule::FullSpectrum
+            ),
+            _ => true,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{ExecutionMode, PipelineModule, PipelineRequest};
+    use super::{
+        ExecutionMode, InputCard, InputCardKind, InputDeck, PipelineModule, PipelineRequest,
+    };
 
     #[test]
     fn pipeline_request_defaults_to_serial_mode() {
         let request = PipelineRequest::new("FX-001", PipelineModule::Rdinp, "feff.inp", "out");
         assert_eq!(request.execution_mode, ExecutionMode::Serial);
         assert_eq!(request.module.to_string(), "RDINP");
+    }
+
+    #[test]
+    fn input_deck_card_selection_is_module_aware() {
+        let mut deck = InputDeck::default();
+        deck.cards.push(InputCard::new(
+            "COMPTON",
+            InputCardKind::Compton,
+            Vec::new(),
+            1,
+        ));
+        deck.cards
+            .push(InputCard::new("RIXS", InputCardKind::Rixs, Vec::new(), 2));
+        deck.cards.push(InputCard::new(
+            "TITLE",
+            InputCardKind::Title,
+            vec!["Cu".to_string()],
+            3,
+        ));
+
+        let compton_cards = deck.cards_for_module(PipelineModule::Compton);
+        assert_eq!(compton_cards.len(), 2);
+        assert_eq!(compton_cards[0].keyword, "COMPTON");
+        assert_eq!(compton_cards[1].keyword, "TITLE");
+
+        let rixs_cards = deck.cards_for_module(PipelineModule::Rixs);
+        assert_eq!(rixs_cards.len(), 2);
+        assert_eq!(rixs_cards[0].keyword, "RIXS");
+        assert_eq!(rixs_cards[1].keyword, "TITLE");
     }
 }
