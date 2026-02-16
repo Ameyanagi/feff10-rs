@@ -301,7 +301,7 @@ impl Display for RegressionRunnerError {
             ),
             Self::XsphPipeline { fixture_id, source } => write!(
                 f,
-                "XSPH scaffold execution failed for fixture '{}': {}",
+                "XSPH parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
             Self::PathPipeline { fixture_id, source } => write!(
