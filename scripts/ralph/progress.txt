@@ -12,6 +12,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline capture tooling should treat manifest `entryFiles` as authoritative and materialize `REFERENCE/<file>` inputs from `baselineSources` archives into a flat fixture working directory.
 - Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
 - Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
+- New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp-placeholder`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
@@ -208,4 +209,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Use `load_numeric_tolerance_policy(...).tolerance_for_category(...)` in tests/helpers instead of hardcoding thresholds so numerics checks stay synchronized with the canonical policy JSON.
   - Gotchas encountered: Floating-point boundary assertions can fail on exact-equality tolerance edges; keep assertions away from threshold boundaries to avoid flaky tests.
   - Useful context: `emesh.dat` contains a non-monotonic tail segment, so grid/interpolation reference checks should target the monotonic prefix region.
+---
+## 2026-02-16 18:58:31 JST - US-018
+- Added RDINP scaffold entrypoint in `src/pipelines/rdinp.rs` with compatibility-matrix interfaces: required input artifact `feff.inp`, deterministic expected output artifact set, module/input validation, and optional `screen.inp` output when the input deck includes a `SCREEN` card.
+- Wired RDINP scaffold execution into regression via `RegressionRunnerConfig.run_rdinp_placeholder`, including manifest-driven fixture metadata parsing (`modulesCovered`, `inputDirectory`, `entryFiles`) and a guarded pre-comparison execution hook.
+- Exposed Rust-path enablement through CLI flag `--run-rdinp-placeholder` and documented the flag in `README.md`.
+- Added tests for RDINP contract/output materialization and regression hook behavior (`run_regression_can_execute_rdinp_placeholder_path`).
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/rdinp.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Pipeline scaffolds can be integrated safely by running them as opt-in regression pre-hooks keyed by fixture `modulesCovered`, which keeps unfinished Rust paths from altering default regression behavior.
+  - Gotchas encountered: Manifest fixtures used for scaffold execution must include `inputDirectory`; otherwise regression should fail early with an input-validation error instead of silently skipping execution.
+  - Useful context: `RdinpPipelineScaffold` writes placeholder artifacts into `<actual-root>/<fixture-id>/<actual-subdir>` and returns the artifact list, so later parity stories can swap the placeholder writer for real RDINP generation without changing regression wiring.
 ---

@@ -1,4 +1,5 @@
 pub mod comparator;
+pub mod rdinp;
 pub mod regression;
 
 use crate::domain::{

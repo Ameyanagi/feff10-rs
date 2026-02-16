@@ -46,3 +46,4 @@ cargo run -- regression \
 ```
 
 The command prints a human-readable pass/fail summary and exits with status `1` when any fixture fails.
+Use `--run-rdinp-placeholder` when you want the Rust RDINP scaffold to materialize placeholder outputs into `--actual-root/<fixture>/<actual-subdir>` before comparisons.

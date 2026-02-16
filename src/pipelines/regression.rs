@@ -1,5 +1,7 @@
+use super::PipelineExecutor;
 use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
-use crate::domain::{FeffError, PipelineResult};
+use super::rdinp::RdinpPipelineScaffold;
+use crate::domain::{FeffError, PipelineModule, PipelineRequest, PipelineResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -17,6 +19,7 @@ pub struct RegressionRunnerConfig {
     pub baseline_subdir: String,
     pub actual_subdir: String,
     pub report_path: PathBuf,
+    pub run_rdinp_placeholder: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -29,6 +32,7 @@ impl Default for RegressionRunnerConfig {
             baseline_subdir: "baseline".to_string(),
             actual_subdir: "baseline".to_string(),
             report_path: PathBuf::from("artifacts/regression/report.json"),
+            run_rdinp_placeholder: false,
         }
     }
 }
@@ -98,6 +102,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
 
     let mut fixture_reports = Vec::with_capacity(manifest.fixtures.len());
     for fixture in &manifest.fixtures {
+        run_rdinp_placeholder_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
         let report = compare_fixture(config, fixture, threshold, &comparator)?;
         fixture_reports.push(report);
@@ -197,7 +202,15 @@ pub enum RegressionRunnerError {
         path: PathBuf,
         source: serde_json::Error,
     },
+    InvalidFixtureConfig {
+        fixture_id: String,
+        message: String,
+    },
     Comparator(ComparatorError),
+    RdinpPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     ReadDirectory {
         path: PathBuf,
         source: std::io::Error,
@@ -235,7 +248,20 @@ impl Display for RegressionRunnerError {
                     source
                 )
             }
+            Self::InvalidFixtureConfig {
+                fixture_id,
+                message,
+            } => write!(
+                f,
+                "invalid fixture configuration for '{}': {}",
+                fixture_id, message
+            ),
             Self::Comparator(source) => write!(f, "comparator setup failed: {}", source),
+            Self::RdinpPipeline { fixture_id, source } => write!(
+                f,
+                "RDINP scaffold execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::ReadDirectory { path, source } => {
                 write!(
                     f,
@@ -268,7 +294,9 @@ impl Error for RegressionRunnerError {
         match self {
             Self::ReadManifest { source, .. } => Some(source),
             Self::ParseManifest { source, .. } => Some(source),
+            Self::InvalidFixtureConfig { .. } => None,
             Self::Comparator(source) => Some(source),
+            Self::RdinpPipeline { source, .. } => Some(source),
             Self::ReadDirectory { source, .. } => Some(source),
             Self::ReportDirectory { source, .. } => Some(source),
             Self::SerializeReport { source, .. } => Some(source),
@@ -287,7 +315,11 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::ParseManifest { .. } => {
                 FeffError::input_validation("INPUT.REGRESSION_MANIFEST", message)
             }
+            RegressionRunnerError::InvalidFixtureConfig { .. } => {
+                FeffError::input_validation("INPUT.REGRESSION_MANIFEST", message)
+            }
             RegressionRunnerError::Comparator(source) => source.into(),
+            RegressionRunnerError::RdinpPipeline { source, .. } => source,
             RegressionRunnerError::ReadDirectory { .. }
             | RegressionRunnerError::ReportDirectory { .. }
             | RegressionRunnerError::WriteReport { .. } => {
@@ -317,8 +349,40 @@ struct ManifestComparison {
 #[derive(Debug, Deserialize)]
 struct ManifestFixture {
     id: String,
+    #[serde(rename = "modulesCovered", default)]
+    modules_covered: Vec<String>,
+    #[serde(rename = "inputDirectory", default)]
+    input_directory: Option<PathBuf>,
+    #[serde(rename = "entryFiles", default)]
+    entry_files: Vec<String>,
     #[serde(default)]
     comparison: Option<ManifestComparison>,
+}
+
+impl ManifestFixture {
+    fn covers_module(&self, module: PipelineModule) -> bool {
+        self.modules_covered
+            .iter()
+            .any(|covered| covered.eq_ignore_ascii_case(module.as_str()))
+    }
+
+    fn resolve_rdinp_input_path(&self) -> Result<PathBuf, RegressionRunnerError> {
+        let input_directory = self.input_directory.as_ref().ok_or_else(|| {
+            RegressionRunnerError::InvalidFixtureConfig {
+                fixture_id: self.id.clone(),
+                message: "missing required inputDirectory for RDINP scaffold execution".to_string(),
+            }
+        })?;
+
+        let relative_input = self
+            .entry_files
+            .iter()
+            .find(|entry| entry.eq_ignore_ascii_case("feff.inp"))
+            .cloned()
+            .unwrap_or_else(|| "feff.inp".to_string());
+
+        Ok(input_directory.join(relative_input))
+    }
 }
 
 fn load_manifest(manifest_path: &Path) -> Result<FixtureManifest, RegressionRunnerError> {
@@ -344,6 +408,36 @@ fn threshold_for_fixture(
         .and_then(|comparison| comparison.pass_fail_threshold)
         .or(default_comparison.pass_fail_threshold)
         .unwrap_or_default()
+}
+
+fn run_rdinp_placeholder_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_rdinp_placeholder || !fixture.covers_module(PipelineModule::Rdinp) {
+        return Ok(());
+    }
+
+    let input_path = fixture.resolve_rdinp_input_path()?;
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Rdinp,
+        input_path,
+        output_dir,
+    );
+
+    RdinpPipelineScaffold.execute(&request).map_err(|source| {
+        RegressionRunnerError::RdinpPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        }
+    })?;
+
+    Ok(())
 }
 
 fn compare_fixture(
@@ -627,6 +721,7 @@ mod tests {
             baseline_subdir: "baseline".to_string(),
             actual_subdir: "actual".to_string(),
             report_path: report_path.clone(),
+            run_rdinp_placeholder: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -690,6 +785,7 @@ mod tests {
             baseline_subdir: "baseline".to_string(),
             actual_subdir: "actual".to_string(),
             report_path,
+            run_rdinp_placeholder: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -704,6 +800,57 @@ mod tests {
             fixture.artifacts[0].reason.as_deref(),
             Some("Missing actual artifact")
         );
+    }
+
+    #[test]
+    fn run_regression_can_execute_rdinp_placeholder_path() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+        let input_dir = temp.path().join("fixtures/FX-RDINP-001");
+
+        write_file(
+            &input_dir.join("feff.inp"),
+            "TITLE Cu\nPOTENTIALS\n0 29 Cu\nATOMS\n0.0 0.0 0.0 0 Cu\nEND\n",
+        );
+
+        let manifest_json = format!(
+            "{{\n  \"fixtures\": [\n    {{\n      \"id\": \"FX-RDINP-001\",\n      \"modulesCovered\": [\"RDINP\"],\n      \"inputDirectory\": \"{}\"\n    }}\n  ]\n}}",
+            input_dir.to_string_lossy().replace('\\', "\\\\")
+        );
+        write_file(&manifest_path, &manifest_json);
+
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp_placeholder: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let generated = actual_root
+            .join("FX-RDINP-001")
+            .join("actual")
+            .join("log.dat");
+        assert!(generated.exists(), "RDINP placeholder output should exist");
     }
 
     fn write_fixture_file(
