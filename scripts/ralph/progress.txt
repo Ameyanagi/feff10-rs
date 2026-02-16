@@ -8,6 +8,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - For warning/error compatibility decisions, define all three together: exit-code matrix, stderr/stdout formatting contract, and legacy failure-class to Rust error-category mapping.
 - Compatibility matrix rows belong in `tasks/feff10-compatibility-matrix.md` and should always include command surface, required cards/options, input/output artifacts, output directory contract, and fixture IDs.
 - Fixture manifests should be machine-readable JSON under `tasks/`, must reuse reserved `FX-*` IDs from the compatibility matrix, and must define `comparison.mode` plus `comparison.passFailThreshold` per fixture.
+- Baseline capture tooling should treat manifest `entryFiles` as authoritative and materialize `REFERENCE/<file>` inputs from `baselineSources` archives into a flat fixture working directory.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -71,4 +72,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Fixture definitions are most reusable when each fixture includes module coverage, concrete input paths, baseline source metadata, and explicit comparison/pass-threshold settings.
   - Gotchas encountered: Some module fixtures (`BAND`, `FULLSPECTRUM`) have seed inputs in reference archives but require dedicated Fortran baseline capture in later stories; this iteration assumes that is acceptable because baseline generation is scoped to `US-007` and `US-008`.
   - Useful context: `feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip` contains both `screen.inp` and `sfconv.inp` plus `logscreen.dat`/`logsfconv.dat`, making it the best shared source for `SCREEN` and `SELF` fixture coverage.
+---
+## 2026-02-16 17:37:04 JST - US-007
+- Implemented `scripts/fortran/capture-baselines.sh` to read `tasks/golden-fixture-manifest.json`, select fixtures (`--fixture`/`--fixtures`/`--all-fixtures`, defaulting to `requires_fortran_capture`), stage deterministic per-fixture `inputs/`, `outputs/`, and `logs/` directories, and execute Fortran captures through either `--runner` or `--bin-dir`.
+- Added strict failure handling so any fixture materialization or execution error is reported and causes a non-zero process exit after summary reporting.
+- Added `scripts/fortran/tests/test-capture-baselines.sh` to validate deterministic output-tree resets and non-zero exit behavior when a fixture run fails.
+- Quality checks: `cargo check`, `cargo test`, and `scripts/fortran/tests/test-capture-baselines.sh` passed.
+- Files changed: `scripts/fortran/capture-baselines.sh`, `scripts/fortran/tests/test-capture-baselines.sh`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: For capture automation, `--runner` mode is the lowest-friction integration path when teams already have a stable Fortran orchestration command.
+  - Gotchas encountered: `FX-BAND-001` currently references `REFERENCE/band.inp`, but that file is absent from `feff10/examples/KSPACE/Cr2GeC/REFERENCE.zip`; default capture therefore reports a fixture failure until that input contract is corrected.
+  - Useful context: With `set -o pipefail`, archive-entry checks should avoid `grep -q` on `unzip -Z1` pipelines to prevent false negatives from SIGPIPE.
 ---
