@@ -2,6 +2,7 @@
 
 ## Documentation
 
+- Migration contract reference (release-blocking): `tasks/migration-contract-reference.md`
 - Developer workflows: `docs/developer-workflows.md`
 - User and operator guide: `docs/operator-guide.md`
 - Troubleshooting: `docs/troubleshooting.md`

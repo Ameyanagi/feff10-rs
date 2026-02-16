@@ -56,9 +56,13 @@ Decision log reference:
 - D-2 status: Approved on 2026-02-16 as deferred-for-v1 in `tasks/migration-decision-log.md`.
 - D-3 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; machine-readable policy source is `tasks/numeric-tolerance-policy.json`.
 - D-4 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; includes exit-code mapping, stderr/stdout diagnostics contract, and legacy failure-class mapping.
+- Central contract index (release-blocking): `tasks/migration-contract-reference.md`.
 - Compatibility matrix status: Published on 2026-02-16 in `tasks/feff10-compatibility-matrix.md`.
 - Fixture manifest status: Published on 2026-02-16 in `tasks/golden-fixture-manifest.json`.
 - Fortran-to-Rust boundary map status: Published on 2026-02-16 in `tasks/fortran-rust-boundary-map.md`.
+
+Release-blocking rule for module rewrites:
+- All module implementation stories must treat the artifacts indexed in `tasks/migration-contract-reference.md` as mandatory compatibility references.
 
 ## 6. Story Execution Order
 

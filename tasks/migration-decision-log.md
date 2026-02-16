@@ -1,6 +1,7 @@
 # FEFF10 Rust Migration Decision Log
 
 This log records finalized migration governance decisions that unblock implementation.
+Release-blocking contract artifact index: `tasks/migration-contract-reference.md`.
 
 ## D-1: Platform Certification Matrix
 
