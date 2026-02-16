@@ -29,6 +29,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - For mixed-format artifacts with non-numeric headers (for example `paths.dat`), add an earlier exact-text category in `tasks/numeric-tolerance-policy.json` so first-match policy resolution does not route them through numeric parsing.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 - Keep Rust quality-gate commands synchronized between `.github/workflows/rust-quality-gates.yml` and the `README.md` "Rust Quality Gates" section so local validation mirrors CI exactly.
+- CI parity gates should capture the regression exit code first, always materialize `artifacts/regression/regression-diff.txt` from `report.json`, upload diff artifacts on failure, and only then fail the job.
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
 - Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
 - Contract-level CLI integration tests for fatal paths should assert the full diagnostic pair (`ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>`) alongside the numeric exit code.
@@ -501,4 +502,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Keep CI quality-gate commands and README local quality commands synchronized verbatim so contributors can reproduce CI locally.
   - Gotchas encountered: Enabling `clippy -D warnings` can surface pre-existing warnings outside the immediate story scope; fix them directly rather than weakening the lint gate.
   - Useful context: On this macOS environment, set `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` when running `cargo test`/`cargo clippy` to avoid linker failures.
+---
+## 2026-02-16 22:34:57 JST - US-042
+- Added CI parity workflow `.github/workflows/rust-parity-gates.yml` that runs the full fixture regression suite (`cargo run --locked -- regression ...`) against committed baseline snapshots on push/pull_request.
+- Implemented failure-path artifact handling in CI: capture regression exit code, render `artifacts/regression/regression-diff.txt` from `artifacts/regression/report.json`, upload JSON/text artifacts on failure, then fail the job explicitly.
+- Updated `README.md` with a `Rust Parity Gates` section documenting the same local parity command flow and artifact outputs as CI.
+- Quality checks: `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`, and the full parity command path (`cargo run --locked -- regression ...` + `jq` diff rendering) passed.
+- Files changed: `.github/workflows/rust-parity-gates.yml`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: For regression CI, use a two-phase failure flow (capture exit code -> upload artifacts -> fail job) so mismatch diagnostics are never dropped.
+  - Gotchas encountered: `cargo run` writes build/runtime logs to stderr, so keep a dedicated `regression-stderr.txt` artifact even when regression results are successful.
+  - Useful context: The parity gate currently compares `artifacts/fortran-baselines/<fixture>/baseline` against itself (`--actual-root` equals `--baseline-root`) to ensure full-suite comparator coverage in CI.
 ---

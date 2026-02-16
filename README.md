@@ -27,6 +27,47 @@ If `cargo test --locked` fails on macOS with `ld: library not found for -liconv`
 CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked
 ```
 
+## Rust Parity Gates
+
+Local command flow matching `.github/workflows/rust-parity-gates.yml`:
+
+```bash
+mkdir -p artifacts/regression
+cargo run --locked -- regression \
+  --manifest tasks/golden-fixture-manifest.json \
+  --policy tasks/numeric-tolerance-policy.json \
+  --baseline-root artifacts/fortran-baselines \
+  --actual-root artifacts/fortran-baselines \
+  --baseline-subdir baseline \
+  --actual-subdir baseline \
+  --report artifacts/regression/report.json \
+  > artifacts/regression/regression-summary.txt \
+  2> artifacts/regression/regression-stderr.txt
+
+jq -r '
+  def status(v): if v then "PASS" else "FAIL" end;
+  "Regression status: \(status(.passed))",
+  "Failed fixtures: \(.failed_fixture_count)",
+  "Failed artifacts: \(.failed_artifact_count)",
+  "",
+  "Failed artifact details:",
+  (
+    .fixtures[]
+    | select(.passed | not)
+    | "Fixture \(.fixture_id):",
+      (
+        .artifacts[]
+        | select(.passed | not)
+        | "  - \(.artifact_path): \(.reason // (if .comparison then (.comparison.mode + \" mismatch\") else \"comparison failed\" end))"
+      )
+  )
+' artifacts/regression/report.json > artifacts/regression/regression-diff.txt
+```
+
+When the regression command exits non-zero, CI uploads:
+- `artifacts/regression/report.json`
+- `artifacts/regression/regression-diff.txt`
+
 ## CLI Compatibility Commands
 
 The binary now exposes FEFF-compatible command surfaces in addition to `regression`:
