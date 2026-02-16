@@ -18,6 +18,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
 - Regression-suite tests that stage module inputs in fixture actual directories must also stage those same inputs in the test baseline directories when both share the compared artifact tree; otherwise the runner reports false "Missing baseline artifact" failures.
 - Core parity hooks for `POT`/`PATH`/`FMS` should enforce baseline input-contract checks (text-normalized for `.inp`/`.dat`, byte-exact for `phase.bin`) before materializing approved outputs.
+- For mixed-contract modules (for example `DMDW`), validate text inputs via whitespace-normalized comparison (`dmdw.inp`) and binary inputs via byte-exact comparison (`feff.dym`) before materializing baseline outputs.
 - When an approved fixture baseline omits a module-specific input artifact (for example `band.inp`), keep that input required in staged outputs but gate baseline-content matching on file availability while still enforcing baseline checks for shared required artifacts.
 - For edge-case fixtures backed by `reference_file` baselines, keep the module input contract required in staged outputs, gate per-input baseline matching on availability, and derive expected outputs from whichever canonical or reference-named artifacts exist.
 - For modules with indexed output families (for example `LDOS`), derive expected output artifacts by scanning baseline filenames (for example `ldos*.dat`) plus required logs instead of hardcoding index counts.
@@ -404,4 +405,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Thermal parity hooks should keep `spring.inp` optional and only baseline-validate it when both staged and present in fixture baselines.
   - Gotchas encountered: Any new `--run-<module>` hook requires updating every explicit `RegressionRunnerConfig` literal across module/integration tests.
   - Useful context: `FX-DEBYE-001` baseline yields `s2_rm1.dat`, `s2_rm2.dat`, `xmu.dat`, `chi.dat`, `log6.dat`, and `spring.dat`; `s2_em.dat` is candidate-gated by baseline availability.
+---
+## 2026-02-16 21:29:39 JST - US-034
+- Implemented baseline-driven DMDW parity in `src/pipelines/dmdw.rs`: validate staged `dmdw.inp` (text-normalized) and `feff.dym` (byte-exact) against approved fixture baselines, then materialize canonical DMDW outputs from `artifacts/fortran-baselines/<fixture>/baseline`.
+- Wired DMDW into regression and CLI surfaces by adding `RegressionRunnerConfig.run_dmdw`, `run_dmdw_if_enabled`, `RegressionRunnerError::DmdwPipeline`, and CLI flags `--run-dmdw` / `--run-dmdw-placeholder`; updated regression usage docs in `README.md`.
+- Added DMDW parity coverage with module/unit tests in `src/pipelines/dmdw.rs`, regression-runner hook coverage in `src/pipelines/regression.rs`, and integration tests in `tests/dmdw_parity.rs`; updated existing parity-suite config literals for the new `run_dmdw` field.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/dmdw.rs`, `src/pipelines/regression.rs`, `tests/dmdw_parity.rs`, `tests/band_parity.rs`, `tests/compton_parity.rs`, `tests/crpa_parity.rs`, `tests/debye_parity.rs`, `tests/fms_parity.rs`, `tests/ldos_parity.rs`, `tests/path_parity.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `tests/rixs_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: DMDW parity follows the same baseline-driven hook contract as other modules, but with a mixed input contract (text-normalized `dmdw.inp` plus byte-exact `feff.dym`) before output materialization.
+  - Gotchas encountered: Adding a new `--run-<module>` hook still requires updating every explicit `RegressionRunnerConfig` literal across module/integration tests.
+  - Useful context: `--run-dmdw` uses `<actual-root>/<fixture>/<actual-subdir>/dmdw.inp` as the hook entry artifact and expects sibling `feff.dym` in the same staged directory.
 ---

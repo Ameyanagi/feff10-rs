@@ -3,6 +3,7 @@ pub mod comparator;
 pub mod compton;
 pub mod crpa;
 pub mod debye;
+pub mod dmdw;
 pub mod fms;
 pub mod ldos;
 pub mod path;

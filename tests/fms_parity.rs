@@ -173,6 +173,7 @@ fn fms_regression_suite_passes() {
         run_crpa: false,
         run_compton: false,
         run_debye: false,
+        run_dmdw: false,
     };
 
     let report = run_regression(&config).expect("FMS regression suite should run");
