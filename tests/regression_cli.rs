@@ -293,29 +293,42 @@ fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
     }
 
     let temp = TempDir::new().expect("tempdir should be created");
-    let fixture_id = "FX-RDINP-001";
+    let fixtures = [
+        ("FX-RDINP-001", "feff10/examples/EXAFS/Cu"),
+        ("FX-WORKFLOW-XAS-001", "feff10/examples/XANES/Cu"),
+    ];
 
     let manifest_path = temp.path().join("manifest.json");
     let policy_path = temp.path().join("policy.json");
     let oracle_root = temp.path().join("oracle-root");
     let actual_root = temp.path().join("actual-root");
     let report_path = temp.path().join("report/oracle-report.json");
-    let fixture_input_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("feff10/examples/EXAFS/Cu");
-
-    let manifest = format!(
-        r#"
-        {{
-          "fixtures": [
+    let fixture_entries = fixtures
+        .iter()
+        .map(|(fixture_id, input_directory)| {
+            let fixture_input_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join(input_directory);
+            format!(
+                r#"
             {{
               "id": "{fixture_id}",
               "modulesCovered": ["RDINP"],
               "inputDirectory": "{input_directory}",
               "entryFiles": ["feff.inp"]
             }}
-          ]
+            "#,
+                fixture_id = fixture_id,
+                input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [{}]
         }}
         "#,
-        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+        fixture_entries
     );
     write_file(&manifest_path, &manifest);
     write_file(
@@ -348,27 +361,32 @@ fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
         "oracle summary should include mismatch totals, stdout: {}",
         stdout
     );
-    assert!(
-        stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
-        "oracle summary should include fixture-level mismatch details, stdout: {}",
-        stdout
-    );
-    assert!(
-        oracle_root
-            .join(fixture_id)
-            .join("outputs")
-            .join("feff.inp")
-            .is_file(),
-        "oracle capture should materialize fixture inputs for the same fixture set"
-    );
-    assert!(
-        actual_root
-            .join(fixture_id)
-            .join("actual")
-            .join("pot.inp")
-            .is_file(),
-        "run-rdinp should materialize Rust outputs under actual-root/<fixture>/actual"
-    );
+    for (fixture_id, _) in fixtures {
+        assert!(
+            stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+            "oracle summary should include fixture-level mismatch details for '{}', stdout: {}",
+            fixture_id,
+            stdout
+        );
+        assert!(
+            oracle_root
+                .join(fixture_id)
+                .join("outputs")
+                .join("feff.inp")
+                .is_file(),
+            "oracle capture should materialize fixture inputs for '{}'",
+            fixture_id
+        );
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join("pot.inp")
+                .is_file(),
+            "run-rdinp should materialize Rust outputs under actual-root/<fixture>/actual for '{}'",
+            fixture_id
+        );
+    }
     assert!(
         report_path.is_file(),
         "oracle command should emit a regression report"
@@ -376,7 +394,7 @@ fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
     let parsed: Value =
         serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
             .expect("report JSON should parse");
-    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(2));
     assert!(
         parsed["mismatch_artifact_count"]
             .as_u64()
@@ -384,6 +402,35 @@ fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
             .unwrap_or(false),
         "oracle report should include artifact-level mismatch entries"
     );
+    let mismatch_fixtures = parsed["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    for (fixture_id, _) in fixtures {
+        let fixture_report = mismatch_fixtures
+            .iter()
+            .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+            .unwrap_or_else(|| panic!("missing mismatch report for fixture '{}'", fixture_id));
+        let artifact_reports = fixture_report["artifacts"]
+            .as_array()
+            .expect("fixture artifact list should be an array");
+        assert!(
+            !artifact_reports.is_empty(),
+            "fixture '{}' mismatch report should include artifact details",
+            fixture_id
+        );
+        assert!(
+            artifact_reports.iter().all(|artifact| {
+                artifact["artifact_path"]
+                    .as_str()
+                    .is_some_and(|path| !path.is_empty())
+                    && artifact["reason"]
+                        .as_str()
+                        .is_some_and(|reason| !reason.is_empty())
+            }),
+            "fixture '{}' artifact mismatches should include artifact path and reason",
+            fixture_id
+        );
+    }
 }
 
 fn run_regression_command(

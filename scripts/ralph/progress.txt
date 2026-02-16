@@ -7,6 +7,7 @@
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
+- For multi-fixture oracle parity stories, assert `mismatch_fixtures` per required fixture (not only aggregate mismatch counts) so artifact-level reason coverage remains deterministic.
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
 - Parser invalid-input compatibility contracts are snapshot-locked in `tests/parser_validation_snapshots.rs` and `tests/snapshots/parser/*.snap`; update both when changing parser placeholders or diagnostic messages.
 - Numeric comparator D-3 enforcement is line-aware: treat line-count and per-line token-count mismatches as hard failures before numeric tolerance checks.
@@ -138,4 +139,14 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Core-chain module input validation should canonicalize `geom.dat` atom rows instead of relying on raw text row ordering when the geometry set is unchanged.
   - Gotchas encountered: `run_regression` compares artifacts present in either baseline or actual trees; when RDINP adds new runtime decks, regression fixtures must seed corresponding baseline artifacts (or comparisons fail as `Missing baseline artifact`).
   - Useful context: RDINP runtime now emits downstream decks for COMPTON/BAND/RIXS/CRPA/FULLSPECTRUM, enabling later module stories to consume those inputs without runtime baseline materialization.
+---
+## [2026-02-17 08:19:21 JST] - US-012
+- Expanded oracle CLI parity coverage for RDINP by running the validation-only `oracle` flow against both required fixtures (`FX-RDINP-001`, `FX-WORKFLOW-XAS-001`) with `--run-rdinp`.
+- Strengthened oracle assertions to require fixture-level mismatch summary lines for both fixtures and to validate report-level artifact mismatch details (`mismatch_fixtures[*].artifacts[*].artifact_path` and `reason`).
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Oracle parity tests should assert `mismatch_fixtures` content per required fixture (not only aggregate counts) so artifact-level reason coverage remains deterministic.
+  - Gotchas encountered: The oracle-flow CLI test depends on `jq` availability and intentionally uses `--capture-runner :` to force mismatch coverage while still exercising capture and Rust generation plumbing.
+  - Useful context: There are no repository-local `AGENTS.md` files under `feff10-rs`, so reusable workflow notes continue to be captured in `scripts/ralph/progress.txt`.
 ---
