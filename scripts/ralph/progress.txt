@@ -7,6 +7,7 @@
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
+- When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - For multi-fixture oracle parity stories, assert `mismatch_fixtures` per required fixture (not only aggregate mismatch counts) so artifact-level reason coverage remains deterministic.
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
@@ -162,4 +163,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Transitional binary compatibility is easier to manage when producer outputs carry an explicit magic header contract that consumers can validate without baseline byte equality.
   - Gotchas encountered: POT true-compute output expansion adds new artifacts to regression actual trees; parity baselines must be seeded with generated outputs or comparisons fail as missing-baseline artifacts.
   - Useful context: This repository still has no local `AGENTS.md`, so reusable module-level learnings should continue to be recorded in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 08:39:25 JST] - US-014
+- Added POT oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-POT-001` and `FX-WORKFLOW-XAS-001` by running `feff10-rs oracle` with `--run-rdinp --run-pot` and capture runner plumbing.
+- Extended assertions to require fixture-level mismatch diagnostics and deterministic artifact-level mismatch metadata for both POT fixtures.
+- Added explicit policy-mode assertions proving `tasks/numeric-tolerance-policy.json` routing: `xmu.dat` resolves to `numeric_tolerance`/`columnar_spectra` and `paths.dat` resolves to `exact_text`/`path_listing_reports`.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-014` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Oracle CLI tests that rely on `ci-oracle-capture-runner.sh` should pass `GITHUB_WORKSPACE=<repo-root>` in the runner command when executed from temp fixture directories.
+  - Gotchas encountered: Without `GITHUB_WORKSPACE`, the capture runner cannot resolve repository-root baseline paths and oracle capture fails before regression executes.
+  - Useful context: Seeding shared fixture artifacts like `xmu.dat` and `paths.dat` into oracle `actual-root` enables deterministic assertions for both numeric-tolerance and exact-text policy paths in one run.
 ---

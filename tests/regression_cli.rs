@@ -433,6 +433,203 @@ fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
     }
 }
 
+#[test]
+fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes() {
+    if !command_available("jq") {
+        eprintln!("Skipping POT oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixtures = [
+        ("FX-POT-001", "feff10/examples/EXAFS/Cu"),
+        ("FX-WORKFLOW-XAS-001", "feff10/examples/XANES/Cu"),
+    ];
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-report.json");
+    let fixture_entries = fixtures
+        .iter()
+        .map(|(fixture_id, input_directory)| {
+            let fixture_input_dir = workspace_root.join(input_directory);
+            format!(
+                r#"
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["RDINP", "POT"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+            "#,
+                fixture_id = fixture_id,
+                input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [{}]
+        }}
+        "#,
+        fixture_entries
+    );
+    write_file(&manifest_path, &manifest);
+
+    for (fixture_id, _) in fixtures {
+        let staged_output_dir = actual_root.join(fixture_id).join("actual");
+        stage_workspace_fixture_file(fixture_id, "xmu.dat", &staged_output_dir.join("xmu.dat"));
+        stage_workspace_fixture_file(
+            fixture_id,
+            "paths.dat",
+            &staged_output_dir.join("paths.dat"),
+        );
+    }
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-rdinp",
+            "--run-pot",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "oracle POT parity should report mismatches against captured Fortran outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Mismatches:"),
+        "oracle summary should include mismatch totals, stdout: {}",
+        stdout
+    );
+
+    for (fixture_id, _) in fixtures {
+        assert!(
+            stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+            "oracle summary should include fixture-level mismatch details for '{}', stdout: {}",
+            fixture_id,
+            stdout
+        );
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join("pot.bin")
+                .is_file(),
+            "run-pot should materialize pot.bin for fixture '{}'",
+            fixture_id
+        );
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join("convergence.scf")
+                .is_file(),
+            "run-pot should materialize convergence.scf for fixture '{}'",
+            fixture_id
+        );
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join("convergence.scf.fine")
+                .is_file(),
+            "run-pot should materialize convergence.scf.fine for fixture '{}'",
+            fixture_id
+        );
+    }
+
+    assert!(
+        report_path.is_file(),
+        "oracle command should emit a POT parity report"
+    );
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(2));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    for (fixture_id, _) in fixtures {
+        let fixture_report = fixture_reports
+            .iter()
+            .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+            .unwrap_or_else(|| panic!("missing fixture report for '{}'", fixture_id));
+        let artifact_reports = fixture_report["artifacts"]
+            .as_array()
+            .expect("fixture artifact reports should be an array");
+
+        let xmu_report = artifact_reports
+            .iter()
+            .find(|artifact| artifact["artifact_path"].as_str() == Some("xmu.dat"))
+            .unwrap_or_else(|| {
+                panic!("fixture '{}' should include xmu.dat comparison", fixture_id)
+            });
+        assert_eq!(
+            xmu_report["comparison"]["mode"],
+            Value::from("numeric_tolerance"),
+            "xmu.dat should use numeric_tolerance policy mode for fixture '{}'",
+            fixture_id
+        );
+        assert_eq!(
+            xmu_report["comparison"]["matched_category"],
+            Value::from("columnar_spectra"),
+            "xmu.dat should resolve columnar_spectra category for fixture '{}'",
+            fixture_id
+        );
+
+        let paths_report = artifact_reports
+            .iter()
+            .find(|artifact| artifact["artifact_path"].as_str() == Some("paths.dat"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "fixture '{}' should include paths.dat comparison",
+                    fixture_id
+                )
+            });
+        assert_eq!(
+            paths_report["comparison"]["mode"],
+            Value::from("exact_text"),
+            "paths.dat should use exact_text policy mode for fixture '{}'",
+            fixture_id
+        );
+        assert_eq!(
+            paths_report["comparison"]["matched_category"],
+            Value::from("path_listing_reports"),
+            "paths.dat should resolve path_listing_reports category for fixture '{}'",
+            fixture_id
+        );
+    }
+}
+
 fn run_regression_command(
     manifest_path: &Path,
     policy_path: &Path,
