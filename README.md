@@ -1,4 +1,10 @@
-# feff85-rs
+# feff10-rs
+
+## Documentation
+
+- Developer workflows: `docs/developer-workflows.md`
+- User and operator guide: `docs/operator-guide.md`
+- Troubleshooting: `docs/troubleshooting.md`
 
 ## Rust Architecture Scaffolding
 

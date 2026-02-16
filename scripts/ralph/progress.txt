@@ -29,6 +29,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - For mixed-format artifacts with non-numeric headers (for example `paths.dat`), add an earlier exact-text category in `tasks/numeric-tolerance-policy.json` so first-match policy resolution does not route them through numeric parsing.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 - Keep Rust quality-gate commands synchronized between `.github/workflows/rust-quality-gates.yml` and the `README.md` "Rust Quality Gates" section so local validation mirrors CI exactly.
+- Keep user-facing migration docs under `docs/` and link them from `README.md` so developer workflows, operator limits, and troubleshooting guidance remain discoverable.
 - CI parity gates should capture the regression exit code first, always materialize `artifacts/regression/regression-diff.txt` from `report.json`, upload diff artifacts on failure, and only then fail the job.
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
 - Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
@@ -513,4 +514,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: For regression CI, use a two-phase failure flow (capture exit code -> upload artifacts -> fail job) so mismatch diagnostics are never dropped.
   - Gotchas encountered: `cargo run` writes build/runtime logs to stderr, so keep a dedicated `regression-stderr.txt` artifact even when regression results are successful.
   - Useful context: The parity gate currently compares `artifacts/fortran-baselines/<fixture>/baseline` against itself (`--actual-root` equals `--baseline-root`) to ensure full-suite comparator coverage in CI.
+---
+## 2026-02-16 22:39:25 JST - US-043
+- Published developer workflow documentation in `docs/developer-workflows.md` covering prerequisites, build/test/lint commands, regression execution, report generation, and baseline snapshot regeneration.
+- Published user/operator runtime documentation in `docs/operator-guide.md` covering command surfaces, compatibility guarantees, diagnostics/exit-code contract, and known limits.
+- Published troubleshooting documentation in `docs/troubleshooting.md` mapping common migration/runtime failures to concrete remediation actions.
+- Added a documentation index section to `README.md` linking the new guides for discoverability.
+- Quality checks: `cargo fmt --all -- --check`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings` passed.
+- Files changed: `README.md`, `docs/developer-workflows.md`, `docs/operator-guide.md`, `docs/troubleshooting.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep migration/user-facing docs under `docs/` and link them from `README.md` so operational guidance is easy to discover.
+  - Gotchas encountered: This repo currently has no dedicated docs lint/test tooling, so docs updates should still run full Rust quality gates to keep CI green.
+  - Useful context: Runtime compatibility guarantees should be anchored to `tasks/feff10-compatibility-matrix.md` and the fatal diagnostic/exit-code contract implemented in `src/domain/errors.rs`.
 ---
