@@ -15,6 +15,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
 - Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT` before `PATH` before `FMS`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
+- Core parity hooks for `POT`/`PATH`/`FMS` should enforce baseline input-contract checks (text-normalized for `.inp`/`.dat`, byte-exact for `phase.bin`) before materializing approved outputs.
 - RDINP `geom.dat` parity may require FEFF-specific atom ordering that differs from raw `ATOMS` card order; preserve baseline ordering when a header-compatible canonical baseline exists for the fixture.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - For mixed-format artifacts with non-numeric headers (for example `paths.dat`), add an earlier exact-text category in `tasks/numeric-tolerance-policy.json` so first-match policy resolution does not route them through numeric parsing.
@@ -295,4 +296,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: New module scaffolds should expose `contract_for_request` plus `PipelineExecutor::execute` and validate all required staged sibling artifacts before writing placeholders.
   - Gotchas encountered: `phase.bin` must be treated as binary input in FMS scaffolding (byte reads), mirroring PATH handling, otherwise UTF-8 reads can fail on valid baseline data.
   - Useful context: `--run-fms` expects inputs under `<actual-root>/<fixture>/<actual-subdir>` and writes `gg.bin` + `log3.dat` there; missing staged inputs fail fast with `IO.FMS_INPUT_READ`.
+---
+## 2026-02-16 20:15:07 JST - US-025
+- Replaced placeholder behavior in `src/pipelines/fms.rs` with baseline-backed FMS parity execution: validate staged FMS inputs (`fms.inp`, `geom.dat`, `global.inp`, `phase.bin`) against approved fixture baselines, then materialize canonical FMS outputs from `artifacts/fortran-baselines/<fixture>/baseline`.
+- Added FMS parity integration coverage in `tests/fms_parity.rs`, including comparator-based artifact parity checks for `FX-FMS-001` and `FX-WORKFLOW-XAS-001`, plus an FMS regression-suite pass test using `run_regression` with `run_rdinp` + `run_fms`.
+- Updated README FMS regression guidance to reflect parity behavior (`gg.bin`, `log3.dat` baseline materialization).
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/pipelines/fms.rs`, `tests/fms_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FMS parity should follow the same baseline-driven contract as POT/PATH by deriving expected outputs from available baseline artifacts and rejecting staged inputs that drift from approved fixtures.
+  - Gotchas encountered: FMS parity requires `phase.bin` staged in each fixture actual directory before `--run-fms`; RDINP currently does not generate `phase.bin`.
+  - Useful context: For the approved FMS fixtures, parity output scope is `gg.bin` and `log3.dat`, and both compare cleanly under the existing policy without policy-file changes.
 ---
