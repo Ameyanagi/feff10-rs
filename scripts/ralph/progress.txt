@@ -6,6 +6,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - For cross-cutting migration decisions, include explicit architecture and CI implications in `tasks/migration-decision-log.md` and mirror the decision status in PRD references.
 - When a policy must be machine-consumable, keep a canonical JSON artifact under `tasks/` and document comparator ingestion rules alongside the approval decision.
 - For warning/error compatibility decisions, define all three together: exit-code matrix, stderr/stdout formatting contract, and legacy failure-class to Rust error-category mapping.
+- Compatibility matrix rows belong in `tasks/feff10-compatibility-matrix.md` and should always include command surface, required cards/options, input/output artifacts, output directory contract, and fixture IDs.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -48,4 +49,14 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Warning/error compatibility must capture both process semantics (exit code) and text-stream semantics (`stderr`/`stdout` prefixes) to avoid breaking legacy automation.
   - Gotchas encountered: For compatibility stories, acceptance can require explicit mapping tables (legacy class to Rust category), not only prose decisions.
   - Useful context: `D-4` now reserves exit codes `2`-`5` for fatal categories and keeps warning-only runs at exit code `0`.
+---
+## 2026-02-16 17:21:39 JST - US-005
+- Published canonical compatibility matrix `tasks/feff10-compatibility-matrix.md` covering all in-scope modules with required CLI surfaces, options/cards, input/output artifacts, output directory contracts, and fixture traceability IDs.
+- Added PRD traceability references to the compatibility matrix in `tasks/prd-migrate-feff10-to-rust-improved.md`.
+- Quality checks: `cargo check` and `cargo test` passed.
+- Files changed: `tasks/feff10-compatibility-matrix.md`, `tasks/prd-migrate-feff10-to-rust-improved.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Compatibility matrix deliverables should keep module contracts in one canonical document under `tasks/` and include fixture IDs that future manifest work must reuse verbatim.
+  - Gotchas encountered: Some scoped modules (`DEBYE`, `SELF`) do not have standalone executables; their CLI contracts are through host modules (`ff2x` and `sfconv`) and must be modeled that way.
+  - Useful context: The matrix is grounded in Fortran module headers plus source-level `open(file=...)` contracts, which gives a concrete baseline for later regression harness implementation.
 ---

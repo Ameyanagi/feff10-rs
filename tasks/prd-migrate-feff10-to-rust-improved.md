@@ -56,6 +56,7 @@ Decision log reference:
 - D-2 status: Approved on 2026-02-16 as deferred-for-v1 in `tasks/migration-decision-log.md`.
 - D-3 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; machine-readable policy source is `tasks/numeric-tolerance-policy.json`.
 - D-4 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; includes exit-code mapping, stderr/stdout diagnostics contract, and legacy failure-class mapping.
+- Compatibility matrix status: Published on 2026-02-16 in `tasks/feff10-compatibility-matrix.md`.
 
 ## 6. Story Execution Order
 
@@ -84,6 +85,7 @@ Decision log reference:
 
 ### US-002: Build Compatibility Matrix
 **Description:** As a migration engineer, I want an exact compatibility contract so behavior is verifiable.
+Primary artifact: `tasks/feff10-compatibility-matrix.md`.
 
 **Acceptance Criteria:**
 - [ ] Matrix lists all in-scope modules with required inputs, outputs, and CLI surfaces.
