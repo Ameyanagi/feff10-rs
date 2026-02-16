@@ -285,6 +285,85 @@ fn regression_command_run_pot_input_mismatch_emits_computation_diagnostic_contra
     );
 }
 
+#[test]
+fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
+    if !command_available("jq") {
+        eprintln!("Skipping oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-RDINP-001";
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = temp.path().join("policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-report.json");
+    let fixture_input_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("feff10/examples/EXAFS/Cu");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["RDINP"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+          ]
+        }}
+        "#,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+    write_file(
+        &policy_path,
+        r#"
+        {
+          "defaultMode": "exact_text"
+        }
+        "#,
+    );
+
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &["--capture-runner", ":", "--run-rdinp"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "oracle command should return regression mismatch status when oracle outputs differ, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        oracle_root
+            .join(fixture_id)
+            .join("outputs")
+            .join("feff.inp")
+            .is_file(),
+        "oracle capture should materialize fixture inputs for the same fixture set"
+    );
+    assert!(
+        actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("pot.inp")
+            .is_file(),
+        "run-rdinp should materialize Rust outputs under actual-root/<fixture>/actual"
+    );
+    assert!(
+        report_path.is_file(),
+        "oracle command should emit a regression report"
+    );
+}
+
 fn run_regression_command(
     manifest_path: &Path,
     policy_path: &Path,
@@ -333,6 +412,37 @@ fn run_regression_command_with_extra_args(
     command.output().expect("regression command should run")
 }
 
+fn run_oracle_command_with_extra_args(
+    manifest_path: &Path,
+    policy_path: &Path,
+    oracle_root: &Path,
+    actual_root: &Path,
+    report_path: &Path,
+    extra_args: &[&str],
+) -> std::process::Output {
+    let binary_path = env!("CARGO_BIN_EXE_feff10-rs");
+
+    let mut command = Command::new(binary_path);
+    command
+        .arg("oracle")
+        .arg("--manifest")
+        .arg(manifest_path)
+        .arg("--policy")
+        .arg(policy_path)
+        .arg("--oracle-root")
+        .arg(oracle_root)
+        .arg("--actual-root")
+        .arg(actual_root)
+        .arg("--oracle-subdir")
+        .arg("outputs")
+        .arg("--actual-subdir")
+        .arg("actual")
+        .arg("--report")
+        .arg(report_path);
+    command.args(extra_args);
+    command.output().expect("oracle command should run")
+}
+
 fn write_fixture_file(
     root: &Path,
     fixture_id: &str,
@@ -363,4 +473,8 @@ fn stage_workspace_fixture_file(fixture_id: &str, relative_path: &str, destinati
         fs::create_dir_all(parent).expect("destination parent should be created");
     }
     fs::write(destination, source_bytes).expect("fixture baseline should be staged");
+}
+
+fn command_available(command: &str) -> bool {
+    Command::new(command).arg("--version").output().is_ok()
 }

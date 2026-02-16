@@ -106,3 +106,31 @@ The regression command supports module pre-compare execution flags such as:
 Use these flags when you need Rust pipelines to materialize module artifacts into
 `<actual-root>/<fixture-id>/<actual-subdir>` before comparison.
 These hooks are part of validation-only parity flows, not production runtime execution paths.
+
+## Oracle Dual-Run Workflow
+
+Use the `oracle` command when you need one flow that:
+1. captures Fortran oracle outputs for the manifest fixture set, and
+2. runs Rust pre-compare hooks plus policy comparisons against those captures.
+
+```bash
+cargo run -- oracle \
+  --manifest tasks/golden-fixture-manifest.json \
+  --policy tasks/numeric-tolerance-policy.json \
+  --oracle-root artifacts/fortran-oracle-capture \
+  --oracle-subdir outputs \
+  --actual-root artifacts/oracle-actual \
+  --actual-subdir actual \
+  --report artifacts/regression/oracle-report.json \
+  --capture-runner "<fortran capture command>" \
+  --run-rdinp
+```
+
+Capture mode is required and exclusive:
+- `--capture-runner "<command>"`
+- `--capture-bin-dir <path>`
+
+Optional capture behavior:
+- `--capture-allow-missing-entry-files` (records unresolved entry files in capture metadata and continues)
+
+This command is validation-only and is intentionally isolated from runtime CLI paths.

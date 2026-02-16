@@ -9,6 +9,7 @@ use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
+use std::process::Command;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 const MANIFEST_RELATIVE_PATH: &str = "tasks/golden-fixture-manifest.json";
@@ -157,6 +158,19 @@ struct CliContext {
     manifest: CliManifest,
 }
 
+#[derive(Debug, Clone)]
+struct OracleCommandConfig {
+    regression: RegressionRunnerConfig,
+    capture_mode: OracleCaptureMode,
+    allow_missing_entry_files: bool,
+}
+
+#[derive(Debug, Clone)]
+enum OracleCaptureMode {
+    Runner(String),
+    BinDir(PathBuf),
+}
+
 struct CurrentDirGuard {
     original: PathBuf,
 }
@@ -238,6 +252,7 @@ fn dispatch_command(command: &str, args: Vec<String>) -> Result<i32, CliError> {
 
     match command {
         "regression" => run_regression_command(args),
+        "oracle" => run_oracle_command(args),
         "feff" => run_feff_command(args),
         "feffmpi" => run_feffmpi_command(args),
         "help" | "--help" | "-h" => {
@@ -262,6 +277,43 @@ fn run_regression_command(args: Vec<String>) -> Result<i32, CliError> {
     let report = run_regression(&config).map_err(CliError::Pipeline)?;
     println!("{}", render_human_summary(&report));
     println!("JSON report: {}", config.report_path.display());
+
+    if report.passed { Ok(0) } else { Ok(1) }
+}
+
+fn run_oracle_command(args: Vec<String>) -> Result<i32, CliError> {
+    if help_requested(&args) {
+        println!("{}", oracle_usage_text());
+        return Ok(0);
+    }
+
+    let mut config = parse_oracle_args(args)?;
+    let working_dir = std::env::current_dir().map_err(|source| {
+        CliError::Pipeline(FeffError::io_system(
+            "IO.CLI_CURRENT_DIR",
+            format!("failed to read current working directory: {}", source),
+        ))
+    })?;
+    config.regression = resolve_regression_paths(config.regression, &working_dir);
+
+    let workspace_root = find_workspace_root(&working_dir).ok_or_else(|| {
+        CliError::Pipeline(FeffError::input_validation(
+            "INPUT.CLI_WORKSPACE",
+            format!(
+                "failed to locate workspace root from '{}'; expected to find '{}'",
+                working_dir.display(),
+                MANIFEST_RELATIVE_PATH
+            ),
+        ))
+    })?;
+
+    println!("Running Fortran oracle capture...");
+    run_oracle_capture(&workspace_root, &config).map_err(CliError::Pipeline)?;
+
+    println!("Running Rust-vs-Fortran regression comparison...");
+    let report = run_regression(&config.regression).map_err(CliError::Pipeline)?;
+    println!("{}", render_human_summary(&report));
+    println!("JSON report: {}", config.regression.report_path.display());
 
     if report.passed { Ok(0) } else { Ok(1) }
 }
@@ -780,81 +832,231 @@ fn parse_regression_args(args: Vec<String>) -> Result<RegressionRunnerConfig, Cl
                 config.report_path = PathBuf::from(value_for_option(&args, next_index, option)?);
                 index += 2;
             }
-            "--run-rdinp" | "--run-rdinp-placeholder" => {
-                config.run_rdinp = true;
-                index += 1;
-            }
-            "--run-pot" | "--run-pot-placeholder" => {
-                config.run_pot = true;
-                index += 1;
-            }
-            "--run-xsph" | "--run-xsph-placeholder" => {
-                config.run_xsph = true;
-                index += 1;
-            }
-            "--run-path" | "--run-path-placeholder" => {
-                config.run_path = true;
-                index += 1;
-            }
-            "--run-fms" | "--run-fms-placeholder" => {
-                config.run_fms = true;
-                index += 1;
-            }
-            "--run-band" | "--run-band-placeholder" => {
-                config.run_band = true;
-                index += 1;
-            }
-            "--run-ldos" | "--run-ldos-placeholder" => {
-                config.run_ldos = true;
-                index += 1;
-            }
-            "--run-rixs" | "--run-rixs-placeholder" => {
-                config.run_rixs = true;
-                index += 1;
-            }
-            "--run-crpa" | "--run-crpa-placeholder" => {
-                config.run_crpa = true;
-                index += 1;
-            }
-            "--run-compton" | "--run-compton-placeholder" => {
-                config.run_compton = true;
-                index += 1;
-            }
-            "--run-debye" | "--run-debye-placeholder" => {
-                config.run_debye = true;
-                index += 1;
-            }
-            "--run-dmdw" | "--run-dmdw-placeholder" => {
-                config.run_dmdw = true;
-                index += 1;
-            }
-            "--run-fullspectrum" | "--run-fullspectrum-placeholder" => {
-                config.run_full_spectrum = true;
-                index += 1;
-            }
-            "--run-screen" | "--run-screen-placeholder" => {
-                config.run_screen = true;
-                index += 1;
-            }
-            "--run-self" | "--run-self-placeholder" => {
-                config.run_self = true;
-                index += 1;
-            }
-            "--run-eels" | "--run-eels-placeholder" => {
-                config.run_eels = true;
-                index += 1;
-            }
             _ => {
-                return Err(CliError::Usage(format!(
-                    "Unknown option '{}'.\n{}",
-                    option,
-                    regression_usage_text()
-                )));
+                if apply_regression_run_flag(&mut config, option) {
+                    index += 1;
+                } else {
+                    return Err(CliError::Usage(format!(
+                        "Unknown option '{}'.\n{}",
+                        option,
+                        regression_usage_text()
+                    )));
+                }
             }
         }
     }
 
     Ok(config)
+}
+
+fn parse_oracle_args(args: Vec<String>) -> Result<OracleCommandConfig, CliError> {
+    let mut regression = RegressionRunnerConfig {
+        baseline_root: PathBuf::from("artifacts/fortran-oracle-capture"),
+        actual_root: PathBuf::from("artifacts/oracle-actual"),
+        baseline_subdir: "outputs".to_string(),
+        actual_subdir: "actual".to_string(),
+        report_path: PathBuf::from("artifacts/regression/oracle-report.json"),
+        ..RegressionRunnerConfig::default()
+    };
+
+    let mut capture_runner = None;
+    let mut capture_bin_dir = None;
+    let mut allow_missing_entry_files = false;
+
+    let mut index = 0;
+    while index < args.len() {
+        let option = &args[index];
+        let next_index = index + 1;
+
+        match option.as_str() {
+            "--manifest" => {
+                regression.manifest_path =
+                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
+                index += 2;
+            }
+            "--policy" => {
+                regression.policy_path =
+                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
+                index += 2;
+            }
+            "--oracle-root" => {
+                regression.baseline_root =
+                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
+                index += 2;
+            }
+            "--actual-root" => {
+                regression.actual_root =
+                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
+                index += 2;
+            }
+            "--oracle-subdir" => {
+                regression.baseline_subdir =
+                    value_for_oracle_option(&args, next_index, option)?.to_string();
+                index += 2;
+            }
+            "--actual-subdir" => {
+                regression.actual_subdir =
+                    value_for_oracle_option(&args, next_index, option)?.to_string();
+                index += 2;
+            }
+            "--report" => {
+                regression.report_path =
+                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
+                index += 2;
+            }
+            "--capture-runner" => {
+                capture_runner =
+                    Some(value_for_oracle_option(&args, next_index, option)?.to_string());
+                index += 2;
+            }
+            "--capture-bin-dir" => {
+                capture_bin_dir = Some(PathBuf::from(value_for_oracle_option(
+                    &args, next_index, option,
+                )?));
+                index += 2;
+            }
+            "--capture-allow-missing-entry-files" => {
+                allow_missing_entry_files = true;
+                index += 1;
+            }
+            _ => {
+                if apply_regression_run_flag(&mut regression, option) {
+                    index += 1;
+                } else {
+                    return Err(CliError::Usage(format!(
+                        "Unknown option '{}'.\n{}",
+                        option,
+                        oracle_usage_text()
+                    )));
+                }
+            }
+        }
+    }
+
+    let capture_mode = match (capture_runner, capture_bin_dir) {
+        (Some(_), Some(_)) => {
+            return Err(CliError::Usage(format!(
+                "Use either '--capture-runner' or '--capture-bin-dir', not both.\n{}",
+                oracle_usage_text()
+            )));
+        }
+        (Some(command), None) => OracleCaptureMode::Runner(command),
+        (None, Some(path)) => OracleCaptureMode::BinDir(path),
+        (None, None) => {
+            return Err(CliError::Usage(format!(
+                "Missing required oracle capture mode ('--capture-runner' or '--capture-bin-dir').\n{}",
+                oracle_usage_text()
+            )));
+        }
+    };
+
+    Ok(OracleCommandConfig {
+        regression,
+        capture_mode,
+        allow_missing_entry_files,
+    })
+}
+
+fn apply_regression_run_flag(config: &mut RegressionRunnerConfig, option: &str) -> bool {
+    match option {
+        "--run-rdinp" | "--run-rdinp-placeholder" => config.run_rdinp = true,
+        "--run-pot" | "--run-pot-placeholder" => config.run_pot = true,
+        "--run-xsph" | "--run-xsph-placeholder" => config.run_xsph = true,
+        "--run-path" | "--run-path-placeholder" => config.run_path = true,
+        "--run-fms" | "--run-fms-placeholder" => config.run_fms = true,
+        "--run-band" | "--run-band-placeholder" => config.run_band = true,
+        "--run-ldos" | "--run-ldos-placeholder" => config.run_ldos = true,
+        "--run-rixs" | "--run-rixs-placeholder" => config.run_rixs = true,
+        "--run-crpa" | "--run-crpa-placeholder" => config.run_crpa = true,
+        "--run-compton" | "--run-compton-placeholder" => config.run_compton = true,
+        "--run-debye" | "--run-debye-placeholder" => config.run_debye = true,
+        "--run-dmdw" | "--run-dmdw-placeholder" => config.run_dmdw = true,
+        "--run-fullspectrum" | "--run-fullspectrum-placeholder" => config.run_full_spectrum = true,
+        "--run-screen" | "--run-screen-placeholder" => config.run_screen = true,
+        "--run-self" | "--run-self-placeholder" => config.run_self = true,
+        "--run-eels" | "--run-eels-placeholder" => config.run_eels = true,
+        _ => return false,
+    }
+    true
+}
+
+fn resolve_regression_paths(
+    mut config: RegressionRunnerConfig,
+    working_dir: &Path,
+) -> RegressionRunnerConfig {
+    config.manifest_path = resolve_cli_path(working_dir, &config.manifest_path);
+    config.policy_path = resolve_cli_path(working_dir, &config.policy_path);
+    config.baseline_root = resolve_cli_path(working_dir, &config.baseline_root);
+    config.actual_root = resolve_cli_path(working_dir, &config.actual_root);
+    config.report_path = resolve_cli_path(working_dir, &config.report_path);
+    config
+}
+
+fn resolve_cli_path(working_dir: &Path, path: &Path) -> PathBuf {
+    if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        working_dir.join(path)
+    }
+}
+
+fn run_oracle_capture(workspace_root: &Path, config: &OracleCommandConfig) -> PipelineResult<()> {
+    let capture_script = workspace_root.join("scripts/fortran/capture-baselines.sh");
+    if !capture_script.is_file() {
+        return Err(FeffError::io_system(
+            "IO.ORACLE_CAPTURE_SCRIPT",
+            format!(
+                "oracle capture script was not found at '{}'",
+                capture_script.display()
+            ),
+        ));
+    }
+
+    let mut command = Command::new(&capture_script);
+    command
+        .current_dir(workspace_root)
+        .arg("--manifest")
+        .arg(&config.regression.manifest_path)
+        .arg("--output-root")
+        .arg(&config.regression.baseline_root)
+        .arg("--all-fixtures");
+
+    if config.allow_missing_entry_files {
+        command.arg("--allow-missing-entry-files");
+    }
+
+    match &config.capture_mode {
+        OracleCaptureMode::Runner(runner) => {
+            command.arg("--runner").arg(runner);
+        }
+        OracleCaptureMode::BinDir(path) => {
+            command.arg("--bin-dir").arg(path);
+        }
+    }
+
+    let status = command.status().map_err(|source| {
+        FeffError::io_system(
+            "IO.ORACLE_CAPTURE_EXEC",
+            format!(
+                "failed to execute oracle capture command '{}': {}",
+                capture_script.display(),
+                source
+            ),
+        )
+    })?;
+
+    if status.success() {
+        return Ok(());
+    }
+
+    let status_text = status.code().map_or_else(
+        || "terminated by signal".to_string(),
+        |code| format!("exit code {}", code),
+    );
+    Err(FeffError::computation(
+        "RUN.ORACLE_CAPTURE",
+        format!("oracle capture step failed with {}", status_text),
+    ))
 }
 
 fn value_for_option<'a>(
@@ -873,16 +1075,36 @@ fn value_for_option<'a>(
         })
 }
 
+fn value_for_oracle_option<'a>(
+    args: &'a [String],
+    value_index: usize,
+    option: &str,
+) -> Result<&'a str, CliError> {
+    args.get(value_index)
+        .map(|value| value.as_str())
+        .ok_or_else(|| {
+            CliError::Usage(format!(
+                "Missing value for option '{}'.\n{}",
+                option,
+                oracle_usage_text()
+            ))
+        })
+}
+
 fn help_requested(args: &[String]) -> bool {
     args.iter().any(|arg| arg == "--help" || arg == "-h")
 }
 
 fn usage_text() -> &'static str {
-    "Usage:\n  feff10-rs <command> [options]\n  feff10-rs help\n\nCommands:\n  regression       Run fixture regression comparisons\n  feff             Run serial FEFF compatibility chain in current directory\n  feffmpi <nprocs> Run MPI-compatible FEFF entrypoint (serial fallback in v1)\n  rdinp            Run RDINP module in current directory\n  pot              Run POT module in current directory\n  xsph             Run XSPH module in current directory\n  path             Run PATH module in current directory\n  fms              Run FMS module in current directory\n  band             Run BAND module in current directory\n  ldos             Run LDOS module in current directory\n  rixs             Run RIXS module in current directory\n  crpa             Run CRPA module in current directory\n  compton          Run COMPTON module in current directory\n  ff2x             Run DEBYE module (`ff2x`) in current directory\n  dmdw             Run DMDW module in current directory\n  screen           Run SCREEN module in current directory\n  sfconv           Run SELF module (`sfconv`) in current directory\n  eels             Run EELS module in current directory\n  fullspectrum     Run FULLSPECTRUM module in current directory\n\nRun `feff10-rs regression --help` for regression options.\nRun `feff10-rs <module> --help` for module command usage."
+    "Usage:\n  feff10-rs <command> [options]\n  feff10-rs help\n\nCommands:\n  regression       Run fixture regression comparisons\n  oracle           Run validation-only dual-run oracle capture and comparison\n  feff             Run serial FEFF compatibility chain in current directory\n  feffmpi <nprocs> Run MPI-compatible FEFF entrypoint (serial fallback in v1)\n  rdinp            Run RDINP module in current directory\n  pot              Run POT module in current directory\n  xsph             Run XSPH module in current directory\n  path             Run PATH module in current directory\n  fms              Run FMS module in current directory\n  band             Run BAND module in current directory\n  ldos             Run LDOS module in current directory\n  rixs             Run RIXS module in current directory\n  crpa             Run CRPA module in current directory\n  compton          Run COMPTON module in current directory\n  ff2x             Run DEBYE module (`ff2x`) in current directory\n  dmdw             Run DMDW module in current directory\n  screen           Run SCREEN module in current directory\n  sfconv           Run SELF module (`sfconv`) in current directory\n  eels             Run EELS module in current directory\n  fullspectrum     Run FULLSPECTRUM module in current directory\n\nRun `feff10-rs regression --help` for regression options.\nRun `feff10-rs oracle --help` for oracle options.\nRun `feff10-rs <module> --help` for module command usage."
 }
 
 fn regression_usage_text() -> &'static str {
     "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP pipeline before fixture comparisons\n  --run-pot                Run POT pipeline before fixture comparisons\n  --run-screen             Run SCREEN pipeline before fixture comparisons\n  --run-self               Run SELF pipeline before fixture comparisons\n  --run-eels               Run EELS pipeline before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM pipeline before fixture comparisons\n  --run-xsph               Run XSPH pipeline before fixture comparisons\n  --run-path               Run PATH pipeline before fixture comparisons\n  --run-fms                Run FMS pipeline before fixture comparisons\n  --run-band               Run BAND pipeline before fixture comparisons\n  --run-ldos               Run LDOS pipeline before fixture comparisons\n  --run-rixs               Run RIXS pipeline before fixture comparisons\n  --run-crpa               Run CRPA pipeline before fixture comparisons\n  --run-compton            Run COMPTON pipeline before fixture comparisons\n  --run-debye              Run DEBYE pipeline before fixture comparisons\n  --run-dmdw               Run DMDW pipeline before fixture comparisons"
+}
+
+fn oracle_usage_text() -> &'static str {
+    "Usage:\n  feff10-rs oracle [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path for capture and comparison (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --oracle-root <path>      Fortran capture output root used as regression baseline (default: artifacts/fortran-oracle-capture)\n  --oracle-subdir <name>    Oracle subdirectory per fixture (default: outputs)\n  --actual-root <path>      Rust actual output root (default: artifacts/oracle-actual)\n  --actual-subdir <name>    Rust actual subdirectory per fixture (default: actual)\n  --report <path>           JSON report output path (default: artifacts/regression/oracle-report.json)\n  --capture-runner <cmd>    Runner command passed to scripts/fortran/capture-baselines.sh\n  --capture-bin-dir <path>  Fortran module binary directory passed to scripts/fortran/capture-baselines.sh\n  --capture-allow-missing-entry-files\n                           Continue capture when manifest entry files are missing and record metadata\n  --run-rdinp              Run RDINP pipeline before fixture comparisons\n  --run-pot                Run POT pipeline before fixture comparisons\n  --run-screen             Run SCREEN pipeline before fixture comparisons\n  --run-self               Run SELF pipeline before fixture comparisons\n  --run-eels               Run EELS pipeline before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM pipeline before fixture comparisons\n  --run-xsph               Run XSPH pipeline before fixture comparisons\n  --run-path               Run PATH pipeline before fixture comparisons\n  --run-fms                Run FMS pipeline before fixture comparisons\n  --run-band               Run BAND pipeline before fixture comparisons\n  --run-ldos               Run LDOS pipeline before fixture comparisons\n  --run-rixs               Run RIXS pipeline before fixture comparisons\n  --run-crpa               Run CRPA pipeline before fixture comparisons\n  --run-compton            Run COMPTON pipeline before fixture comparisons\n  --run-debye              Run DEBYE pipeline before fixture comparisons\n  --run-dmdw               Run DMDW pipeline before fixture comparisons\n\nThe oracle command is validation-only and must not be used as a production runtime path."
 }
 
 fn feff_usage_text() -> &'static str {

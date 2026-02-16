@@ -126,13 +126,14 @@ Release-blocking contract artifact index: `tasks/migration-contract-reference.md
 
 ### Allowed baseline usage (validation-only and tests)
 - The `regression` command may read baseline snapshots for comparator behavior and parity reporting.
+- The `oracle` command (`feff10-rs oracle`) may run Fortran capture plus Rust-vs-Fortran comparison as a validation-only path.
 - Regression pre-compare module hooks (`--run-*`) are validation-only execution paths and may stage approved baseline material needed for parity checks.
 - Baseline capture/snapshot scripts under `scripts/fortran/` may read and write baseline snapshot artifacts.
 - Unit, integration, and fixture tests may read/copy baseline artifacts for assertions and staging.
 
 ### Runtime-vs-validation boundary contract
 - Runtime boundary: CLI paths invoked by `feff`, `feffmpi`, and module commands (`rdinp`, `pot`, `xsph`, etc.).
-- Validation boundary: CLI path invoked by `regression`, regression pre-compare hooks, baseline-capture tooling, and tests.
+- Validation boundary: CLI paths invoked by `regression` and `oracle`, regression pre-compare hooks, baseline-capture tooling, and tests.
 - Any baseline snapshot dependency that crosses from validation boundary into runtime boundary is a release-blocking defect.
 
 ### CI and review implications

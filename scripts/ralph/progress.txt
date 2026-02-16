@@ -4,6 +4,7 @@
 - On macOS arm64, run Rust quality gates with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures in test binaries.
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
+- For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -35,4 +36,17 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Runtime boundary wiring is centralized in `src/cli/mod.rs` and should call `execute_runtime_pipeline` only; module scaffolds remain reusable for regression hooks and parity tests.
   - Gotchas encountered: On macOS arm64, `cargo test`/`cargo clippy` require `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures.
   - Useful context: `feff`/`feffmpi` now report unsupported runtime modules early instead of falling through validation-style scaffold execution.
+---
+## [2026-02-17 07:20:15 JST] - US-004
+- Added a new validation-only CLI command, `feff10-rs oracle`, that runs Fortran capture (`scripts/fortran/capture-baselines.sh`) and then Rust-vs-oracle regression in one flow.
+- Implemented oracle command parsing for capture mode (`--capture-runner` or `--capture-bin-dir`), oracle/actual/report path plumbing, and shared `--run-*` pre-compare hook flags to support Rust actual generation in the same command.
+- Updated help/usage surfaces and workflow docs to include the new oracle command and explicitly keep it outside production runtime command paths.
+- Added integration coverage for oracle plumbing in `tests/regression_cli.rs` and help-surface coverage in `tests/cli_compatibility.rs`.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-004` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/cli/mod.rs`, `tests/regression_cli.rs`, `tests/cli_compatibility.rs`, `README.md`, `docs/developer-workflows.md`, `tasks/migration-decision-log.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Oracle dual-run wiring should reuse `RegressionRunnerConfig` and `--run-*` hook flags so capture and comparison stay aligned with existing regression contracts.
+  - Gotchas encountered: Oracle capture requires exactly one execution mode (`--capture-runner` or `--capture-bin-dir`); missing or dual modes should fail fast as CLI usage errors.
+  - Useful context: The `oracle` command resolves manifest/policy/output paths from the invocation directory and then executes capture from workspace root so script-relative paths remain stable.
 ---

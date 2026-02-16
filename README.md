@@ -86,6 +86,7 @@ The binary now exposes FEFF-compatible command surfaces in addition to `regressi
 ```bash
 cargo run -- feff
 cargo run -- feffmpi 4
+cargo run -- oracle --help
 cargo run -- rdinp
 cargo run -- pot
 cargo run -- xsph
@@ -169,3 +170,25 @@ Use `--run-dmdw` to execute the Rust DMDW parity path before comparisons; it exp
 Use `--run-self` to execute the Rust SELF parity path before comparisons; it expects staged `sfconv.inp` and at least one spectrum input (`xmu.dat`, `chi.dat`, `loss.dat`, or `feffNNNN.dat`) plus optional `exc.dat` in each fixture actual output directory and materializes approved SELF artifacts from canonical fixture baselines (for `FX-SELF-001`: `specfunct.dat`, `logsfconv.dat`, `xmu.dat`, `sig2FEFF.dat`, `mpse.dat`, `opconsCu.dat`).
 Use `--run-eels` to execute the Rust EELS parity path before comparisons; it expects staged `eels.inp` and `xmu.dat` (optionally `magic.inp`) in each fixture actual output directory and materializes approved EELS artifacts from canonical fixture baselines (`eels.dat`, `logeels.dat`, optional `magic.dat`, plus fixture-provided `reference_eels.dat` when present).
 Use `--run-fullspectrum` to execute the Rust FULLSPECTRUM parity path before comparisons; it expects staged `fullspectrum.inp` and `xmu.dat` (optionally `prexmu.dat` and `referencexmu.dat`) in each fixture actual output directory and materializes baseline-available FULLSPECTRUM artifacts (`xmu.dat`, `osc_str.dat`, `eps.dat`, `drude.dat`, `background.dat`, `fine_st.dat`, `logfullspectrum.dat`, plus fixture-provided `prexmu.dat`/`referencexmu.dat` when present).
+
+## Oracle Dual-Run Validation
+
+Run Fortran oracle capture and Rust parity comparison as one validation-only command:
+
+```bash
+cargo run -- oracle \
+  --manifest tasks/golden-fixture-manifest.json \
+  --policy tasks/numeric-tolerance-policy.json \
+  --oracle-root artifacts/fortran-oracle-capture \
+  --oracle-subdir outputs \
+  --actual-root artifacts/oracle-actual \
+  --actual-subdir actual \
+  --report artifacts/regression/oracle-report.json \
+  --capture-runner "<fortran capture command>" \
+  --run-rdinp
+```
+
+Notes:
+- Use exactly one capture mode: `--capture-runner "<command>"` or `--capture-bin-dir <path>`.
+- The command always captures the same manifest fixture set that the regression comparison evaluates.
+- `oracle` is a validation-only path and must not be used by production runtime commands (`feff`, `feffmpi`, module commands).
