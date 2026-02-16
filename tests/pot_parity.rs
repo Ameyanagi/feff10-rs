@@ -154,6 +154,8 @@ fn pot_regression_suite_passes() {
         run_path: false,
         run_fms: false,
         run_band: false,
+
+        run_ldos: false,
     };
 
     let report = run_regression(&config).expect("POT regression suite should run");

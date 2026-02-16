@@ -1,7 +1,7 @@
 use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
 use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::band::BandPipelineScaffold;
 use feff10_rs::pipelines::comparator::Comparator;
+use feff10_rs::pipelines::ldos::LdosPipelineScaffold;
 use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -14,46 +14,44 @@ struct FixtureCase {
     input_directory: &'static str,
 }
 
-const APPROVED_BAND_FIXTURES: [FixtureCase; 1] = [FixtureCase {
-    id: "FX-BAND-001",
-    input_directory: "feff10/examples/KSPACE/Cr2GeC",
+const APPROVED_LDOS_FIXTURES: [FixtureCase; 1] = [FixtureCase {
+    id: "FX-LDOS-001",
+    input_directory: "feff10/examples/HUBBARD/CeO2",
 }];
 
-const BAND_OUTPUT_CANDIDATES: [&str; 4] =
-    ["bandstructure.dat", "logband.dat", "list.dat", "log5.dat"];
-const REQUIRED_BAND_INPUT_ARTIFACTS: [&str; 3] = ["geom.dat", "global.inp", "phase.bin"];
+const REQUIRED_LDOS_INPUT_ARTIFACTS: [&str; 3] = ["geom.dat", "pot.bin", "reciprocal.inp"];
 
 #[test]
-fn approved_band_fixtures_match_baseline_under_policy() {
+fn approved_ldos_fixtures_match_baseline_under_policy() {
     let comparator = Comparator::from_policy_path("tasks/numeric-tolerance-policy.json")
         .expect("policy should load");
 
-    for fixture in &APPROVED_BAND_FIXTURES {
+    for fixture in &APPROVED_LDOS_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = temp.path().join("actual");
 
-        stage_band_input(fixture.id, &output_dir.join("band.inp"));
-        for artifact in REQUIRED_BAND_INPUT_ARTIFACTS {
+        stage_ldos_input(fixture.id, &output_dir.join("ldos.inp"));
+        for artifact in REQUIRED_LDOS_INPUT_ARTIFACTS {
             copy_file(
                 &baseline_artifact_path(fixture.id, Path::new(artifact)),
                 &output_dir.join(artifact),
             );
         }
 
-        let band_request = PipelineRequest::new(
+        let ldos_request = PipelineRequest::new(
             fixture.id,
-            PipelineModule::Band,
-            output_dir.join("band.inp"),
+            PipelineModule::Ldos,
+            output_dir.join("ldos.inp"),
             &output_dir,
         );
-        let artifacts = BandPipelineScaffold
-            .execute(&band_request)
-            .expect("BAND execution should succeed");
+        let artifacts = LdosPipelineScaffold
+            .execute(&ldos_request)
+            .expect("LDOS execution should succeed");
 
         assert_eq!(
             artifact_set(&artifacts),
-            expected_band_artifact_set_for_fixture(fixture.id),
-            "artifact contract should match expected BAND outputs"
+            expected_ldos_artifact_set_for_fixture(fixture.id),
+            "artifact contract should match expected LDOS outputs"
         );
 
         for artifact in artifacts {
@@ -79,15 +77,15 @@ fn approved_band_fixtures_match_baseline_under_policy() {
 }
 
 #[test]
-fn band_regression_suite_passes() {
+fn ldos_regression_suite_passes() {
     let temp = TempDir::new().expect("tempdir should be created");
     let baseline_root = temp.path().join("baseline-root");
     let actual_root = temp.path().join("actual-root");
     let report_path = temp.path().join("report/report.json");
-    let manifest_path = temp.path().join("band-manifest.json");
+    let manifest_path = temp.path().join("ldos-manifest.json");
 
-    for fixture in &APPROVED_BAND_FIXTURES {
-        for artifact in expected_band_artifacts_for_fixture(fixture.id) {
+    for fixture in &APPROVED_LDOS_FIXTURES {
+        for artifact in expected_ldos_artifacts_for_fixture(fixture.id) {
             let baseline_source = baseline_artifact_path(fixture.id, Path::new(&artifact));
             let baseline_target = baseline_root
                 .join(fixture.id)
@@ -96,8 +94,8 @@ fn band_regression_suite_passes() {
             copy_file(&baseline_source, &baseline_target);
         }
         let baseline_fixture_dir = baseline_root.join(fixture.id).join("baseline");
-        stage_band_input(fixture.id, &baseline_fixture_dir.join("band.inp"));
-        for artifact in REQUIRED_BAND_INPUT_ARTIFACTS {
+        stage_ldos_input(fixture.id, &baseline_fixture_dir.join("ldos.inp"));
+        for artifact in REQUIRED_LDOS_INPUT_ARTIFACTS {
             copy_file(
                 &baseline_artifact_path(fixture.id, Path::new(artifact)),
                 &baseline_fixture_dir.join(artifact),
@@ -105,26 +103,20 @@ fn band_regression_suite_passes() {
         }
 
         let staged_dir = actual_root.join(fixture.id).join("actual");
-        stage_band_input(fixture.id, &staged_dir.join("band.inp"));
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("geom.dat")),
-            &staged_dir.join("geom.dat"),
-        );
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("global.inp")),
-            &staged_dir.join("global.inp"),
-        );
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("phase.bin")),
-            &staged_dir.join("phase.bin"),
-        );
+        stage_ldos_input(fixture.id, &staged_dir.join("ldos.inp"));
+        for artifact in REQUIRED_LDOS_INPUT_ARTIFACTS {
+            copy_file(
+                &baseline_artifact_path(fixture.id, Path::new(artifact)),
+                &staged_dir.join(artifact),
+            );
+        }
     }
 
     let manifest = json!({
-      "fixtures": APPROVED_BAND_FIXTURES.iter().map(|fixture| {
+      "fixtures": APPROVED_LDOS_FIXTURES.iter().map(|fixture| {
         json!({
           "id": fixture.id,
-          "modulesCovered": ["BAND"],
+          "modulesCovered": ["LDOS"],
           "inputDirectory": fixture.input_directory,
           "entryFiles": ["feff.inp"]
         })
@@ -149,40 +141,58 @@ fn band_regression_suite_passes() {
         run_xsph: false,
         run_path: false,
         run_fms: false,
-        run_band: true,
-
-        run_ldos: false,
+        run_band: false,
+        run_ldos: true,
     };
 
-    let report = run_regression(&config).expect("BAND regression suite should run");
-    assert!(report.passed, "expected BAND suite to pass");
-    assert_eq!(report.fixture_count, APPROVED_BAND_FIXTURES.len());
+    let report = run_regression(&config).expect("LDOS regression suite should run");
+    assert!(report.passed, "expected LDOS suite to pass");
+    assert_eq!(report.fixture_count, APPROVED_LDOS_FIXTURES.len());
     assert_eq!(report.failed_fixture_count, 0);
 }
 
 fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
+    baseline_fixture_dir(fixture_id).join(relative_path)
+}
+
+fn baseline_fixture_dir(fixture_id: &str) -> PathBuf {
     PathBuf::from("artifacts/fortran-baselines")
         .join(fixture_id)
         .join("baseline")
-        .join(relative_path)
 }
 
-fn expected_band_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
-    let artifacts: BTreeSet<String> = BAND_OUTPUT_CANDIDATES
-        .iter()
-        .filter(|artifact| baseline_artifact_path(fixture_id, Path::new(artifact)).is_file())
-        .map(|artifact| artifact.to_string())
-        .collect();
+fn expected_ldos_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
+    let baseline_dir = baseline_fixture_dir(fixture_id);
+    let entries = fs::read_dir(&baseline_dir).expect("baseline directory should be readable");
+
+    let mut artifacts = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.expect("directory entry should be readable");
+        let path = entry.path();
+        if !path.is_file() {
+            continue;
+        }
+
+        let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
+            continue;
+        };
+
+        if is_ldos_output_file_name(name) {
+            artifacts.insert(name.to_string());
+        }
+    }
+
     assert!(
         !artifacts.is_empty(),
-        "fixture '{}' should provide at least one BAND output artifact",
+        "fixture '{}' should provide at least one LDOS output artifact",
         fixture_id
     );
+
     artifacts
 }
 
-fn expected_band_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
-    expected_band_artifact_set_for_fixture(fixture_id)
+fn expected_ldos_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
+    expected_ldos_artifact_set_for_fixture(fixture_id)
         .into_iter()
         .collect()
 }
@@ -194,21 +204,20 @@ fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
         .collect()
 }
 
-fn stage_band_input(fixture_id: &str, destination: &Path) {
-    let source = baseline_artifact_path(fixture_id, Path::new("band.inp"));
-    if source.is_file() {
-        copy_file(&source, destination);
-        return;
+fn stage_ldos_input(fixture_id: &str, destination: &Path) {
+    copy_file(
+        &baseline_artifact_path(fixture_id, Path::new("ldos.inp")),
+        destination,
+    );
+}
+
+fn is_ldos_output_file_name(file_name: &str) -> bool {
+    if file_name.eq_ignore_ascii_case("logdos.dat") {
+        return true;
     }
 
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).expect("destination directory should exist");
-    }
-    fs::write(
-        destination,
-        "mband : calculate bands if = 1\n   0\nemin, emax, estep : energy mesh\n      0.00000      0.00000      0.00000\nnkp : # points in k-path\n   0\nikpath : type of k-path\n  -1\nfreeprop :  empty lattice if = T\n F\n",
-    )
-    .expect("band input should be staged");
+    let lowered = file_name.to_ascii_lowercase();
+    lowered.starts_with("ldos") && lowered.ends_with(".dat")
 }
 
 fn copy_file(source: &Path, destination: &Path) {

@@ -2,6 +2,7 @@ use super::PipelineExecutor;
 use super::band::BandPipelineScaffold;
 use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
 use super::fms::FmsPipelineScaffold;
+use super::ldos::LdosPipelineScaffold;
 use super::path::PathPipelineScaffold;
 use super::pot::PotPipelineScaffold;
 use super::rdinp::RdinpPipelineScaffold;
@@ -30,6 +31,7 @@ pub struct RegressionRunnerConfig {
     pub run_path: bool,
     pub run_fms: bool,
     pub run_band: bool,
+    pub run_ldos: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -48,6 +50,7 @@ impl Default for RegressionRunnerConfig {
             run_path: false,
             run_fms: false,
             run_band: false,
+            run_ldos: false,
         }
     }
 }
@@ -121,6 +124,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         run_pot_if_enabled(config, fixture)?;
         run_xsph_if_enabled(config, fixture)?;
         run_band_if_enabled(config, fixture)?;
+        run_ldos_if_enabled(config, fixture)?;
         run_path_if_enabled(config, fixture)?;
         run_fms_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
@@ -243,6 +247,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    LdosPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     PathPipeline {
         fixture_id: String,
         source: FeffError,
@@ -317,6 +325,11 @@ impl Display for RegressionRunnerError {
                 "BAND parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::LdosPipeline { fixture_id, source } => write!(
+                f,
+                "LDOS parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::PathPipeline { fixture_id, source } => write!(
                 f,
                 "PATH scaffold execution failed for fixture '{}': {}",
@@ -365,6 +378,7 @@ impl Error for RegressionRunnerError {
             Self::PotPipeline { source, .. } => Some(source),
             Self::XsphPipeline { source, .. } => Some(source),
             Self::BandPipeline { source, .. } => Some(source),
+            Self::LdosPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
             Self::FmsPipeline { source, .. } => Some(source),
             Self::ReadDirectory { source, .. } => Some(source),
@@ -393,6 +407,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::PotPipeline { source, .. } => source,
             RegressionRunnerError::XsphPipeline { source, .. } => source,
             RegressionRunnerError::BandPipeline { source, .. } => source,
+            RegressionRunnerError::LdosPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
             RegressionRunnerError::FmsPipeline { source, .. } => source,
             RegressionRunnerError::ReadDirectory { .. }
@@ -594,6 +609,35 @@ fn run_band_if_enabled(
 
     BandPipelineScaffold.execute(&request).map_err(|source| {
         RegressionRunnerError::BandPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        }
+    })?;
+
+    Ok(())
+}
+
+fn run_ldos_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_ldos || !fixture.covers_module(PipelineModule::Ldos) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Ldos,
+        output_dir.join("ldos.inp"),
+        output_dir,
+    );
+
+    LdosPipelineScaffold.execute(&request).map_err(|source| {
+        RegressionRunnerError::LdosPipeline {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -947,6 +991,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -1016,6 +1062,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1076,6 +1124,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1137,6 +1187,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1200,6 +1252,8 @@ mod tests {
             run_path: true,
             run_fms: false,
             run_band: false,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1264,6 +1318,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1327,6 +1383,8 @@ mod tests {
             run_path: false,
             run_fms: true,
             run_band: false,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1390,6 +1448,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: true,
+
+            run_ldos: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1400,6 +1460,78 @@ mod tests {
             .iter()
             .any(|artifact| output_dir.join(artifact).is_file());
         assert!(has_band_output, "BAND output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_ldos_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-LDOS-001",
+                  "modulesCovered": ["LDOS"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-LDOS-001").join("actual");
+        copy_repo_fixture_file("FX-LDOS-001", "ldos.inp", &staged_dir.join("ldos.inp"));
+        copy_repo_fixture_file("FX-LDOS-001", "geom.dat", &staged_dir.join("geom.dat"));
+        copy_repo_fixture_file("FX-LDOS-001", "pot.bin", &staged_dir.join("pot.bin"));
+        copy_repo_fixture_file(
+            "FX-LDOS-001",
+            "reciprocal.inp",
+            &staged_dir.join("reciprocal.inp"),
+        );
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: false,
+            run_ldos: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-LDOS-001").join("actual");
+        let has_ldos_output = fs::read_dir(&output_dir)
+            .expect("LDOS output directory should be readable")
+            .flatten()
+            .map(|entry| entry.file_name().to_string_lossy().to_ascii_lowercase())
+            .any(|name| {
+                name == "logdos.dat" || (name.starts_with("ldos") && name.ends_with(".dat"))
+            });
+        assert!(has_ldos_output, "LDOS output should exist");
     }
 
     fn write_fixture_file(

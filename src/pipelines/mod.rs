@@ -1,6 +1,7 @@
 pub mod band;
 pub mod comparator;
 pub mod fms;
+pub mod ldos;
 pub mod path;
 pub mod pot;
 pub mod rdinp;

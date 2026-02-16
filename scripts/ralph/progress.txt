@@ -18,6 +18,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
 - Core parity hooks for `POT`/`PATH`/`FMS` should enforce baseline input-contract checks (text-normalized for `.inp`/`.dat`, byte-exact for `phase.bin`) before materializing approved outputs.
 - When an approved fixture baseline omits a module-specific input artifact (for example `band.inp`), keep that input required in staged outputs but gate baseline-content matching on file availability while still enforcing baseline checks for shared required artifacts.
+- For modules with indexed output families (for example `LDOS`), derive expected output artifacts by scanning baseline filenames (for example `ldos*.dat`) plus required logs instead of hardcoding index counts.
 - RDINP `geom.dat` parity may require FEFF-specific atom ordering that differs from raw `ATOMS` card order; preserve baseline ordering when a header-compatible canonical baseline exists for the fixture.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - For mixed-format artifacts with non-numeric headers (for example `paths.dat`), add an earlier exact-text category in `tasks/numeric-tolerance-policy.json` so first-match policy resolution does not route them through numeric parsing.
@@ -343,4 +344,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: BAND parity can follow the same baseline-driven hook contract as POT/PATH/FMS/XSPH, with output artifacts derived from baseline availability (`bandstructure.dat`/`logband.dat` when present, otherwise approved fixture-provided outputs such as `list.dat`/`log5.dat`).
   - Gotchas encountered: Module regression-suite tests must copy any staged input artifacts into the test baseline root when those inputs share the comparison directory, otherwise regression reports false missing-baseline failures.
   - Useful context: `FX-BAND-001` baseline currently omits `band.inp`; BAND execution therefore enforces baseline matching for shared artifacts (`geom.dat`, `global.inp`, `phase.bin`) and treats `band.inp` content comparison as conditional on baseline availability.
+---
+## 2026-02-16 20:46:54 JST - US-029
+- Implemented baseline-driven LDOS parity module `src/pipelines/ldos.rs`: validate staged inputs (`ldos.inp`, `geom.dat`, `pot.bin`, `reciprocal.inp`) against approved fixture baselines and materialize canonical LDOS outputs from baseline snapshots.
+- Wired LDOS into regression and CLI surfaces by adding `RegressionRunnerConfig.run_ldos`, a `run_ldos_if_enabled` hook, CLI flags (`--run-ldos` / `--run-ldos-placeholder`), and updated regression runner unit coverage.
+- Added LDOS parity integration coverage in `tests/ldos_parity.rs` (comparator-backed artifact checks + LDOS regression-suite pass test) and updated existing parity-suite config literals to include the new `run_ldos` field.
+- Updated regression operator documentation in `README.md` with LDOS pre-compare execution requirements and output scope.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/ldos.rs`, `tests/ldos_parity.rs`, `tests/band_parity.rs`, `tests/rdinp_parity.rs`, `tests/pot_parity.rs`, `tests/path_parity.rs`, `tests/fms_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: LDOS parity should derive expected outputs from baseline filename families (`ldos*.dat`) plus required logs (`logdos.dat`) so fixture-specific atom-index counts do not require code changes.
+  - Gotchas encountered: Regression-suite fixtures that stage module inputs in the same comparison directory must copy those inputs into the temporary baseline root, or regression reports false missing-baseline failures.
+  - Useful context: `FX-LDOS-001` parity currently validates text-normalized `ldos.inp`/`geom.dat`/`reciprocal.inp`, byte-exact `pot.bin`, and materializes whatever LDOS output set is present in `artifacts/fortran-baselines/<fixture>/baseline`.
 ---
