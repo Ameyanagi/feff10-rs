@@ -5,6 +5,7 @@ use super::compton::ComptonPipelineScaffold;
 use super::crpa::CrpaPipelineScaffold;
 use super::debye::DebyePipelineScaffold;
 use super::dmdw::DmdwPipelineScaffold;
+use super::eels::EelsPipelineScaffold;
 use super::fms::FmsPipelineScaffold;
 use super::ldos::LdosPipelineScaffold;
 use super::path::PathPipelineScaffold;
@@ -46,6 +47,7 @@ pub struct RegressionRunnerConfig {
     pub run_dmdw: bool,
     pub run_screen: bool,
     pub run_self: bool,
+    pub run_eels: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -72,6 +74,7 @@ impl Default for RegressionRunnerConfig {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         }
     }
 }
@@ -145,6 +148,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         run_pot_if_enabled(config, fixture)?;
         run_screen_if_enabled(config, fixture)?;
         run_self_if_enabled(config, fixture)?;
+        run_eels_if_enabled(config, fixture)?;
         run_xsph_if_enabled(config, fixture)?;
         run_band_if_enabled(config, fixture)?;
         run_ldos_if_enabled(config, fixture)?;
@@ -299,6 +303,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    EelsPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     DebyePipeline {
         fixture_id: String,
         source: FeffError,
@@ -411,6 +419,11 @@ impl Display for RegressionRunnerError {
                 "SELF parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::EelsPipeline { fixture_id, source } => write!(
+                f,
+                "EELS parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::DebyePipeline { fixture_id, source } => write!(
                 f,
                 "DEBYE parity execution failed for fixture '{}': {}",
@@ -475,6 +488,7 @@ impl Error for RegressionRunnerError {
             Self::ComptonPipeline { source, .. } => Some(source),
             Self::ScreenPipeline { source, .. } => Some(source),
             Self::SelfPipeline { source, .. } => Some(source),
+            Self::EelsPipeline { source, .. } => Some(source),
             Self::DebyePipeline { source, .. } => Some(source),
             Self::DmdwPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
@@ -511,6 +525,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::ComptonPipeline { source, .. } => source,
             RegressionRunnerError::ScreenPipeline { source, .. } => source,
             RegressionRunnerError::SelfPipeline { source, .. } => source,
+            RegressionRunnerError::EelsPipeline { source, .. } => source,
             RegressionRunnerError::DebyePipeline { source, .. } => source,
             RegressionRunnerError::DmdwPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
@@ -892,6 +907,35 @@ fn run_self_if_enabled(
             fixture_id: fixture.id.clone(),
             source,
         })?;
+
+    Ok(())
+}
+
+fn run_eels_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_eels || !fixture.covers_module(PipelineModule::Eels) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Eels,
+        output_dir.join("eels.inp"),
+        output_dir,
+    );
+
+    EelsPipelineScaffold.execute(&request).map_err(|source| {
+        RegressionRunnerError::EelsPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        }
+    })?;
 
     Ok(())
 }
@@ -1307,6 +1351,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -1384,6 +1429,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1452,6 +1498,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1521,6 +1568,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1592,6 +1640,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1664,6 +1713,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1735,6 +1785,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1806,6 +1857,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1881,6 +1933,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1953,6 +2006,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2034,6 +2088,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2102,6 +2157,7 @@ mod tests {
             run_dmdw: false,
             run_screen: true,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2170,6 +2226,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: true,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2190,6 +2247,75 @@ mod tests {
         .iter()
         .any(|artifact| output_dir.join(artifact).is_file());
         assert!(has_self_output, "SELF output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_eels_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-EELS-001",
+                  "modulesCovered": ["EELS"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-EELS-001").join("actual");
+        stage_repo_eels_inputs("FX-EELS-001", &staged_dir);
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: false,
+            run_ldos: false,
+            run_rixs: false,
+            run_crpa: false,
+            run_compton: false,
+            run_debye: false,
+            run_dmdw: false,
+            run_screen: false,
+            run_self: false,
+            run_eels: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-EELS-001").join("actual");
+        let has_eels_output = ["eels.dat", "logeels.dat", "magic.dat", "reference_eels.dat"]
+            .iter()
+            .any(|artifact| output_dir.join(artifact).is_file());
+        assert!(has_eels_output, "EELS output should exist");
     }
 
     #[test]
@@ -2248,6 +2374,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2316,6 +2443,7 @@ mod tests {
             run_dmdw: false,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2392,6 +2520,7 @@ mod tests {
             run_dmdw: true,
             run_screen: false,
             run_self: false,
+            run_eels: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2556,6 +2685,27 @@ mod tests {
             "exc.dat",
             &destination_dir.join("exc.dat"),
             "0.0 0.0\n",
+        );
+    }
+
+    fn stage_repo_eels_inputs(fixture_id: &str, destination_dir: &Path) {
+        stage_repo_text_input(
+            fixture_id,
+            "eels.inp",
+            &destination_dir.join("eels.inp"),
+            "calculate ELNES?\n  1\ncore-hole lifetime broadening [eV]\n0.4\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "xmu.dat",
+            &destination_dir.join("xmu.dat"),
+            "0.0 0.0 0.0 0.0\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "magic.inp",
+            &destination_dir.join("magic.inp"),
+            "magic input\n",
         );
     }
 

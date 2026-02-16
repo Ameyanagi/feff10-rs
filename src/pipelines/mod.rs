@@ -4,6 +4,7 @@ pub mod compton;
 pub mod crpa;
 pub mod debye;
 pub mod dmdw;
+pub mod eels;
 pub mod fms;
 pub mod ldos;
 pub mod path;

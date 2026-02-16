@@ -1,7 +1,7 @@
 use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
 use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::band::BandPipelineScaffold;
 use feff10_rs::pipelines::comparator::Comparator;
+use feff10_rs::pipelines::eels::EelsPipelineScaffold;
 use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -14,46 +14,39 @@ struct FixtureCase {
     input_directory: &'static str,
 }
 
-const APPROVED_BAND_FIXTURES: [FixtureCase; 1] = [FixtureCase {
-    id: "FX-BAND-001",
-    input_directory: "feff10/examples/KSPACE/Cr2GeC",
+const APPROVED_EELS_FIXTURES: [FixtureCase; 1] = [FixtureCase {
+    id: "FX-EELS-001",
+    input_directory: "feff10/examples/ELNES/Cu",
 }];
 
-const BAND_OUTPUT_CANDIDATES: [&str; 4] =
-    ["bandstructure.dat", "logband.dat", "list.dat", "log5.dat"];
-const REQUIRED_BAND_INPUT_ARTIFACTS: [&str; 3] = ["geom.dat", "global.inp", "phase.bin"];
+const EELS_OUTPUT_CANDIDATES: [&str; 4] =
+    ["eels.dat", "logeels.dat", "magic.dat", "reference_eels.dat"];
 
 #[test]
-fn approved_band_fixtures_match_baseline_under_policy() {
+fn approved_eels_fixtures_match_baseline_under_policy() {
     let comparator = Comparator::from_policy_path("tasks/numeric-tolerance-policy.json")
         .expect("policy should load");
 
-    for fixture in &APPROVED_BAND_FIXTURES {
+    for fixture in &APPROVED_EELS_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = temp.path().join("actual");
 
-        stage_band_input(fixture.id, &output_dir.join("band.inp"));
-        for artifact in REQUIRED_BAND_INPUT_ARTIFACTS {
-            copy_file(
-                &baseline_artifact_path(fixture.id, Path::new(artifact)),
-                &output_dir.join(artifact),
-            );
-        }
+        stage_eels_inputs(fixture.id, &output_dir);
 
-        let band_request = PipelineRequest::new(
+        let eels_request = PipelineRequest::new(
             fixture.id,
-            PipelineModule::Band,
-            output_dir.join("band.inp"),
+            PipelineModule::Eels,
+            output_dir.join("eels.inp"),
             &output_dir,
         );
-        let artifacts = BandPipelineScaffold
-            .execute(&band_request)
-            .expect("BAND execution should succeed");
+        let artifacts = EelsPipelineScaffold
+            .execute(&eels_request)
+            .expect("EELS execution should succeed");
 
         assert_eq!(
             artifact_set(&artifacts),
-            expected_band_artifact_set_for_fixture(fixture.id),
-            "artifact contract should match expected BAND outputs"
+            expected_eels_artifact_set_for_fixture(fixture.id),
+            "artifact contract should match expected EELS outputs"
         );
 
         for artifact in artifacts {
@@ -79,15 +72,15 @@ fn approved_band_fixtures_match_baseline_under_policy() {
 }
 
 #[test]
-fn band_regression_suite_passes() {
+fn eels_regression_suite_passes() {
     let temp = TempDir::new().expect("tempdir should be created");
     let baseline_root = temp.path().join("baseline-root");
     let actual_root = temp.path().join("actual-root");
     let report_path = temp.path().join("report/report.json");
-    let manifest_path = temp.path().join("band-manifest.json");
+    let manifest_path = temp.path().join("eels-manifest.json");
 
-    for fixture in &APPROVED_BAND_FIXTURES {
-        for artifact in expected_band_artifacts_for_fixture(fixture.id) {
+    for fixture in &APPROVED_EELS_FIXTURES {
+        for artifact in expected_eels_artifacts_for_fixture(fixture.id) {
             let baseline_source = baseline_artifact_path(fixture.id, Path::new(&artifact));
             let baseline_target = baseline_root
                 .join(fixture.id)
@@ -95,36 +88,19 @@ fn band_regression_suite_passes() {
                 .join(&artifact);
             copy_file(&baseline_source, &baseline_target);
         }
+
         let baseline_fixture_dir = baseline_root.join(fixture.id).join("baseline");
-        stage_band_input(fixture.id, &baseline_fixture_dir.join("band.inp"));
-        for artifact in REQUIRED_BAND_INPUT_ARTIFACTS {
-            copy_file(
-                &baseline_artifact_path(fixture.id, Path::new(artifact)),
-                &baseline_fixture_dir.join(artifact),
-            );
-        }
+        stage_eels_inputs(fixture.id, &baseline_fixture_dir);
 
         let staged_dir = actual_root.join(fixture.id).join("actual");
-        stage_band_input(fixture.id, &staged_dir.join("band.inp"));
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("geom.dat")),
-            &staged_dir.join("geom.dat"),
-        );
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("global.inp")),
-            &staged_dir.join("global.inp"),
-        );
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("phase.bin")),
-            &staged_dir.join("phase.bin"),
-        );
+        stage_eels_inputs(fixture.id, &staged_dir);
     }
 
     let manifest = json!({
-      "fixtures": APPROVED_BAND_FIXTURES.iter().map(|fixture| {
+      "fixtures": APPROVED_EELS_FIXTURES.iter().map(|fixture| {
         json!({
           "id": fixture.id,
-          "modulesCovered": ["BAND"],
+          "modulesCovered": ["EELS"],
           "inputDirectory": fixture.input_directory,
           "entryFiles": ["feff.inp"]
         })
@@ -149,7 +125,7 @@ fn band_regression_suite_passes() {
         run_xsph: false,
         run_path: false,
         run_fms: false,
-        run_band: true,
+        run_band: false,
         run_ldos: false,
         run_rixs: false,
         run_crpa: false,
@@ -158,12 +134,12 @@ fn band_regression_suite_passes() {
         run_dmdw: false,
         run_screen: false,
         run_self: false,
-        run_eels: false,
+        run_eels: true,
     };
 
-    let report = run_regression(&config).expect("BAND regression suite should run");
-    assert!(report.passed, "expected BAND suite to pass");
-    assert_eq!(report.fixture_count, APPROVED_BAND_FIXTURES.len());
+    let report = run_regression(&config).expect("EELS regression suite should run");
+    assert!(report.passed, "expected EELS suite to pass");
+    assert_eq!(report.fixture_count, APPROVED_EELS_FIXTURES.len());
     assert_eq!(report.failed_fixture_count, 0);
 }
 
@@ -174,22 +150,23 @@ fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
         .join(relative_path)
 }
 
-fn expected_band_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
-    let artifacts: BTreeSet<String> = BAND_OUTPUT_CANDIDATES
+fn expected_eels_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
+    let artifacts: BTreeSet<String> = EELS_OUTPUT_CANDIDATES
         .iter()
         .filter(|artifact| baseline_artifact_path(fixture_id, Path::new(artifact)).is_file())
         .map(|artifact| artifact.to_string())
         .collect();
+
     assert!(
         !artifacts.is_empty(),
-        "fixture '{}' should provide at least one BAND output artifact",
+        "fixture '{}' should provide at least one EELS output artifact",
         fixture_id
     );
     artifacts
 }
 
-fn expected_band_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
-    expected_band_artifact_set_for_fixture(fixture_id)
+fn expected_eels_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
+    expected_eels_artifact_set_for_fixture(fixture_id)
         .into_iter()
         .collect()
 }
@@ -201,21 +178,20 @@ fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
         .collect()
 }
 
-fn stage_band_input(fixture_id: &str, destination: &Path) {
-    let source = baseline_artifact_path(fixture_id, Path::new("band.inp"));
-    if source.is_file() {
-        copy_file(&source, destination);
-        return;
-    }
+fn stage_eels_inputs(fixture_id: &str, destination_dir: &Path) {
+    copy_file(
+        &baseline_artifact_path(fixture_id, Path::new("eels.inp")),
+        &destination_dir.join("eels.inp"),
+    );
+    copy_file(
+        &baseline_artifact_path(fixture_id, Path::new("xmu.dat")),
+        &destination_dir.join("xmu.dat"),
+    );
 
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).expect("destination directory should exist");
+    let optional_magic_source = baseline_artifact_path(fixture_id, Path::new("magic.inp"));
+    if optional_magic_source.is_file() {
+        copy_file(&optional_magic_source, &destination_dir.join("magic.inp"));
     }
-    fs::write(
-        destination,
-        "mband : calculate bands if = 1\n   0\nemin, emax, estep : energy mesh\n      0.00000      0.00000      0.00000\nnkp : # points in k-path\n   0\nikpath : type of k-path\n  -1\nfreeprop :  empty lattice if = T\n F\n",
-    )
-    .expect("band input should be staged");
 }
 
 fn copy_file(source: &Path, destination: &Path) {
