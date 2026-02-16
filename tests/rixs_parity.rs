@@ -137,6 +137,7 @@ fn rixs_regression_suite_passes() {
         run_band: false,
         run_ldos: false,
         run_rixs: true,
+        run_crpa: false,
     };
 
     let report = run_regression(&config).expect("RIXS regression suite should run");

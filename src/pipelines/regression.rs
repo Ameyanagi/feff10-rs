@@ -1,6 +1,7 @@
 use super::PipelineExecutor;
 use super::band::BandPipelineScaffold;
 use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
+use super::crpa::CrpaPipelineScaffold;
 use super::fms::FmsPipelineScaffold;
 use super::ldos::LdosPipelineScaffold;
 use super::path::PathPipelineScaffold;
@@ -34,6 +35,7 @@ pub struct RegressionRunnerConfig {
     pub run_band: bool,
     pub run_ldos: bool,
     pub run_rixs: bool,
+    pub run_crpa: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -54,6 +56,7 @@ impl Default for RegressionRunnerConfig {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         }
     }
 }
@@ -129,6 +132,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         run_band_if_enabled(config, fixture)?;
         run_ldos_if_enabled(config, fixture)?;
         run_rixs_if_enabled(config, fixture)?;
+        run_crpa_if_enabled(config, fixture)?;
         run_path_if_enabled(config, fixture)?;
         run_fms_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
@@ -259,6 +263,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    CrpaPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     PathPipeline {
         fixture_id: String,
         source: FeffError,
@@ -343,6 +351,11 @@ impl Display for RegressionRunnerError {
                 "RIXS parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::CrpaPipeline { fixture_id, source } => write!(
+                f,
+                "CRPA parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::PathPipeline { fixture_id, source } => write!(
                 f,
                 "PATH scaffold execution failed for fixture '{}': {}",
@@ -393,6 +406,7 @@ impl Error for RegressionRunnerError {
             Self::BandPipeline { source, .. } => Some(source),
             Self::LdosPipeline { source, .. } => Some(source),
             Self::RixsPipeline { source, .. } => Some(source),
+            Self::CrpaPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
             Self::FmsPipeline { source, .. } => Some(source),
             Self::ReadDirectory { source, .. } => Some(source),
@@ -423,6 +437,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::BandPipeline { source, .. } => source,
             RegressionRunnerError::LdosPipeline { source, .. } => source,
             RegressionRunnerError::RixsPipeline { source, .. } => source,
+            RegressionRunnerError::CrpaPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
             RegressionRunnerError::FmsPipeline { source, .. } => source,
             RegressionRunnerError::ReadDirectory { .. }
@@ -682,6 +697,35 @@ fn run_rixs_if_enabled(
 
     RixsPipelineScaffold.execute(&request).map_err(|source| {
         RegressionRunnerError::RixsPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        }
+    })?;
+
+    Ok(())
+}
+
+fn run_crpa_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_crpa || !fixture.covers_module(PipelineModule::Crpa) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Crpa,
+        output_dir.join("crpa.inp"),
+        output_dir,
+    );
+
+    CrpaPipelineScaffold.execute(&request).map_err(|source| {
+        RegressionRunnerError::CrpaPipeline {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -1037,6 +1081,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -1108,6 +1153,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1170,6 +1216,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1233,6 +1280,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1298,6 +1346,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1364,6 +1413,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1429,6 +1479,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1494,6 +1545,7 @@ mod tests {
             run_band: true,
             run_ldos: false,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1563,6 +1615,7 @@ mod tests {
             run_band: false,
             run_ldos: true,
             run_rixs: false,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1629,6 +1682,7 @@ mod tests {
             run_band: false,
             run_ldos: false,
             run_rixs: true,
+            run_crpa: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1650,6 +1704,71 @@ mod tests {
         .iter()
         .any(|artifact| output_dir.join(artifact).is_file());
         assert!(has_rixs_output, "RIXS output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_crpa_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-CRPA-001",
+                  "modulesCovered": ["CRPA"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-CRPA-001").join("actual");
+        copy_repo_fixture_file("FX-CRPA-001", "crpa.inp", &staged_dir.join("crpa.inp"));
+        copy_repo_fixture_file("FX-CRPA-001", "pot.inp", &staged_dir.join("pot.inp"));
+        copy_repo_fixture_file("FX-CRPA-001", "geom.dat", &staged_dir.join("geom.dat"));
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: false,
+            run_ldos: false,
+            run_rixs: false,
+            run_crpa: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-CRPA-001").join("actual");
+        let has_crpa_output = ["wscrn.dat", "logscrn.dat"]
+            .iter()
+            .any(|artifact| output_dir.join(artifact).is_file());
+        assert!(has_crpa_output, "CRPA output should exist");
     }
 
     fn write_fixture_file(

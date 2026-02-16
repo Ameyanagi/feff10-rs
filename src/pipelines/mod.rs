@@ -1,5 +1,6 @@
 pub mod band;
 pub mod comparator;
+pub mod crpa;
 pub mod fms;
 pub mod ldos;
 pub mod path;

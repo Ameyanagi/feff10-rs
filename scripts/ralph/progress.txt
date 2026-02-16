@@ -16,6 +16,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT` before `PATH` before `FMS`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
 - XSPH parity hooks should validate `xsph.inp`/`geom.dat`/`global.inp` text plus byte-exact `pot.bin` against fixture baselines, derive outputs from baseline-available XSPH artifacts, and only enforce `wscrn.dat` matching when that optional input is staged.
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
+- Regression-suite tests that stage module inputs in fixture actual directories must also stage those same inputs in the test baseline directories when both share the compared artifact tree; otherwise the runner reports false "Missing baseline artifact" failures.
 - Core parity hooks for `POT`/`PATH`/`FMS` should enforce baseline input-contract checks (text-normalized for `.inp`/`.dat`, byte-exact for `phase.bin`) before materializing approved outputs.
 - When an approved fixture baseline omits a module-specific input artifact (for example `band.inp`), keep that input required in staged outputs but gate baseline-content matching on file availability while still enforcing baseline checks for shared required artifacts.
 - For edge-case fixtures backed by `reference_file` baselines, keep the module input contract required in staged outputs, gate per-input baseline matching on availability, and derive expected outputs from whichever canonical or reference-named artifacts exist.
@@ -368,4 +369,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: RIXS edge-case fixtures can follow the same baseline-driven parity contract when expected outputs are derived from available baseline files, including reference-named artifacts when canonical `rixs*.dat` outputs are absent.
   - Gotchas encountered: `FX-RIXS-001` baseline snapshots currently provide reference-file outputs (`referenceherfd*.dat`, `referencerixsET.dat`) but omit canonical RIXS staged inputs; parity execution must stage required inputs while gating baseline-input matching on per-file availability.
   - Useful context: Regression now supports `--run-rixs` for fixtures whose `modulesCovered` includes `RIXS`, using `<actual-root>/<fixture>/<actual-subdir>/rixs.inp` as the hook entrypoint and sibling staged input contract.
+---
+## 2026-02-16 21:03:19 JST - US-031
+- Implemented baseline-driven CRPA parity module `src/pipelines/crpa.rs`: validate staged inputs (`crpa.inp`, `pot.inp`, `geom.dat`) against approved fixture baselines and materialize canonical CRPA outputs from baseline snapshots.
+- Wired CRPA into regression and CLI surfaces by adding `RegressionRunnerConfig.run_crpa`, a `run_crpa_if_enabled` hook, CLI flags (`--run-crpa` / `--run-crpa-placeholder`), and regression-runner unit coverage.
+- Added CRPA parity integration coverage in `tests/crpa_parity.rs` (comparator-backed artifact checks + CRPA regression-suite pass test), updated existing parity-suite config literals to include the new `run_crpa` field, and documented `--run-crpa` behavior in `README.md`.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/crpa.rs`, `tests/crpa_parity.rs`, `tests/band_parity.rs`, `tests/fms_parity.rs`, `tests/ldos_parity.rs`, `tests/path_parity.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `tests/rixs_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: CRPA parity can follow the same baseline-driven hook contract as BAND/LDOS/RIXS with deterministic text-normalized input matching and output artifact derivation from baseline availability.
+  - Gotchas encountered: Introducing a new regression hook flag requires updating every explicit `RegressionRunnerConfig` literal in module/unit/integration tests, not just the CLI parser and default config.
+  - Useful context: `--run-crpa` uses `<actual-root>/<fixture>/<actual-subdir>/crpa.inp` as the entry artifact and expects sibling `pot.inp` + `geom.dat` before materializing `wscrn.dat`/`logscrn.dat`.
 ---

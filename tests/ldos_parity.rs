@@ -144,6 +144,7 @@ fn ldos_regression_suite_passes() {
         run_band: false,
         run_ldos: true,
         run_rixs: false,
+        run_crpa: false,
     };
 
     let report = run_regression(&config).expect("LDOS regression suite should run");

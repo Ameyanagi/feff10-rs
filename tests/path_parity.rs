@@ -170,6 +170,7 @@ fn path_regression_suite_passes() {
         run_band: false,
         run_ldos: false,
         run_rixs: false,
+        run_crpa: false,
     };
 
     let report = run_regression(&config).expect("PATH regression suite should run");
