@@ -58,6 +58,7 @@ Decision log reference:
 - D-4 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; includes exit-code mapping, stderr/stdout diagnostics contract, and legacy failure-class mapping.
 - Compatibility matrix status: Published on 2026-02-16 in `tasks/feff10-compatibility-matrix.md`.
 - Fixture manifest status: Published on 2026-02-16 in `tasks/golden-fixture-manifest.json`.
+- Fortran-to-Rust boundary map status: Published on 2026-02-16 in `tasks/fortran-rust-boundary-map.md`.
 
 ## 6. Story Execution Order
 

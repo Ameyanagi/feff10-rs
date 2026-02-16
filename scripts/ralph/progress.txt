@@ -2,6 +2,7 @@
 Started: Mon Feb 16 16:57:34 JST 2026
 ## Codebase Patterns
 - Store migration governance decisions under `tasks/` and add a reference from `tasks/prd-migrate-feff10-to-rust-improved.md` for traceability.
+- Module-boundary planning artifacts should map every in-scope module to a `PipelineModule` target in `src/domain/mod.rs`, a reserved implementation file under `src/pipelines/`, and at least one fixture ID from `tasks/golden-fixture-manifest.json`.
 - Keep story state consistent by updating `scripts/ralph/prd.json` (`passes`) and appending `scripts/ralph/progress.txt` in the same commit.
 - For cross-cutting migration decisions, include explicit architecture and CI implications in `tasks/migration-decision-log.md` and mirror the decision status in PRD references.
 - When a policy must be machine-consumable, keep a canonical JSON artifact under `tasks/` and document comparator ingestion rules alongside the approval decision.
@@ -147,4 +148,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Shared parser/pipeline APIs should return `ParserResult`/`PipelineResult` aliases so compatibility exit mapping remains centralized in `FeffError`.
   - Gotchas encountered: `run_regression` now returns shared `FeffError`; callers that previously expected `RegressionRunnerError` should handle categorized errors instead of internal variants.
   - Useful context: CLI runtime errors now derive exit code from `FeffError::exit_code()` and print the D-4-compatible diagnostic pair, while parity mismatches still return `Ok(1)` without fatal-error formatting.
+---
+## 2026-02-16 18:20:06 JST - US-013
+- Added `tasks/fortran-rust-boundary-map.md` as the canonical module-boundary artifact mapping every in-scope Fortran module to planned Rust workspace targets (`src/pipelines/*` + `PipelineModule` variants), with fixture traceability for each mapping.
+- Documented dependency-ordered implementation sequencing with explicit parallelization windows and required upstream artifact contracts derived from the compatibility matrix.
+- Added PRD traceability reference to the boundary-map artifact in `tasks/prd-migrate-feff10-to-rust-improved.md`.
+- Quality checks: `cargo check` passed; `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `tasks/fortran-rust-boundary-map.md`, `tasks/prd-migrate-feff10-to-rust-improved.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Boundary-map docs are most reusable when each module row includes all three anchors: Rust target path, `PipelineModule` variant, and fixture IDs.
+  - Gotchas encountered: The `SELF` module should map to `PipelineModule::SelfEnergy` and `src/pipelines/self_energy.rs` to avoid Rust keyword conflicts while preserving FEFF naming externally.
+  - Useful context: Sequencing should follow artifact contracts from `tasks/feff10-compatibility-matrix.md` (for example `XSPH` depends on `pot.bin`, while `PATH`/`FMS` depend on `phase.bin`).
 ---
