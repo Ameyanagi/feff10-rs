@@ -141,6 +141,7 @@ fn rdinp_regression_suite_passes() {
         run_rixs: false,
         run_crpa: false,
         run_compton: false,
+        run_debye: false,
     };
 
     let report = run_regression(&config).expect("RDINP regression suite should run");

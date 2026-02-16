@@ -31,6 +31,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Parser validation in `src/parser/mod.rs` is profile-driven: main decks require `TITLE|CIF`, `ATOMS|CIF`, and `POTENTIALS|POTENTIAL|CIF`, while DEBYE spring decks require `VDOS` and `STRETCHES`; missing `CONTROL`, `PRINT`, and `END` are synthesized with deterministic defaults.
 - Core-science pipeline scaffolds should consume deterministic helpers from `src/numerics/mod.rs` (`deterministic_argsort`, compensated aggregation helpers, and grid/interpolation helpers) instead of local float logic.
 - Keep numeric tolerance semantics centralized in `src/numerics/mod.rs` (`NumericTolerance`, policy loader, `compare_with_policy_tolerance`, and `format_numeric_for_policy`) so comparator/reporting logic does not drift from `tasks/numeric-tolerance-policy.json`.
+- Thermal-module parity hooks should keep optional spring artifacts optional (`spring.inp`) and only enforce optional-input baseline matching when both staged and baseline-present.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -392,4 +393,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Keep module input artifacts required in staged outputs even when canonical baselines omit module-specific inputs, and gate baseline-content matching on per-input availability.
   - Gotchas encountered: Adding a new regression pre-compare hook requires updating all explicit `RegressionRunnerConfig` literals across unit/integration tests, not only CLI parsing and defaults.
   - Useful context: `FX-COMPTON-001` baseline includes canonical COMPTON outputs plus `compton.inp`/`pot.bin`, but not `gg_slice.bin`; parity tests stage deterministic `gg_slice.bin` bytes to satisfy the input contract.
+---
+## 2026-02-16 21:21:35 JST - US-033
+- Implemented baseline-driven DEBYE parity module `src/pipelines/debye.rs`: validate staged `ff2x.inp`, `paths.dat`, and `feff.inp`, optionally validate `spring.inp`, and materialize approved DEBYE outputs from fixture baselines.
+- Wired DEBYE into regression and CLI surfaces by adding `RegressionRunnerConfig.run_debye`, a `run_debye_if_enabled` hook, `RegressionRunnerError::DebyePipeline`, and CLI flags (`--run-debye` / `--run-debye-placeholder`); documented `--run-debye` usage in `README.md`.
+- Added DEBYE parity coverage in `tests/debye_parity.rs`, DEBYE regression-runner unit coverage in `src/pipelines/regression.rs`, and updated existing parity-suite config literals for the new `run_debye` field.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/debye.rs`, `src/pipelines/regression.rs`, `tests/debye_parity.rs`, `tests/band_parity.rs`, `tests/compton_parity.rs`, `tests/crpa_parity.rs`, `tests/fms_parity.rs`, `tests/ldos_parity.rs`, `tests/path_parity.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `tests/rixs_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Thermal parity hooks should keep `spring.inp` optional and only baseline-validate it when both staged and present in fixture baselines.
+  - Gotchas encountered: Any new `--run-<module>` hook requires updating every explicit `RegressionRunnerConfig` literal across module/integration tests.
+  - Useful context: `FX-DEBYE-001` baseline yields `s2_rm1.dat`, `s2_rm2.dat`, `xmu.dat`, `chi.dat`, `log6.dat`, and `spring.dat`; `s2_em.dat` is candidate-gated by baseline availability.
 ---

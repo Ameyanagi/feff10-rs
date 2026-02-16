@@ -159,6 +159,7 @@ fn compton_regression_suite_passes() {
         run_rixs: false,
         run_crpa: false,
         run_compton: true,
+        run_debye: false,
     };
 
     let report = run_regression(&config).expect("COMPTON regression suite should run");

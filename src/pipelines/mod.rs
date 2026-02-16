@@ -2,6 +2,7 @@ pub mod band;
 pub mod comparator;
 pub mod compton;
 pub mod crpa;
+pub mod debye;
 pub mod fms;
 pub mod ldos;
 pub mod path;
