@@ -12,6 +12,7 @@ pub mod rdinp;
 pub mod regression;
 pub mod rixs;
 pub mod screen;
+pub mod self_energy;
 pub mod xsph;
 
 use crate::domain::{

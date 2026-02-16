@@ -12,6 +12,7 @@ use super::pot::PotPipelineScaffold;
 use super::rdinp::RdinpPipelineScaffold;
 use super::rixs::RixsPipelineScaffold;
 use super::screen::ScreenPipelineScaffold;
+use super::self_energy::SelfEnergyPipelineScaffold;
 use super::xsph::XsphPipelineScaffold;
 use crate::domain::{FeffError, PipelineModule, PipelineRequest, PipelineResult};
 use serde::{Deserialize, Serialize};
@@ -44,6 +45,7 @@ pub struct RegressionRunnerConfig {
     pub run_debye: bool,
     pub run_dmdw: bool,
     pub run_screen: bool,
+    pub run_self: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -69,6 +71,7 @@ impl Default for RegressionRunnerConfig {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         }
     }
 }
@@ -141,6 +144,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         run_rdinp_if_enabled(config, fixture)?;
         run_pot_if_enabled(config, fixture)?;
         run_screen_if_enabled(config, fixture)?;
+        run_self_if_enabled(config, fixture)?;
         run_xsph_if_enabled(config, fixture)?;
         run_band_if_enabled(config, fixture)?;
         run_ldos_if_enabled(config, fixture)?;
@@ -291,6 +295,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    SelfPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     DebyePipeline {
         fixture_id: String,
         source: FeffError,
@@ -398,6 +406,11 @@ impl Display for RegressionRunnerError {
                 "SCREEN parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::SelfPipeline { fixture_id, source } => write!(
+                f,
+                "SELF parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::DebyePipeline { fixture_id, source } => write!(
                 f,
                 "DEBYE parity execution failed for fixture '{}': {}",
@@ -461,6 +474,7 @@ impl Error for RegressionRunnerError {
             Self::CrpaPipeline { source, .. } => Some(source),
             Self::ComptonPipeline { source, .. } => Some(source),
             Self::ScreenPipeline { source, .. } => Some(source),
+            Self::SelfPipeline { source, .. } => Some(source),
             Self::DebyePipeline { source, .. } => Some(source),
             Self::DmdwPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
@@ -496,6 +510,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::CrpaPipeline { source, .. } => source,
             RegressionRunnerError::ComptonPipeline { source, .. } => source,
             RegressionRunnerError::ScreenPipeline { source, .. } => source,
+            RegressionRunnerError::SelfPipeline { source, .. } => source,
             RegressionRunnerError::DebyePipeline { source, .. } => source,
             RegressionRunnerError::DmdwPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
@@ -848,6 +863,35 @@ fn run_screen_if_enabled(
             source,
         }
     })?;
+
+    Ok(())
+}
+
+fn run_self_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_self || !fixture.covers_module(PipelineModule::SelfEnergy) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::SelfEnergy,
+        output_dir.join("sfconv.inp"),
+        output_dir,
+    );
+
+    SelfEnergyPipelineScaffold
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::SelfPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        })?;
 
     Ok(())
 }
@@ -1262,6 +1306,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -1338,6 +1383,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1405,6 +1451,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1473,6 +1520,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1543,6 +1591,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1614,6 +1663,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1684,6 +1734,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1754,6 +1805,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1828,6 +1880,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1899,6 +1952,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1979,6 +2033,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2046,6 +2101,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: true,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2056,6 +2112,84 @@ mod tests {
             .iter()
             .any(|artifact| output_dir.join(artifact).is_file());
         assert!(has_screen_output, "SCREEN output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_self_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-SELF-001",
+                  "modulesCovered": ["SELF"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-SELF-001").join("actual");
+        stage_repo_self_inputs("FX-SELF-001", &staged_dir);
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: false,
+            run_ldos: false,
+            run_rixs: false,
+            run_crpa: false,
+            run_compton: false,
+            run_debye: false,
+            run_dmdw: false,
+            run_screen: false,
+            run_self: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-SELF-001").join("actual");
+        let has_self_output = [
+            "specfunct.dat",
+            "logsfconv.dat",
+            "xmu.dat",
+            "chi.dat",
+            "selfenergy.dat",
+            "sigma.dat",
+            "sig2FEFF.dat",
+            "mpse.dat",
+            "opconsCu.dat",
+        ]
+        .iter()
+        .any(|artifact| output_dir.join(artifact).is_file());
+        assert!(has_self_output, "SELF output should exist");
     }
 
     #[test]
@@ -2113,6 +2247,7 @@ mod tests {
             run_debye: false,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2180,6 +2315,7 @@ mod tests {
             run_debye: true,
             run_dmdw: false,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2255,6 +2391,7 @@ mod tests {
             run_debye: false,
             run_dmdw: true,
             run_screen: false,
+            run_self: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2375,6 +2512,50 @@ mod tests {
             "screen.inp",
             &destination_dir.join("screen.inp"),
             "ioverride: optional screening override\n0\n",
+        );
+    }
+
+    fn stage_repo_self_inputs(fixture_id: &str, destination_dir: &Path) {
+        stage_repo_text_input(
+            fixture_id,
+            "sfconv.inp",
+            &destination_dir.join("sfconv.inp"),
+            "msfconv, ipse, ipsk\n   1   0   0\n",
+        );
+
+        let mut staged_spectrum = false;
+        for artifact in ["xmu.dat", "chi.dat", "loss.dat"] {
+            let source = Path::new("artifacts/fortran-baselines")
+                .join(fixture_id)
+                .join("baseline")
+                .join(artifact);
+            if !source.is_file() {
+                continue;
+            }
+
+            stage_repo_text_input(
+                fixture_id,
+                artifact,
+                &destination_dir.join(artifact),
+                "0.0 0.0\n",
+            );
+            staged_spectrum = true;
+        }
+
+        if !staged_spectrum {
+            stage_repo_text_input(
+                fixture_id,
+                "xmu.dat",
+                &destination_dir.join("xmu.dat"),
+                "0.0 0.0\n",
+            );
+        }
+
+        stage_repo_text_input(
+            fixture_id,
+            "exc.dat",
+            &destination_dir.join("exc.dat"),
+            "0.0 0.0\n",
         );
     }
 

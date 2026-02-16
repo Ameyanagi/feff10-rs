@@ -34,6 +34,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Keep numeric tolerance semantics centralized in `src/numerics/mod.rs` (`NumericTolerance`, policy loader, `compare_with_policy_tolerance`, and `format_numeric_for_policy`) so comparator/reporting logic does not drift from `tasks/numeric-tolerance-policy.json`.
 - Thermal-module parity hooks should keep optional spring artifacts optional (`spring.inp`) and only enforce optional-input baseline matching when both staged and baseline-present.
 - Screened-core-hole parity hooks should require shared staged inputs (`pot.inp`, `geom.dat`, `ldos.inp`) and only baseline-validate optional overrides (`screen.inp`) when both staged and baseline copies exist.
+- SELF parity hooks should require `sfconv.inp`, enforce that at least one staged spectrum input is present (`xmu.dat`, `chi.dat`, `loss.dat`, or `feffNNNN.dat`), and baseline-validate only the staged spectra that have baseline counterparts.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -428,4 +429,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Screened-core-hole parity can follow the same baseline-driven contract as other modules when shared required inputs are enforced and override inputs remain optional.
   - Gotchas encountered: Adding a new regression pre-compare hook requires updating all explicit `RegressionRunnerConfig` literals across module and integration tests.
   - Useful context: `--run-screen` uses `<actual-root>/<fixture>/<actual-subdir>/pot.inp` as the entry artifact and expects sibling `geom.dat` + `ldos.inp`, with `screen.inp` treated as optional baseline-gated input.
+---
+## 2026-02-16 21:48:26 JST - US-036
+- Implemented baseline-driven SELF parity module `src/pipelines/self_energy.rs`: validate staged `sfconv.inp`, enforce at least one spectrum input (`xmu.dat`, `chi.dat`, `loss.dat`, or `feffNNNN.dat`), optionally validate `exc.dat`, and materialize approved SELF outputs from fixture baselines.
+- Wired SELF into regression and CLI surfaces by adding `RegressionRunnerConfig.run_self`, `run_self_if_enabled`, `RegressionRunnerError::SelfPipeline`, and CLI flags `--run-self` / `--run-self-placeholder`; documented `--run-self` usage in `README.md`.
+- Added SELF parity coverage in `tests/self_parity.rs`, module/unit coverage in `src/pipelines/self_energy.rs`, and regression-runner hook coverage in `src/pipelines/regression.rs`; updated existing parity-suite config literals for the new `run_self` field.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/self_energy.rs`, `tests/self_parity.rs`, `tests/band_parity.rs`, `tests/compton_parity.rs`, `tests/crpa_parity.rs`, `tests/debye_parity.rs`, `tests/dmdw_parity.rs`, `tests/fms_parity.rs`, `tests/ldos_parity.rs`, `tests/path_parity.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `tests/rixs_parity.rs`, `tests/screen_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: SELF parity can follow the same baseline-driven hook contract as other modules, with an explicit one-of spectrum input requirement plus optional baseline-gated `exc.dat` validation.
+  - Gotchas encountered: Adding a new regression pre-compare hook still requires updating every explicit `RegressionRunnerConfig` literal across module and integration tests.
+  - Useful context: `FX-SELF-001` currently compares cleanly when `sfconv.inp` plus staged `xmu.dat`/`loss.dat` are present; baseline outputs available for materialization include `specfunct.dat`, `logsfconv.dat`, `xmu.dat`, `sig2FEFF.dat`, `mpse.dat`, and `opconsCu.dat`.
 ---

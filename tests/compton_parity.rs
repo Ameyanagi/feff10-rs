@@ -162,6 +162,7 @@ fn compton_regression_suite_passes() {
         run_debye: false,
         run_dmdw: false,
         run_screen: false,
+        run_self: false,
     };
 
     let report = run_regression(&config).expect("COMPTON regression suite should run");

@@ -161,6 +161,7 @@ fn debye_regression_suite_passes() {
         run_debye: true,
         run_dmdw: false,
         run_screen: false,
+        run_self: false,
     };
 
     let report = run_regression(&config).expect("DEBYE regression suite should run");
