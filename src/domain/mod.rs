@@ -195,6 +195,30 @@ pub enum InputCardKind {
     Crpa,
     Vdos,
     Stretches,
+    Screen,
+    Band,
+    FullSpectrum,
+    Mband,
+    Nkp,
+    Ikpath,
+    Freeprop,
+    Ner,
+    Nei,
+    Maxl,
+    Irrh,
+    Iend,
+    Lfxc,
+    Emin,
+    Emax,
+    Eimax,
+    Ermin,
+    Rfms,
+    Nrptx0,
+    Msfconv,
+    Wsigk,
+    Ispec,
+    Cfname,
+    Mfullspectrum,
     Unknown(String),
 }
 
@@ -245,6 +269,30 @@ impl InputCardKind {
             "CRPA" => Self::Crpa,
             "VDOS" => Self::Vdos,
             "STRETCHES" => Self::Stretches,
+            "SCREEN" => Self::Screen,
+            "BAND" => Self::Band,
+            "FULLSPECTRUM" => Self::FullSpectrum,
+            "MBAND" => Self::Mband,
+            "NKP" => Self::Nkp,
+            "IKPATH" => Self::Ikpath,
+            "FREEPROP" => Self::Freeprop,
+            "NER" => Self::Ner,
+            "NEI" => Self::Nei,
+            "MAXL" => Self::Maxl,
+            "IRRH" => Self::Irrh,
+            "IEND" => Self::Iend,
+            "LFXC" => Self::Lfxc,
+            "EMIN" => Self::Emin,
+            "EMAX" => Self::Emax,
+            "EIMAX" => Self::Eimax,
+            "ERMIN" => Self::Ermin,
+            "RFMS" => Self::Rfms,
+            "NRPTX0" => Self::Nrptx0,
+            "MSFCONV" => Self::Msfconv,
+            "WSIGK" => Self::Wsigk,
+            "ISPEC" => Self::Ispec,
+            "CFNAME" => Self::Cfname,
+            "MFULLSPECTRUM" => Self::Mfullspectrum,
             _ => Self::Unknown(keyword.to_owned()),
         }
     }
@@ -275,6 +323,30 @@ impl InputCardKind {
                 module,
                 PipelineModule::SelfEnergy | PipelineModule::Xsph | PipelineModule::FullSpectrum
             ),
+            Self::Screen
+            | Self::Ner
+            | Self::Nei
+            | Self::Maxl
+            | Self::Irrh
+            | Self::Iend
+            | Self::Lfxc
+            | Self::Emin
+            | Self::Emax
+            | Self::Eimax
+            | Self::Ermin
+            | Self::Rfms
+            | Self::Nrptx0 => matches!(
+                module,
+                PipelineModule::Screen | PipelineModule::Xsph | PipelineModule::FullSpectrum
+            ),
+            Self::Msfconv | Self::Wsigk | Self::Ispec | Self::Cfname => matches!(
+                module,
+                PipelineModule::SelfEnergy | PipelineModule::Xsph | PipelineModule::FullSpectrum
+            ),
+            Self::Band | Self::Mband | Self::Nkp | Self::Ikpath | Self::Freeprop => {
+                module == PipelineModule::Band
+            }
+            Self::FullSpectrum | Self::Mfullspectrum => module == PipelineModule::FullSpectrum,
             _ => true,
         }
     }

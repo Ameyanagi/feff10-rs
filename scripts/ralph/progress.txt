@@ -6,6 +6,7 @@
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
+- Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -62,4 +63,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Use `RegressionRunReport.mismatch_fixtures` rather than scanning all fixtures/artifacts when reporting parity failures in CLI or tooling surfaces.
   - Gotchas encountered: Fixture pass/fail thresholds can still mark a fixture as passing while artifact mismatches exist; mismatch reporting must be computed independently of fixture pass status.
   - Useful context: There are still no repository `AGENTS.md` files, so reusable workflow details continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 07:34:01 JST] - US-006
+- Expanded parser card coverage for manifest auxiliary entry decks by adding typed card mappings for SCREEN/SFCONV/BAND/FULLSPECTRUM parameter-deck keywords (`NER`, `MSFCONV`, `MBAND`, `MFULLSPECTRUM`, etc.) and legacy aliases.
+- Updated parser token handling to normalize trailing punctuation on card keywords (`,`/`:`/`;`), add an auxiliary-deck validation profile, and keep named continuation lines for `CFNAME` and `FREEPROP` value rows.
+- Strengthened fixture-driven parser coverage in `tests/parser_fixture_inputs.rs` so missing manifest `REFERENCE/*.inp` files are resolved from `artifacts/fortran-baselines/<fixture>/baseline/<basename>`; capture-only unresolved entries are skipped only for `requires_fortran_capture` fixtures.
+- Added parser unit coverage for screen/sfconv/band/fullspectrum auxiliary deck formats and punctuation/continuation behavior.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/domain/mod.rs`, `src/parser/mod.rs`, `tests/parser_fixture_inputs.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Auxiliary FEFF module decks frequently use punctuation-suffixed keywords (`msfconv,`, `emin,`) and should be normalized before keyword classification to avoid false unsupported-card diagnostics.
+  - Gotchas encountered: `FX-BAND-001` still lacks `REFERENCE/band.inp` in both fixture source and baseline snapshot, so parser coverage must treat it as an expected capture-time prerequisite until fixture sources are refreshed.
+  - Useful context: `artifacts/fortran-baselines/FX-SELF-001/baseline/band.inp`, `screen.inp`, `sfconv.inp`, and `artifacts/fortran-baselines/FX-FULLSPECTRUM-001/baseline/fullspectrum.inp` provide concrete auxiliary deck inputs for parser regression coverage.
 ---

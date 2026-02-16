@@ -14,8 +14,9 @@ pub struct InputTokenLine {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ValidationProfile {
-    MainDeck,
-    DebyeSpringDeck,
+    Main,
+    DebyeSpring,
+    Auxiliary,
 }
 
 pub fn tokenize_input_deck(source: &str) -> Vec<InputTokenLine> {
@@ -29,12 +30,22 @@ pub fn tokenize_input_deck(source: &str) -> Vec<InputTokenLine> {
 pub fn parse_input_deck(source: &str) -> ParserResult<InputDeck> {
     let mut cards = Vec::new();
     for token_line in tokenize_input_deck(source) {
+        if let Some(last_card) = cards.last_mut()
+            && should_attach_named_continuation(last_card, &token_line)
+        {
+            last_card.continuations.push(InputCardContinuation {
+                source_line: token_line.source_line,
+                values: token_line.tokens,
+                raw: token_line.raw,
+            });
+            continue;
+        }
+
         let Some(first_token) = token_line.tokens.first().map(|token| token.as_str()) else {
             continue;
         };
 
-        if is_valid_keyword(first_token) {
-            let keyword = first_token.to_ascii_uppercase();
+        if let Some(keyword) = normalize_keyword_token(first_token) {
             let kind = InputCardKind::from_keyword(&keyword);
             let values = token_line.tokens.into_iter().skip(1).collect();
             cards.push(InputCard::new(
@@ -75,8 +86,9 @@ fn validate_input_deck(mut deck: InputDeck) -> ParserResult<InputDeck> {
     }
 
     match determine_validation_profile(&deck) {
-        ValidationProfile::MainDeck => validate_main_deck(&mut deck)?,
-        ValidationProfile::DebyeSpringDeck => validate_debye_spring_deck(&mut deck)?,
+        ValidationProfile::Main => validate_main_deck(&mut deck)?,
+        ValidationProfile::DebyeSpring => validate_debye_spring_deck(&mut deck)?,
+        ValidationProfile::Auxiliary => {}
     }
 
     Ok(deck)
@@ -95,10 +107,57 @@ fn determine_validation_profile(deck: &InputDeck) -> ValidationProfile {
     });
 
     if has_spring_cards && !has_non_spring_cards {
-        ValidationProfile::DebyeSpringDeck
+        ValidationProfile::DebyeSpring
+    } else if is_auxiliary_parameter_deck(deck) {
+        ValidationProfile::Auxiliary
     } else {
-        ValidationProfile::MainDeck
+        ValidationProfile::Main
     }
+}
+
+fn is_auxiliary_parameter_deck(deck: &InputDeck) -> bool {
+    const MAIN_DECK_INDICATOR_KEYWORDS: [&str; 8] = [
+        "TITLE",
+        "CIF",
+        "EDGE",
+        "ATOMS",
+        "POTENTIALS",
+        "POTENTIAL",
+        "CONTROL",
+        "PRINT",
+    ];
+    const AUXILIARY_DECK_KEYWORDS: [&str; 27] = [
+        "SCREEN",
+        "NER",
+        "NEI",
+        "MAXL",
+        "IRRH",
+        "IEND",
+        "LFXC",
+        "EMIN",
+        "EMAX",
+        "EIMAX",
+        "ERMIN",
+        "RFMS",
+        "NRPTX0",
+        "SFCONV",
+        "MSFCONV",
+        "WSIGK",
+        "ISPEC",
+        "CFNAME",
+        "BAND",
+        "MBAND",
+        "NKP",
+        "IKPATH",
+        "FREEPROP",
+        "FULLSPECTRUM",
+        "MFULLSPECTRUM",
+        "OPCONS",
+        "MPSE",
+    ];
+
+    !has_any_keyword(deck, &MAIN_DECK_INDICATOR_KEYWORDS)
+        && has_any_keyword(deck, &AUXILIARY_DECK_KEYWORDS)
 }
 
 fn validate_main_deck(deck: &mut InputDeck) -> ParserResult<()> {
@@ -212,6 +271,15 @@ fn strip_inline_comment(line: &str) -> &str {
     }
 }
 
+fn normalize_keyword_token(keyword: &str) -> Option<String> {
+    let normalized = keyword.trim_end_matches([',', ':', ';']);
+    if normalized.is_empty() {
+        return None;
+    }
+
+    is_valid_keyword(normalized).then(|| normalized.to_ascii_uppercase())
+}
+
 fn is_valid_keyword(keyword: &str) -> bool {
     let mut chars = keyword.chars();
     match chars.next() {
@@ -220,6 +288,23 @@ fn is_valid_keyword(keyword: &str) -> bool {
     }
 
     chars.all(|ch| ch.is_ascii_alphanumeric() || ch == '_')
+}
+
+fn should_attach_named_continuation(last_card: &InputCard, token_line: &InputTokenLine) -> bool {
+    if token_line.tokens.len() != 1 {
+        return false;
+    }
+
+    match last_card.keyword.as_str() {
+        "CFNAME" => true,
+        "FREEPROP" => is_fortran_bool_literal(&token_line.tokens[0]),
+        _ => false,
+    }
+}
+
+fn is_fortran_bool_literal(token: &str) -> bool {
+    let normalized = token.trim_matches('.').to_ascii_uppercase();
+    matches!(normalized.as_str(), "T" | "F" | "TRUE" | "FALSE")
 }
 
 #[cfg(test)]
@@ -330,6 +415,63 @@ mod tests {
         assert_eq!(deck.cards[1].kind, InputCardKind::Stretches);
         assert_eq!(deck.cards[2].kind, InputCardKind::End);
         assert_eq!(deck.cards[2].source_line, 0);
+    }
+
+    #[test]
+    fn parser_supports_auxiliary_screen_parameter_deck_profile() {
+        let deck = parse_input_deck(
+            "ner 40\nnei 20\nmaxl 4\nirrh 1\niend 0\nlfxc 0\nemin -40.0\nemax 0.0\neimax 2.0\nermin 1e-3\nrfms 4.0\nnrptx0 251\n",
+        )
+        .expect("screen parameter deck should parse");
+
+        assert_eq!(deck.cards.len(), 12);
+        assert_eq!(deck.cards[0].kind, InputCardKind::Ner);
+        assert_eq!(deck.cards[7].kind, InputCardKind::Emax);
+        assert_eq!(deck.cards[11].kind, InputCardKind::Nrptx0);
+    }
+
+    #[test]
+    fn parser_supports_legacy_auxiliary_keywords_with_suffix_punctuation() {
+        let deck = parse_input_deck(
+            "msfconv, ipse, ipsk\n1 0 0\nwsigk, cen\n0.0 0.0\nispec, ipr6\n1 0\ncfname\nNULL\n",
+        )
+        .expect("sfconv parameter deck should parse");
+
+        assert_eq!(deck.cards.len(), 4);
+        assert_eq!(deck.cards[0].kind, InputCardKind::Msfconv);
+        assert_eq!(deck.cards[1].kind, InputCardKind::Wsigk);
+        assert_eq!(deck.cards[2].kind, InputCardKind::Ispec);
+        assert_eq!(deck.cards[3].kind, InputCardKind::Cfname);
+        assert_eq!(deck.cards[3].continuations.len(), 1);
+        assert_eq!(deck.cards[3].continuations[0].values, vec!["NULL"]);
+    }
+
+    #[test]
+    fn parser_attaches_freeprop_fortran_boolean_as_continuation() {
+        let deck = parse_input_deck(
+            "mband : calculate bands if = 1\n0\nemin, emax, estep : energy mesh\n0.0 0.0 0.0\nnkp : # points in k-path\n0\nikpath : type of k-path\n-1\nfreeprop : empty lattice if = T\nF\n",
+        )
+        .expect("band parameter deck should parse");
+
+        assert_eq!(deck.cards.len(), 5);
+        assert_eq!(deck.cards[0].kind, InputCardKind::Mband);
+        assert_eq!(deck.cards[1].kind, InputCardKind::Emin);
+        assert_eq!(deck.cards[2].kind, InputCardKind::Nkp);
+        assert_eq!(deck.cards[3].kind, InputCardKind::Ikpath);
+        assert_eq!(deck.cards[4].kind, InputCardKind::Freeprop);
+        assert_eq!(deck.cards[4].continuations.len(), 1);
+        assert_eq!(deck.cards[4].continuations[0].values, vec!["F"]);
+    }
+
+    #[test]
+    fn parser_supports_mfullspectrum_control_deck() {
+        let deck =
+            parse_input_deck("mFullSpectrum\n0\n").expect("fullspectrum control deck should parse");
+
+        assert_eq!(deck.cards.len(), 1);
+        assert_eq!(deck.cards[0].kind, InputCardKind::Mfullspectrum);
+        assert_eq!(deck.cards[0].continuations.len(), 1);
+        assert_eq!(deck.cards[0].continuations[0].values, vec!["0"]);
     }
 
     #[test]

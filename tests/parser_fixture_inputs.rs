@@ -15,6 +15,7 @@ struct FixtureDefinition {
     id: String,
     input_directory: String,
     entry_files: Vec<String>,
+    baseline_status: String,
 }
 
 #[test]
@@ -28,25 +29,24 @@ fn parser_supports_known_cards_in_fixture_entry_input_files() {
                 continue;
             }
 
-            let input_path = project_root.join(&fixture.input_directory).join(entry_file);
-            if !input_path.exists() {
-                continue;
-            }
-
-            let source = fs::read_to_string(&input_path).unwrap_or_else(|error| {
-                panic!(
-                    "fixture {} entry file {} should be readable: {}",
-                    fixture.id,
-                    input_path.display(),
-                    error
-                )
-            });
+            let source = match read_fixture_entry_source(&project_root, fixture, entry_file) {
+                Ok(source) => source,
+                Err(error) if fixture.baseline_status == "requires_fortran_capture" => {
+                    eprintln!(
+                        "skipping capture-only fixture {} entry file {}: {}",
+                        fixture.id, entry_file, error
+                    );
+                    continue;
+                }
+                Err(error) => panic!(
+                    "fixture {} entry file {} should resolve from fixture input directory or baseline snapshot: {}",
+                    fixture.id, entry_file, error
+                ),
+            };
             let deck = parse_input_deck(&source).unwrap_or_else(|error| {
                 panic!(
-                    "fixture {} entry file {} should parse: {}",
-                    fixture.id,
-                    input_path.display(),
-                    error
+                    "fixture {} entry file {} should parse without unsupported-card failures: {}",
+                    fixture.id, entry_file, error
                 )
             });
 
@@ -62,11 +62,55 @@ fn parser_supports_known_cards_in_fixture_entry_input_files() {
                 unknown_cards.is_empty(),
                 "fixture {} entry file {} has uncovered cards: {:?}",
                 fixture.id,
-                input_path.display(),
+                entry_file,
                 unknown_cards
             );
         }
     }
+}
+
+fn read_fixture_entry_source(
+    project_root: &Path,
+    fixture: &FixtureDefinition,
+    entry_file: &str,
+) -> Result<String, String> {
+    let direct_path = project_root.join(&fixture.input_directory).join(entry_file);
+    if direct_path.exists() {
+        return fs::read_to_string(&direct_path).map_err(|error| {
+            format!(
+                "failed to read fixture path '{}': {}",
+                direct_path.display(),
+                error
+            )
+        });
+    }
+
+    let Some(entry_basename) = Path::new(entry_file).file_name() else {
+        return Err(format!(
+            "entry file '{}' does not have a valid basename",
+            entry_file
+        ));
+    };
+    let baseline_path = project_root
+        .join("artifacts/fortran-baselines")
+        .join(&fixture.id)
+        .join("baseline")
+        .join(entry_basename);
+    if baseline_path.exists() {
+        return fs::read_to_string(&baseline_path).map_err(|error| {
+            format!(
+                "failed to read baseline snapshot path '{}': {}",
+                baseline_path.display(),
+                error
+            )
+        });
+    }
+
+    Err(format!(
+        "missing both fixture path '{}' and baseline snapshot '{}'",
+        direct_path.display(),
+        baseline_path.display()
+    ))
 }
 
 fn read_manifest(path: &str) -> FixtureManifest {
