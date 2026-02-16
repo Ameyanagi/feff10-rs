@@ -1,4 +1,5 @@
 use crate::domain::FeffError;
+use crate::numerics::{NumericTolerance, compare_with_policy_tolerance, format_numeric_for_policy};
 use globset::{Glob, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -31,16 +32,6 @@ impl CompiledCategory {
 pub enum ComparisonMode {
     ExactText,
     NumericTolerance,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
-pub struct NumericTolerance {
-    #[serde(rename = "absTol")]
-    pub abs_tol: f64,
-    #[serde(rename = "relTol")]
-    pub rel_tol: f64,
-    #[serde(rename = "relativeFloor")]
-    pub relative_floor: f64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -303,20 +294,21 @@ impl Comparator {
             baseline_values.iter().zip(actual_values.iter()).enumerate()
         {
             if baseline_value.is_finite() && actual_value.is_finite() {
-                let abs_diff = (actual_value - baseline_value).abs();
-                let rel_denominator = baseline_value.abs().max(tolerance.relative_floor);
-                let rel_diff = abs_diff / rel_denominator;
-                max_abs_diff = max_abs_diff.max(abs_diff);
-                max_rel_diff = max_rel_diff.max(rel_diff);
+                let comparison =
+                    compare_with_policy_tolerance(*baseline_value, *actual_value, tolerance);
+                max_abs_diff = max_abs_diff.max(comparison.abs_diff);
+                max_rel_diff = max_rel_diff.max(comparison.rel_diff);
 
-                if !(abs_diff <= tolerance.abs_tol
-                    || abs_diff <= tolerance.rel_tol * rel_denominator)
-                {
+                if !comparison.passes {
                     failing_values += 1;
                     if first_failure.is_none() {
                         first_failure = Some(format!(
                             "index {} baseline={} actual={} abs_diff={} rel_diff={}",
-                            index, baseline_value, actual_value, abs_diff, rel_diff
+                            index,
+                            format_numeric_for_policy(*baseline_value),
+                            format_numeric_for_policy(*actual_value),
+                            format_numeric_for_policy(comparison.abs_diff),
+                            format_numeric_for_policy(comparison.rel_diff)
                         ));
                     }
                 }
@@ -333,7 +325,9 @@ impl Comparator {
                 if first_failure.is_none() {
                     first_failure = Some(format!(
                         "index {} baseline={} actual={} non-finite mismatch",
-                        index, baseline_value, actual_value
+                        index,
+                        format_numeric_for_policy(*baseline_value),
+                        format_numeric_for_policy(*actual_value)
                     ));
                 }
             }

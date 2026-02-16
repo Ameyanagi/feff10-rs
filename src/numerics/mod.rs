@@ -1,3 +1,150 @@
+use serde::{Deserialize, Serialize};
+use std::error::Error;
+use std::fmt::{Display, Formatter};
+use std::fs;
+use std::path::{Path, PathBuf};
+
+pub const NUMERIC_TOLERANCE_POLICY_PATH: &str = "tasks/numeric-tolerance-policy.json";
+
+#[derive(Debug, Clone, Copy, PartialEq, Deserialize, Serialize)]
+pub struct NumericTolerance {
+    #[serde(rename = "absTol")]
+    pub abs_tol: f64,
+    #[serde(rename = "relTol")]
+    pub rel_tol: f64,
+    #[serde(rename = "relativeFloor")]
+    pub relative_floor: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct PolicyToleranceComparison {
+    pub abs_diff: f64,
+    pub rel_diff: f64,
+    pub passes: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct NumericTolerancePolicy {
+    #[serde(rename = "policyVersion")]
+    pub policy_version: String,
+    #[serde(rename = "defaultMode")]
+    pub default_mode: String,
+    #[serde(rename = "matchStrategy")]
+    pub match_strategy: String,
+    #[serde(default)]
+    pub categories: Vec<NumericToleranceCategory>,
+}
+
+impl NumericTolerancePolicy {
+    pub fn tolerance_for_category(&self, category_id: &str) -> Option<NumericTolerance> {
+        self.categories
+            .iter()
+            .find(|category| category.id == category_id)
+            .and_then(|category| category.tolerance)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize, Serialize)]
+pub struct NumericToleranceCategory {
+    pub id: String,
+    pub mode: String,
+    #[serde(rename = "fileGlobs", default)]
+    pub file_globs: Vec<String>,
+    pub tolerance: Option<NumericTolerance>,
+}
+
+#[derive(Debug)]
+pub enum NumericTolerancePolicyError {
+    Read {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    Parse {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
+}
+
+impl Display for NumericTolerancePolicyError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Read { path, source } => {
+                write!(
+                    f,
+                    "failed to read numeric tolerance policy '{}': {}",
+                    path.display(),
+                    source
+                )
+            }
+            Self::Parse { path, source } => {
+                write!(
+                    f,
+                    "failed to parse numeric tolerance policy '{}': {}",
+                    path.display(),
+                    source
+                )
+            }
+        }
+    }
+}
+
+impl Error for NumericTolerancePolicyError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            Self::Read { source, .. } => Some(source),
+            Self::Parse { source, .. } => Some(source),
+        }
+    }
+}
+
+pub fn load_numeric_tolerance_policy(
+    policy_path: impl AsRef<Path>,
+) -> Result<NumericTolerancePolicy, NumericTolerancePolicyError> {
+    let policy_path = policy_path.as_ref();
+    let source =
+        fs::read_to_string(policy_path).map_err(|source| NumericTolerancePolicyError::Read {
+            path: policy_path.to_path_buf(),
+            source,
+        })?;
+    serde_json::from_str(&source).map_err(|source| NumericTolerancePolicyError::Parse {
+        path: policy_path.to_path_buf(),
+        source,
+    })
+}
+
+pub fn compare_with_policy_tolerance(
+    baseline: f64,
+    actual: f64,
+    tolerance: NumericTolerance,
+) -> PolicyToleranceComparison {
+    let abs_diff = (actual - baseline).abs();
+    let rel_denominator = baseline.abs().max(tolerance.relative_floor);
+    let rel_diff = abs_diff / rel_denominator;
+    let passes = abs_diff <= tolerance.abs_tol || abs_diff <= tolerance.rel_tol * rel_denominator;
+
+    PolicyToleranceComparison {
+        abs_diff,
+        rel_diff,
+        passes,
+    }
+}
+
+pub fn format_numeric_for_policy(value: f64) -> String {
+    if value.is_nan() {
+        return "NaN".to_string();
+    }
+
+    if value == f64::INFINITY {
+        return "inf".to_string();
+    }
+
+    if value == f64::NEG_INFINITY {
+        return "-inf".to_string();
+    }
+
+    format!("{value:.15E}")
+}
+
 fn kahan_add(sum: &mut f64, correction: &mut f64, value: f64) {
     let corrected = value - *correction;
     let next = *sum + corrected;
@@ -135,9 +282,12 @@ pub fn within_tolerance(
 #[cfg(test)]
 mod tests {
     use super::{
-        deterministic_argsort, distance3, interpolate_linear, linear_grid, relative_difference,
-        stable_sum, stable_weighted_mean, stable_weighted_sum, within_tolerance,
+        NUMERIC_TOLERANCE_POLICY_PATH, NumericTolerance, compare_with_policy_tolerance,
+        deterministic_argsort, distance3, format_numeric_for_policy, interpolate_linear,
+        linear_grid, load_numeric_tolerance_policy, relative_difference, stable_sum,
+        stable_weighted_mean, stable_weighted_sum, within_tolerance,
     };
+    use std::path::PathBuf;
 
     #[test]
     fn stable_sum_reduces_order_loss_for_large_and_small_values() {
@@ -210,5 +360,40 @@ mod tests {
         assert!(within_tolerance(10.0, 10.001, 1.0e-2, 1.0e-6, 1.0e-12));
         assert!(within_tolerance(1000.0, 1000.2, 1.0e-6, 5.0e-4, 1.0e-12));
         assert!(!within_tolerance(1.0, 1.1, 1.0e-3, 1.0e-3, 1.0e-12));
+    }
+
+    #[test]
+    fn compare_with_policy_tolerance_uses_baseline_relative_scale() {
+        let tolerance = NumericTolerance {
+            abs_tol: 1.0e-9,
+            rel_tol: 0.1,
+            relative_floor: 1.0e-12,
+        };
+        let comparison = compare_with_policy_tolerance(2.0, 2.19, tolerance);
+        assert!((comparison.abs_diff - 0.19).abs() < 1.0e-12);
+        assert!((comparison.rel_diff - 0.095).abs() < 1.0e-12);
+        assert!(comparison.passes);
+    }
+
+    #[test]
+    fn format_numeric_for_policy_handles_special_values() {
+        assert_eq!(format_numeric_for_policy(f64::NAN), "NaN");
+        assert_eq!(format_numeric_for_policy(f64::INFINITY), "inf");
+        assert_eq!(format_numeric_for_policy(f64::NEG_INFINITY), "-inf");
+        assert_eq!(format_numeric_for_policy(12.5), "1.250000000000000E1");
+    }
+
+    #[test]
+    fn load_numeric_tolerance_policy_reads_category_tolerance() {
+        let policy_path =
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(NUMERIC_TOLERANCE_POLICY_PATH);
+        let policy = load_numeric_tolerance_policy(&policy_path).expect("policy should load");
+        let tolerance = policy
+            .tolerance_for_category("columnar_spectra")
+            .expect("columnar_spectra tolerance should exist");
+
+        assert_eq!(tolerance.abs_tol, 1.0e-8);
+        assert_eq!(tolerance.rel_tol, 1.0e-6);
+        assert_eq!(tolerance.relative_floor, 1.0e-12);
     }
 }

@@ -19,6 +19,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - FEFF deck parsing should treat numeric-leading lines as continuations of the preceding card (for example `ATOMS`, `POTENTIALS`, `ELNES`, `STRETCHES`) and only fail when such a line appears before any card.
 - Parser validation in `src/parser/mod.rs` is profile-driven: main decks require `TITLE|CIF`, `ATOMS|CIF`, and `POTENTIALS|POTENTIAL|CIF`, while DEBYE spring decks require `VDOS` and `STRETCHES`; missing `CONTROL`, `PRINT`, and `END` are synthesized with deterministic defaults.
 - Core-science pipeline scaffolds should consume deterministic helpers from `src/numerics/mod.rs` (`deterministic_argsort`, compensated aggregation helpers, and grid/interpolation helpers) instead of local float logic.
+- Keep numeric tolerance semantics centralized in `src/numerics/mod.rs` (`NumericTolerance`, policy loader, `compare_with_policy_tolerance`, and `format_numeric_for_policy`) so comparator/reporting logic does not drift from `tasks/numeric-tolerance-policy.json`.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -196,4 +197,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Keep float ordering deterministic by sorting indices with `total_cmp` plus index tie-breaks instead of relying on unstable equal-value ordering.
   - Gotchas encountered: Weighted aggregation helpers should reject zero total weight and mismatched vector lengths so module scaffolds fail fast before parity logic is added.
   - Useful context: `CorePipelineScaffold::new` intentionally gates to core modules only; non-core modules return `None`, which keeps the scaffold contract aligned with core-chain scope.
+---
+## 2026-02-16 18:50:19 JST - US-017
+- Added numerics precision helpers in `src/numerics/mod.rs`: shared `NumericTolerance` type, policy loader (`load_numeric_tolerance_policy`), policy-aligned tolerance comparison (`compare_with_policy_tolerance`), and deterministic numeric formatting (`format_numeric_for_policy`).
+- Wired `src/pipelines/comparator.rs` to reuse the numerics precision helpers so comparator pass/fail math and diagnostic formatting stay aligned with `tasks/numeric-tolerance-policy.json`.
+- Added baseline-backed reference tests in `tests/numerics_reference_data.rs` using approved fixture snapshots (`FX-EELS-001`, `FX-LDOS-001`, `FX-PATH-001`) to validate compensated sums, weighted means, interpolation, deterministic ordering, and grid generation against fixed reference values under policy-derived tolerances.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `src/numerics/mod.rs`, `src/pipelines/comparator.rs`, `tests/numerics_reference_data.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Use `load_numeric_tolerance_policy(...).tolerance_for_category(...)` in tests/helpers instead of hardcoding thresholds so numerics checks stay synchronized with the canonical policy JSON.
+  - Gotchas encountered: Floating-point boundary assertions can fail on exact-equality tolerance edges; keep assertions away from threshold boundaries to avoid flaky tests.
+  - Useful context: `emesh.dat` contains a non-monotonic tail segment, so grid/interpolation reference checks should target the monotonic prefix region.
 ---
