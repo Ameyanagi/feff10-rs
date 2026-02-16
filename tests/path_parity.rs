@@ -165,6 +165,7 @@ fn path_regression_suite_passes() {
         run_rdinp: true,
         run_pot: false,
         run_path: true,
+        run_fms: false,
     };
 
     let report = run_regression(&config).expect("PATH regression suite should run");

@@ -134,6 +134,7 @@ fn rdinp_regression_suite_passes() {
         run_rdinp: true,
         run_pot: false,
         run_path: false,
+        run_fms: false,
     };
 
     let report = run_regression(&config).expect("RDINP regression suite should run");

@@ -13,7 +13,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
 - Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
 - New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
-- Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT` before `PATH`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
+- Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT` before `PATH` before `FMS`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
 - RDINP `geom.dat` parity may require FEFF-specific atom ordering that differs from raw `ATOMS` card order; preserve baseline ordering when a header-compatible canonical baseline exists for the fixture.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
@@ -284,4 +284,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: PATH parity should follow the same baseline-driven contract as POT parity by deriving expected outputs from available baseline artifacts and rejecting staged inputs that drift from approved fixtures.
   - Gotchas encountered: PATH regression currently needs `phase.bin` staged in each fixture actual directory (for example from baseline snapshots) because XSPH parity is not implemented yet.
   - Useful context: Comparator policy order is now critical for PATH artifacts; `path_listing_reports` must stay above `path_scattering_tables` to avoid numeric parse failures on `paths.dat`.
+---
+## 2026-02-16 20:09:36 JST - US-024
+- Implemented `src/pipelines/fms.rs` with an explicit FMS scaffold contract aligned to the compatibility matrix: required staged inputs (`fms.inp`, `geom.dat`, `global.inp`, `phase.bin`) and deterministic placeholder outputs (`gg.bin`, `log3.dat`).
+- Wired FMS into regression as an opt-in pre-compare hook via `RegressionRunnerConfig.run_fms`, including shared error plumbing and fixture-level execution gating by `modulesCovered`.
+- Added CLI support for `--run-fms` (with migration-safe alias `--run-fms-placeholder`), updated README usage guidance, and added regression + module unit coverage for the scaffold path.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/fms.rs`, `src/pipelines/regression.rs`, `tests/rdinp_parity.rs`, `tests/pot_parity.rs`, `tests/path_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: New module scaffolds should expose `contract_for_request` plus `PipelineExecutor::execute` and validate all required staged sibling artifacts before writing placeholders.
+  - Gotchas encountered: `phase.bin` must be treated as binary input in FMS scaffolding (byte reads), mirroring PATH handling, otherwise UTF-8 reads can fail on valid baseline data.
+  - Useful context: `--run-fms` expects inputs under `<actual-root>/<fixture>/<actual-subdir>` and writes `gg.bin` + `log3.dat` there; missing staged inputs fail fast with `IO.FMS_INPUT_READ`.
 ---
