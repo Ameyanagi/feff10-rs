@@ -8,15 +8,10 @@ pub use errors::{
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum ExecutionMode {
+    #[default]
     Serial,
-}
-
-impl Default for ExecutionMode {
-    fn default() -> Self {
-        Self::Serial
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]

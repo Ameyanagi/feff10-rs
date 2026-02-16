@@ -234,18 +234,17 @@ pub fn render_human_summary(report: &RegressionRunReport) -> String {
             fixture.threshold.max_artifact_failures
         ));
 
-        if !fixture.passed {
-            if let Some(first_failure) = fixture.artifacts.iter().find(|artifact| !artifact.passed)
-            {
-                let reason = first_failure
-                    .reason
-                    .as_deref()
-                    .unwrap_or("artifact comparison failed without a reason");
-                lines.push(format!(
-                    "  first failure: {} ({})",
-                    first_failure.artifact_path, reason
-                ));
-            }
+        if !fixture.passed
+            && let Some(first_failure) = fixture.artifacts.iter().find(|artifact| !artifact.passed)
+        {
+            let reason = first_failure
+                .reason
+                .as_deref()
+                .unwrap_or("artifact comparison failed without a reason");
+            lines.push(format!(
+                "  first failure: {} ({})",
+                first_failure.artifact_path, reason
+            ));
         }
     }
 

@@ -10,6 +10,23 @@ The current Rust migration scaffolding keeps module boundaries explicit in a sin
 - `src/pipelines`: pipeline-facing abstractions plus regression/comparator infrastructure
 - `src/cli`: CLI command parsing and orchestration
 
+## Rust Quality Gates
+
+Local commands matching CI checks:
+
+```bash
+cargo check --locked
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --all -- --check
+```
+
+If `cargo test --locked` fails on macOS with `ld: library not found for -liconv`, use:
+
+```bash
+CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked
+```
+
 ## CLI Compatibility Commands
 
 The binary now exposes FEFF-compatible command surfaces in addition to `regression`:

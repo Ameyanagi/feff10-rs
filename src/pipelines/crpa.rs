@@ -428,7 +428,7 @@ mod tests {
         stage_baseline_artifact("FX-CRPA-001", "pot.inp", &temp.path().join("pot.inp"));
         stage_baseline_artifact("FX-CRPA-001", "geom.dat", &temp.path().join("geom.dat"));
 
-        fs::write(&temp.path().join("pot.inp"), "drifted pot input\n")
+        fs::write(temp.path().join("pot.inp"), "drifted pot input\n")
             .expect("pot input should be overwritten");
 
         let request = PipelineRequest::new(

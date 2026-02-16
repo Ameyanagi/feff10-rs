@@ -527,7 +527,7 @@ mod tests {
         stage_baseline_artifact("FX-SCREEN-001", "ldos.inp", &temp.path().join("ldos.inp"));
         stage_optional_screen_input("FX-SCREEN-001", &temp.path().join("screen.inp"));
 
-        fs::write(&temp.path().join("geom.dat"), "drifted geom input\n")
+        fs::write(temp.path().join("geom.dat"), "drifted geom input\n")
             .expect("geom input should be overwritten");
 
         let request = PipelineRequest::new(

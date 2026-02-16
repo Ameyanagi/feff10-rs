@@ -1,0 +1,29 @@
+name: Rust Quality Gates
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  rust-quality:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install stable Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cargo check
+        run: cargo check --locked
+
+      - name: Cargo test
+        run: cargo test --locked
+
+      - name: Cargo clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: Cargo fmt check
+        run: cargo fmt --all -- --check

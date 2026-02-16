@@ -533,7 +533,7 @@ mod tests {
         stage_baseline_artifact("FX-BAND-001", "global.inp", &temp.path().join("global.inp"));
         stage_baseline_artifact("FX-BAND-001", "phase.bin", &temp.path().join("phase.bin"));
 
-        fs::write(&temp.path().join("geom.dat"), "drifted geometry\n")
+        fs::write(temp.path().join("geom.dat"), "drifted geometry\n")
             .expect("geom input should be overwritten");
 
         let request = PipelineRequest::new(

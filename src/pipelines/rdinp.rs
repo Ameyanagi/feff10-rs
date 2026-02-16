@@ -822,15 +822,15 @@ fn has_card(deck: &InputDeck, keyword: &str) -> bool {
 }
 
 fn deck_title(deck: &InputDeck) -> String {
-    if let Some(card) = first_card(deck, "TITLE") {
-        if !card.values.is_empty() {
-            return card.values.join(" ");
-        }
+    if let Some(card) = first_card(deck, "TITLE")
+        && !card.values.is_empty()
+    {
+        return card.values.join(" ");
     }
-    if let Some(card) = first_card(deck, "CIF") {
-        if let Some(path) = card.values.first() {
-            return format!("CIF {}", path);
-        }
+    if let Some(card) = first_card(deck, "CIF")
+        && let Some(path) = card.values.first()
+    {
+        return format!("CIF {}", path);
     }
     "FEFF Input".to_string()
 }
@@ -885,7 +885,7 @@ mod tests {
     use crate::domain::{FeffErrorCategory, PipelineModule, PipelineRequest};
     use crate::pipelines::PipelineExecutor;
     use std::fs;
-    use std::path::PathBuf;
+    use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
     #[test]
@@ -920,7 +920,7 @@ mod tests {
             contract
                 .expected_outputs
                 .iter()
-                .all(|artifact| artifact.relative_path != PathBuf::from("screen.inp"))
+                .all(|artifact| artifact.relative_path.as_path() != Path::new("screen.inp"))
         );
     }
 
@@ -931,7 +931,7 @@ mod tests {
         assert!(
             outputs
                 .iter()
-                .any(|artifact| artifact.relative_path == PathBuf::from("screen.inp"))
+                .any(|artifact| artifact.relative_path.as_path() == Path::new("screen.inp"))
         );
     }
 

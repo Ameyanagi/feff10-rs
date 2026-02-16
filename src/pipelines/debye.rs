@@ -535,7 +535,7 @@ mod tests {
         stage_baseline_artifact("FX-DEBYE-001", "feff.inp", &temp.path().join("feff.inp"));
         stage_optional_spring_input("FX-DEBYE-001", &temp.path().join("spring.inp"));
 
-        fs::write(&temp.path().join("paths.dat"), "drifted paths input\n")
+        fs::write(temp.path().join("paths.dat"), "drifted paths input\n")
             .expect("paths input should be overwritten");
 
         let request = PipelineRequest::new(

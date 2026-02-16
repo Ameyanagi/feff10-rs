@@ -28,6 +28,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - For mixed-format artifacts with non-numeric headers (for example `paths.dat`), add an earlier exact-text category in `tasks/numeric-tolerance-policy.json` so first-match policy resolution does not route them through numeric parsing.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
+- Keep Rust quality-gate commands synchronized between `.github/workflows/rust-quality-gates.yml` and the `README.md` "Rust Quality Gates" section so local validation mirrors CI exactly.
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
 - Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
 - Contract-level CLI integration tests for fatal paths should assert the full diagnostic pair (`ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>`) alongside the numeric exit code.
@@ -489,4 +490,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Fatal compatibility-path tests should assert both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` in `stderr`, not only process exit status.
   - Gotchas encountered: Regression pre-compare hook failures terminate before report writing, so fatal-hook tests should assert report-file absence.
   - Useful context: For core workflow directory-contract tests, drive `RDINP` from a manifest `inputDirectory` and assert generated artifacts under `<actual-root>/<fixture>/<actual-subdir>`.
+---
+## 2026-02-16 22:29:33 JST - US-041
+- Added CI workflow `.github/workflows/rust-quality-gates.yml` that runs `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and `cargo fmt --all -- --check` on push and pull request events.
+- Updated `README.md` with a `Rust Quality Gates` section documenting the same local commands as CI, plus the existing macOS linker override context for local test execution.
+- Fixed existing clippy-denied warnings in touched Rust modules/tests so the new quality gates pass without suppressions.
+- Quality checks: `cargo fmt --all`, `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and `cargo fmt --all -- --check` passed (with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` set on this macOS host).
+- Files changed: `.github/workflows/rust-quality-gates.yml`, `README.md`, `src/domain/mod.rs`, `src/pipelines/rdinp.rs`, `src/pipelines/regression.rs`, `src/pipelines/band.rs`, `src/pipelines/crpa.rs`, `src/pipelines/debye.rs`, `src/pipelines/screen.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep CI quality-gate commands and README local quality commands synchronized verbatim so contributors can reproduce CI locally.
+  - Gotchas encountered: Enabling `clippy -D warnings` can surface pre-existing warnings outside the immediate story scope; fix them directly rather than weakening the lint gate.
+  - Useful context: On this macOS environment, set `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` when running `cargo test`/`cargo clippy` to avoid linker failures.
 ---
