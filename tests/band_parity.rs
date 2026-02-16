@@ -156,6 +156,7 @@ fn band_regression_suite_passes() {
         run_compton: false,
         run_debye: false,
         run_dmdw: false,
+        run_screen: false,
     };
 
     let report = run_regression(&config).expect("BAND regression suite should run");

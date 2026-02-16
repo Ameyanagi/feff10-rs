@@ -11,6 +11,7 @@ pub mod pot;
 pub mod rdinp;
 pub mod regression;
 pub mod rixs;
+pub mod screen;
 pub mod xsph;
 
 use crate::domain::{

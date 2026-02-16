@@ -11,6 +11,7 @@ use super::path::PathPipelineScaffold;
 use super::pot::PotPipelineScaffold;
 use super::rdinp::RdinpPipelineScaffold;
 use super::rixs::RixsPipelineScaffold;
+use super::screen::ScreenPipelineScaffold;
 use super::xsph::XsphPipelineScaffold;
 use crate::domain::{FeffError, PipelineModule, PipelineRequest, PipelineResult};
 use serde::{Deserialize, Serialize};
@@ -42,6 +43,7 @@ pub struct RegressionRunnerConfig {
     pub run_compton: bool,
     pub run_debye: bool,
     pub run_dmdw: bool,
+    pub run_screen: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -66,6 +68,7 @@ impl Default for RegressionRunnerConfig {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         }
     }
 }
@@ -137,6 +140,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
     for fixture in &manifest.fixtures {
         run_rdinp_if_enabled(config, fixture)?;
         run_pot_if_enabled(config, fixture)?;
+        run_screen_if_enabled(config, fixture)?;
         run_xsph_if_enabled(config, fixture)?;
         run_band_if_enabled(config, fixture)?;
         run_ldos_if_enabled(config, fixture)?;
@@ -283,6 +287,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    ScreenPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     DebyePipeline {
         fixture_id: String,
         source: FeffError,
@@ -385,6 +393,11 @@ impl Display for RegressionRunnerError {
                 "COMPTON parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::ScreenPipeline { fixture_id, source } => write!(
+                f,
+                "SCREEN parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::DebyePipeline { fixture_id, source } => write!(
                 f,
                 "DEBYE parity execution failed for fixture '{}': {}",
@@ -447,6 +460,7 @@ impl Error for RegressionRunnerError {
             Self::RixsPipeline { source, .. } => Some(source),
             Self::CrpaPipeline { source, .. } => Some(source),
             Self::ComptonPipeline { source, .. } => Some(source),
+            Self::ScreenPipeline { source, .. } => Some(source),
             Self::DebyePipeline { source, .. } => Some(source),
             Self::DmdwPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
@@ -481,6 +495,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::RixsPipeline { source, .. } => source,
             RegressionRunnerError::CrpaPipeline { source, .. } => source,
             RegressionRunnerError::ComptonPipeline { source, .. } => source,
+            RegressionRunnerError::ScreenPipeline { source, .. } => source,
             RegressionRunnerError::DebyePipeline { source, .. } => source,
             RegressionRunnerError::DmdwPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
@@ -804,6 +819,35 @@ fn run_compton_if_enabled(
             fixture_id: fixture.id.clone(),
             source,
         })?;
+
+    Ok(())
+}
+
+fn run_screen_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_screen || !fixture.covers_module(PipelineModule::Screen) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Screen,
+        output_dir.join("pot.inp"),
+        output_dir,
+    );
+
+    ScreenPipelineScaffold.execute(&request).map_err(|source| {
+        RegressionRunnerError::ScreenPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        }
+    })?;
 
     Ok(())
 }
@@ -1217,6 +1261,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -1292,6 +1337,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1358,6 +1404,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1425,6 +1472,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1494,6 +1542,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1564,6 +1613,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1633,6 +1683,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1702,6 +1753,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1775,6 +1827,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1845,6 +1898,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1924,6 +1978,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1934,6 +1989,73 @@ mod tests {
             .iter()
             .any(|artifact| output_dir.join(artifact).is_file());
         assert!(has_crpa_output, "CRPA output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_screen_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-SCREEN-001",
+                  "modulesCovered": ["SCREEN"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-SCREEN-001").join("actual");
+        stage_repo_screen_inputs("FX-SCREEN-001", &staged_dir);
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: false,
+            run_ldos: false,
+            run_rixs: false,
+            run_crpa: false,
+            run_compton: false,
+            run_debye: false,
+            run_dmdw: false,
+            run_screen: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-SCREEN-001").join("actual");
+        let has_screen_output = ["wscrn.dat", "logscreen.dat"]
+            .iter()
+            .any(|artifact| output_dir.join(artifact).is_file());
+        assert!(has_screen_output, "SCREEN output should exist");
     }
 
     #[test]
@@ -1990,6 +2112,7 @@ mod tests {
             run_compton: true,
             run_debye: false,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2056,6 +2179,7 @@ mod tests {
             run_compton: false,
             run_debye: true,
             run_dmdw: false,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2130,6 +2254,7 @@ mod tests {
             run_compton: false,
             run_debye: false,
             run_dmdw: true,
+            run_screen: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2223,6 +2348,33 @@ mod tests {
             "xsect_2.dat",
             &destination_dir.join("xsect_2.dat"),
             "0.0 0.0 0.0\n",
+        );
+    }
+
+    fn stage_repo_screen_inputs(fixture_id: &str, destination_dir: &Path) {
+        stage_repo_text_input(
+            fixture_id,
+            "pot.inp",
+            &destination_dir.join("pot.inp"),
+            "RGRID\n0.0 10.0 0.1\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "geom.dat",
+            &destination_dir.join("geom.dat"),
+            "  1   0.000000   0.000000   0.000000\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "ldos.inp",
+            &destination_dir.join("ldos.inp"),
+            "EMESH\n-20.0 20.0 0.2\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "screen.inp",
+            &destination_dir.join("screen.inp"),
+            "ioverride: optional screening override\n0\n",
         );
     }
 

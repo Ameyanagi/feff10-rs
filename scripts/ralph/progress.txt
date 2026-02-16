@@ -33,6 +33,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Core-science pipeline scaffolds should consume deterministic helpers from `src/numerics/mod.rs` (`deterministic_argsort`, compensated aggregation helpers, and grid/interpolation helpers) instead of local float logic.
 - Keep numeric tolerance semantics centralized in `src/numerics/mod.rs` (`NumericTolerance`, policy loader, `compare_with_policy_tolerance`, and `format_numeric_for_policy`) so comparator/reporting logic does not drift from `tasks/numeric-tolerance-policy.json`.
 - Thermal-module parity hooks should keep optional spring artifacts optional (`spring.inp`) and only enforce optional-input baseline matching when both staged and baseline-present.
+- Screened-core-hole parity hooks should require shared staged inputs (`pot.inp`, `geom.dat`, `ldos.inp`) and only baseline-validate optional overrides (`screen.inp`) when both staged and baseline copies exist.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -416,4 +417,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: DMDW parity follows the same baseline-driven hook contract as other modules, but with a mixed input contract (text-normalized `dmdw.inp` plus byte-exact `feff.dym`) before output materialization.
   - Gotchas encountered: Adding a new `--run-<module>` hook still requires updating every explicit `RegressionRunnerConfig` literal across module/integration tests.
   - Useful context: `--run-dmdw` uses `<actual-root>/<fixture>/<actual-subdir>/dmdw.inp` as the hook entry artifact and expects sibling `feff.dym` in the same staged directory.
+---
+## 2026-02-16 21:37:28 JST - US-035
+- Implemented baseline-driven SCREEN parity module in `src/pipelines/screen.rs`: validate staged `pot.inp`, `geom.dat`, and `ldos.inp`, optionally validate `screen.inp`, then materialize approved SCREEN outputs (`wscrn.dat`, `logscreen.dat`) from fixture baselines.
+- Wired SCREEN into regression and CLI surfaces by adding `RegressionRunnerConfig.run_screen`, `run_screen_if_enabled`, `RegressionRunnerError::ScreenPipeline`, and CLI flags `--run-screen` / `--run-screen-placeholder`; updated regression usage docs in `README.md`.
+- Added SCREEN parity coverage with module/unit tests in `src/pipelines/screen.rs`, regression-runner hook coverage in `src/pipelines/regression.rs`, and integration tests in `tests/screen_parity.rs`; updated existing parity-suite config literals for the new `run_screen` field.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/screen.rs`, `tests/screen_parity.rs`, `tests/band_parity.rs`, `tests/compton_parity.rs`, `tests/crpa_parity.rs`, `tests/debye_parity.rs`, `tests/dmdw_parity.rs`, `tests/fms_parity.rs`, `tests/ldos_parity.rs`, `tests/path_parity.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `tests/rixs_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Screened-core-hole parity can follow the same baseline-driven contract as other modules when shared required inputs are enforced and override inputs remain optional.
+  - Gotchas encountered: Adding a new regression pre-compare hook requires updating all explicit `RegressionRunnerConfig` literals across module and integration tests.
+  - Useful context: `--run-screen` uses `<actual-root>/<fixture>/<actual-subdir>/pot.inp` as the entry artifact and expects sibling `geom.dat` + `ldos.inp`, with `screen.inp` treated as optional baseline-gated input.
 ---
