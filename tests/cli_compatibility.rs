@@ -88,21 +88,26 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
     );
 
     let pot = run_cli_command(temp.path(), &["pot"]);
-    assert_eq!(
-        pot.status.code(),
-        Some(4),
-        "pot should fail until runtime compute engine exists, stderr: {}",
+    assert!(
+        pot.status.success(),
+        "pot should succeed once runtime compute engine is available, stderr: {}",
         String::from_utf8_lossy(&pot.stderr)
     );
-    let pot_stderr = String::from_utf8_lossy(&pot.stderr);
     assert!(
-        pot_stderr.contains("RUN.RUNTIME_ENGINE_UNAVAILABLE"),
-        "missing runtime-engine failure token for pot command, stderr: {}",
-        pot_stderr
+        temp.path().join("pot.bin").is_file(),
+        "pot should emit pot.bin"
     );
     assert!(
-        !temp.path().join("pot.bin").is_file(),
-        "pot should not emit pot.bin"
+        temp.path().join("pot.dat").is_file(),
+        "pot should emit pot.dat"
+    );
+    assert!(
+        temp.path().join("convergence.scf").is_file(),
+        "pot should emit convergence.scf"
+    );
+    assert!(
+        temp.path().join("convergence.scf.fine").is_file(),
+        "pot should emit convergence.scf.fine"
     );
 }
 

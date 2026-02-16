@@ -1,4 +1,5 @@
 use super::PipelineExecutor;
+use super::pot::POT_BINARY_MAGIC;
 use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -358,7 +359,7 @@ fn validate_binary_input_against_baseline(
     artifact: &str,
     fixture_id: &str,
 ) -> PipelineResult<()> {
-    if actual == baseline {
+    if actual == baseline || is_true_compute_pot_binary(actual, artifact) {
         return Ok(());
     }
 
@@ -369,6 +370,10 @@ fn validate_binary_input_against_baseline(
             fixture_id, artifact
         ),
     ))
+}
+
+fn is_true_compute_pot_binary(actual: &[u8], artifact: &str) -> bool {
+    artifact.eq_ignore_ascii_case("pot.bin") && actual.starts_with(POT_BINARY_MAGIC)
 }
 
 fn validate_optional_wscrn_input_against_baseline(
@@ -545,6 +550,34 @@ mod tests {
         let artifacts = scaffold
             .execute(&request)
             .expect("XSPH execution should succeed without wscrn.dat");
+
+        assert_eq!(artifact_set(&artifacts), expected_xsph_artifact_set());
+    }
+
+    #[test]
+    fn execute_accepts_true_compute_pot_binary_inputs() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join("xsph.inp");
+        let output_dir = temp.path().join("out");
+
+        stage_baseline_artifact("FX-XSPH-001", "xsph.inp", &input_path);
+        stage_baseline_artifact("FX-XSPH-001", "geom.dat", &temp.path().join("geom.dat"));
+        stage_baseline_artifact("FX-XSPH-001", "global.inp", &temp.path().join("global.inp"));
+        fs::write(
+            temp.path().join("pot.bin"),
+            [b'P', b'O', b'T', b'B', b'I', b'N', b'1', b'0', 1, 2, 3, 4],
+        )
+        .expect("pot input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-XSPH-001",
+            PipelineModule::Xsph,
+            &input_path,
+            &output_dir,
+        );
+        let artifacts = XsphPipelineScaffold
+            .execute(&request)
+            .expect("XSPH execution should accept true-compute pot.bin");
 
         assert_eq!(artifact_set(&artifacts), expected_xsph_artifact_set());
     }

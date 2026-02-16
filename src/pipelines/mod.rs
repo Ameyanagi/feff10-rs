@@ -52,7 +52,7 @@ where
 }
 
 pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
-    matches!(module, PipelineModule::Rdinp)
+    matches!(module, PipelineModule::Rdinp | PipelineModule::Pot)
 }
 
 pub fn runtime_engine_unavailable_error(module: PipelineModule) -> FeffError {
@@ -81,6 +81,7 @@ pub fn execute_runtime_pipeline(
 
     match module {
         PipelineModule::Rdinp => RuntimeRdinpExecutor.execute_runtime(request),
+        PipelineModule::Pot => RuntimePotExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -91,6 +92,15 @@ struct RuntimeRdinpExecutor;
 impl RuntimePipelineExecutor for RuntimeRdinpExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         rdinp::RdinpPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimePotExecutor;
+
+impl RuntimePipelineExecutor for RuntimePotExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        pot::PotPipelineScaffold.execute(request)
     }
 }
 
@@ -266,13 +276,14 @@ mod tests {
     #[test]
     fn runtime_dispatch_reports_available_compute_modules() {
         assert!(runtime_compute_engine_available(PipelineModule::Rdinp));
-        assert!(!runtime_compute_engine_available(PipelineModule::Pot));
+        assert!(runtime_compute_engine_available(PipelineModule::Pot));
+        assert!(!runtime_compute_engine_available(PipelineModule::Xsph));
     }
 
     #[test]
     fn runtime_dispatch_rejects_modules_without_compute_engines() {
-        let request = PipelineRequest::new("FX-POT-001", PipelineModule::Pot, "pot.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Pot, &request)
+        let request = PipelineRequest::new("FX-XSPH-001", PipelineModule::Xsph, "xsph.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Xsph, &request)
             .expect_err("unsupported runtime module should fail");
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -305,9 +316,57 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_pot_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("pot.inp"), POT_INPUT_FIXTURE)
+            .expect("pot input should be written");
+        std::fs::write(input_dir.join("geom.dat"), GEOM_INPUT_FIXTURE)
+            .expect("geom input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-POT-001",
+            PipelineModule::Pot,
+            input_dir.join("pot.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Pot, &request)
+            .expect("POT runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("pot.bin")),
+            "POT runtime should emit binary potential artifacts"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
         let error = runtime_engine_unavailable_error(PipelineModule::Path);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
+
+    const POT_INPUT_FIXTURE: &str = "mpot, nph, ntitle, ihole, ipr1, iafolp, ixc,ispec
+   1   1   1   1   0   0   0   1
+nmix, nohole, jumprm, inters, nscmt, icoul, lfms1, iunf
+   6   2   0   0  30   0   0   0
+Cu crystal
+gamach, rgrd, ca1, ecv, totvol, rfms1
+      1.72919      0.05000      0.20000    -40.00000      0.00000      4.00000
+ iz, lmaxsc, xnatph, xion, folp
+   29    2      1.00000      0.00000      1.15000
+   29    2    100.00000      0.00000      1.15000
+";
+
+    const GEOM_INPUT_FIXTURE: &str = "nat, nph =    4    1
+    1    2
+ iat     x       y        z       iph
+ -----------------------------------------------------------------------
+   1      0.00000      0.00000      0.00000   0   1
+   2      1.80500      1.80500      0.00000   1   1
+   3     -1.80500      1.80500      0.00000   1   1
+   4      0.00000      1.80500      1.80500   1   1
+";
 }

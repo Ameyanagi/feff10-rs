@@ -43,7 +43,13 @@ const EXPECTED_RDINP_ARTIFACTS: [&str; 13] = [
     "log.dat",
 ];
 
-const EXPECTED_POT_ARTIFACTS: [&str; 2] = ["pot.bin", "log1.dat"];
+const EXPECTED_POT_ARTIFACTS: [&str; 5] = [
+    "pot.bin",
+    "pot.dat",
+    "log1.dat",
+    "convergence.scf",
+    "convergence.scf.fine",
+];
 const EXPECTED_XSPH_ARTIFACTS: [&str; 3] = ["phase.bin", "xsect.dat", "log2.dat"];
 
 #[test]
@@ -124,7 +130,6 @@ fn xsph_regression_suite_passes() {
     for fixture in &APPROVED_XSPH_FIXTURES {
         for artifact in EXPECTED_RDINP_ARTIFACTS
             .iter()
-            .chain(EXPECTED_POT_ARTIFACTS.iter())
             .chain(EXPECTED_XSPH_ARTIFACTS.iter())
         {
             let baseline_source = baseline_artifact_path(fixture.id, Path::new(artifact));
@@ -165,6 +170,23 @@ fn xsph_regression_suite_passes() {
                     &baseline_target,
                 );
             }
+        }
+
+        let generated_pot_request = PipelineRequest::new(
+            fixture.id,
+            PipelineModule::Pot,
+            generated_output.join("pot.inp"),
+            &generated_output,
+        );
+        PotPipelineScaffold
+            .execute(&generated_pot_request)
+            .expect("POT seed generation should succeed");
+        for artifact in EXPECTED_POT_ARTIFACTS {
+            let baseline_target = baseline_root
+                .join(fixture.id)
+                .join("baseline")
+                .join(artifact);
+            copy_file(&generated_output.join(artifact), &baseline_target);
         }
     }
 
