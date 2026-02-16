@@ -164,6 +164,7 @@ fn fms_regression_suite_passes() {
         report_path,
         run_rdinp: true,
         run_pot: false,
+        run_xsph: false,
         run_path: false,
         run_fms: true,
     };

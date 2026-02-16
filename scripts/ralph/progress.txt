@@ -14,6 +14,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
 - New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
 - Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT` before `PATH` before `FMS`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
+- XSPH scaffold/parity hooks should treat `pot.bin` and other binary artifacts as byte inputs and keep `wscrn.dat` optional so workflow fixtures can run with or without screened-core-hole staging.
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
 - Core parity hooks for `POT`/`PATH`/`FMS` should enforce baseline input-contract checks (text-normalized for `.inp`/`.dat`, byte-exact for `phase.bin`) before materializing approved outputs.
 - RDINP `geom.dat` parity may require FEFF-specific atom ordering that differs from raw `ATOMS` card order; preserve baseline ordering when a header-compatible canonical baseline exists for the fixture.
@@ -307,4 +308,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: FMS parity should follow the same baseline-driven contract as POT/PATH by deriving expected outputs from available baseline artifacts and rejecting staged inputs that drift from approved fixtures.
   - Gotchas encountered: FMS parity requires `phase.bin` staged in each fixture actual directory before `--run-fms`; RDINP currently does not generate `phase.bin`.
   - Useful context: For the approved FMS fixtures, parity output scope is `gg.bin` and `log3.dat`, and both compare cleanly under the existing policy without policy-file changes.
+---
+## 2026-02-16 20:21:56 JST - US-026
+- Implemented XSPH scaffold module `src/pipelines/xsph.rs` with compatibility-matrix interfaces: required staged inputs (`xsph.inp`, `geom.dat`, `global.inp`, `pot.bin`), optional input (`wscrn.dat`), expected scaffold outputs (`phase.bin`, `xsect.dat`, `log2.dat`), and optional output contract metadata (`phase.dat`).
+- Wired XSPH into regression as an explicit opt-in pre-compare hook via `RegressionRunnerConfig.run_xsph`, executing after POT and before PATH/FMS from the fixture-local actual output directory.
+- Added CLI support for `--run-xsph` (with migration-safe alias `--run-xsph-placeholder`), updated README regression guidance, and added module/regression tests for XSPH scaffold execution.
+- Updated parity-suite regression config initializers to include the new `run_xsph` flag.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/xsph.rs`, `tests/rdinp_parity.rs`, `tests/pot_parity.rs`, `tests/path_parity.rs`, `tests/fms_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: XSPH scaffolding follows the same `contract_for_request` + `PipelineExecutor::execute` pattern as other core modules, with explicit required/optional artifact contracts.
+  - Gotchas encountered: `pot.bin` must be read as binary input (`IO.XSPH_INPUT_READ`) and cannot be treated as UTF-8 text.
+  - Useful context: `--run-xsph` expects staged inputs at `<actual-root>/<fixture>/<actual-subdir>` and currently emits deterministic scaffold artifacts rather than baseline-backed parity outputs.
 ---
