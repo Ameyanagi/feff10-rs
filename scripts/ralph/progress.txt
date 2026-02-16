@@ -30,6 +30,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
 - Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
+- CLI compatibility commands that execute baseline-driven module scaffolds should resolve fixture IDs from `tasks/golden-fixture-manifest.json` and run pipeline execution with the workspace root as the process CWD so module-relative baseline paths (`artifacts/fortran-baselines/...`) resolve correctly.
 - FEFF deck parsing should treat numeric-leading lines as continuations of the preceding card (for example `ATOMS`, `POTENTIALS`, `ELNES`, `STRETCHES`) and only fail when such a line appears before any card.
 - Parser validation in `src/parser/mod.rs` is profile-driven: main decks require `TITLE|CIF`, `ATOMS|CIF`, and `POTENTIALS|POTENTIAL|CIF`, while DEBYE spring decks require `VDOS` and `STRETCHES`; missing `CONTROL`, `PRINT`, and `END` are synthesized with deterministic defaults.
 - Core-science pipeline scaffolds should consume deterministic helpers from `src/numerics/mod.rs` (`deterministic_argsort`, compensated aggregation helpers, and grid/interpolation helpers) instead of local float logic.
@@ -464,4 +465,17 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: FULLSPECTRUM parity fits the baseline-driven hook model, but output candidates should include fixture-provided reference overlays (`prexmu.dat`, `referencexmu.dat`) when canonical FULLSPECTRUM outputs are absent.
   - Gotchas encountered: Adding a new `run_<module>` flag still requires updating every explicit `RegressionRunnerConfig` literal across module and integration tests.
   - Useful context: `FX-FULLSPECTRUM-001` currently validates `fullspectrum.inp` + `xmu.dat` inputs and materializes whichever FULLSPECTRUM outputs are present in `artifacts/fortran-baselines/FX-FULLSPECTRUM-001/baseline`.
+---
+## 2026-02-16 22:18:03 JST - US-039
+- Implemented FEFF-compatible CLI command surfaces in `src/cli/mod.rs` for `feff`, `feffmpi <nprocs>`, and module commands (`rdinp`, `pot`, `xsph`, `path`, `fms`, `band`, `ldos`, `rixs`, `crpa`, `compton`, `ff2x`, `dmdw`, `screen`, `sfconv`, `eels`, `fullspectrum`) with strict argument validation and command-specific help text.
+- Added fixture-aware module execution by loading `tasks/golden-fixture-manifest.json`, selecting approved fixtures, probing candidates for baseline-driven modules, and executing module pipelines in the current directory while switching process CWD to workspace root for stable baseline resolution.
+- Added executable-name alias dispatch support (for example invoking the binary as `rdinp`), and added `feffmpi` serial fallback behavior with deterministic warning `WARNING: [RUN.MPI_DEFERRED] ...` aligned with deferred MPI scope.
+- Added CLI compatibility integration coverage in `tests/cli_compatibility.rs` for help/usage validation, `feff` serial workflow execution, `feffmpi` fallback execution, module command workflow execution, and executable-name alias dispatch.
+- Updated CLI documentation in `README.md` with compatibility command usage and deferred MPI behavior.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `tests/cli_compatibility.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Compatibility command surfaces can reuse existing module scaffolds when fixture resolution is manifest-driven and modules are dispatched through shared `PipelineExecutor` wiring.
+  - Gotchas encountered: Baseline-driven modules resolve `artifacts/fortran-baselines` relative to process CWD, so CLI module execution must run with workspace root CWD even when command working directory is a fixture staging directory.
+  - Useful context: `feffmpi` now validates `<nprocs>` and always executes the serial chain in v1; requests with `nprocs > 1` emit `WARNING: [RUN.MPI_DEFERRED]` but still run compatibility workflows.
 ---

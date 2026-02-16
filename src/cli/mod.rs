@@ -1,11 +1,213 @@
-use crate::domain::FeffError;
+use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::pipelines::PipelineExecutor;
+use crate::pipelines::band::BandPipelineScaffold;
+use crate::pipelines::compton::ComptonPipelineScaffold;
+use crate::pipelines::crpa::CrpaPipelineScaffold;
+use crate::pipelines::debye::DebyePipelineScaffold;
+use crate::pipelines::dmdw::DmdwPipelineScaffold;
+use crate::pipelines::eels::EelsPipelineScaffold;
+use crate::pipelines::fms::FmsPipelineScaffold;
+use crate::pipelines::fullspectrum::FullSpectrumPipelineScaffold;
+use crate::pipelines::ldos::LdosPipelineScaffold;
+use crate::pipelines::path::PathPipelineScaffold;
+use crate::pipelines::pot::PotPipelineScaffold;
+use crate::pipelines::rdinp::RdinpPipelineScaffold;
 use crate::pipelines::regression::{RegressionRunnerConfig, render_human_summary, run_regression};
+use crate::pipelines::rixs::RixsPipelineScaffold;
+use crate::pipelines::screen::ScreenPipelineScaffold;
+use crate::pipelines::self_energy::SelfEnergyPipelineScaffold;
+use crate::pipelines::xsph::XsphPipelineScaffold;
+use serde::Deserialize;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+const MANIFEST_RELATIVE_PATH: &str = "tasks/golden-fixture-manifest.json";
+const BASELINE_RELATIVE_PATH: &str = "artifacts/fortran-baselines";
+
+#[derive(Debug, Clone, Copy)]
+struct ModuleCommandSpec {
+    command: &'static str,
+    module: PipelineModule,
+    input_artifact: &'static str,
+}
+
+const MODULE_COMMANDS: [ModuleCommandSpec; 16] = [
+    ModuleCommandSpec {
+        command: "rdinp",
+        module: PipelineModule::Rdinp,
+        input_artifact: "feff.inp",
+    },
+    ModuleCommandSpec {
+        command: "pot",
+        module: PipelineModule::Pot,
+        input_artifact: "pot.inp",
+    },
+    ModuleCommandSpec {
+        command: "xsph",
+        module: PipelineModule::Xsph,
+        input_artifact: "xsph.inp",
+    },
+    ModuleCommandSpec {
+        command: "path",
+        module: PipelineModule::Path,
+        input_artifact: "paths.inp",
+    },
+    ModuleCommandSpec {
+        command: "fms",
+        module: PipelineModule::Fms,
+        input_artifact: "fms.inp",
+    },
+    ModuleCommandSpec {
+        command: "band",
+        module: PipelineModule::Band,
+        input_artifact: "band.inp",
+    },
+    ModuleCommandSpec {
+        command: "ldos",
+        module: PipelineModule::Ldos,
+        input_artifact: "ldos.inp",
+    },
+    ModuleCommandSpec {
+        command: "rixs",
+        module: PipelineModule::Rixs,
+        input_artifact: "rixs.inp",
+    },
+    ModuleCommandSpec {
+        command: "crpa",
+        module: PipelineModule::Crpa,
+        input_artifact: "crpa.inp",
+    },
+    ModuleCommandSpec {
+        command: "compton",
+        module: PipelineModule::Compton,
+        input_artifact: "compton.inp",
+    },
+    ModuleCommandSpec {
+        command: "ff2x",
+        module: PipelineModule::Debye,
+        input_artifact: "ff2x.inp",
+    },
+    ModuleCommandSpec {
+        command: "dmdw",
+        module: PipelineModule::Dmdw,
+        input_artifact: "dmdw.inp",
+    },
+    ModuleCommandSpec {
+        command: "screen",
+        module: PipelineModule::Screen,
+        input_artifact: "pot.inp",
+    },
+    ModuleCommandSpec {
+        command: "sfconv",
+        module: PipelineModule::SelfEnergy,
+        input_artifact: "sfconv.inp",
+    },
+    ModuleCommandSpec {
+        command: "eels",
+        module: PipelineModule::Eels,
+        input_artifact: "eels.inp",
+    },
+    ModuleCommandSpec {
+        command: "fullspectrum",
+        module: PipelineModule::FullSpectrum,
+        input_artifact: "fullspectrum.inp",
+    },
+];
+
+const SERIAL_CHAIN_ORDER: [PipelineModule; 16] = [
+    PipelineModule::Rdinp,
+    PipelineModule::Pot,
+    PipelineModule::Screen,
+    PipelineModule::SelfEnergy,
+    PipelineModule::Eels,
+    PipelineModule::Xsph,
+    PipelineModule::Band,
+    PipelineModule::Ldos,
+    PipelineModule::Rixs,
+    PipelineModule::Crpa,
+    PipelineModule::Path,
+    PipelineModule::Debye,
+    PipelineModule::Dmdw,
+    PipelineModule::Fms,
+    PipelineModule::Compton,
+    PipelineModule::FullSpectrum,
+];
+
+#[derive(Debug, Deserialize, Clone)]
+struct CliManifest {
+    fixtures: Vec<CliManifestFixture>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+struct CliManifestFixture {
+    id: String,
+    #[serde(rename = "fixtureType", default)]
+    fixture_type: String,
+    #[serde(rename = "modulesCovered", default)]
+    modules_covered: Vec<String>,
+    #[serde(rename = "inputDirectory", default)]
+    input_directory: String,
+}
+
+impl CliManifestFixture {
+    fn covers_module(&self, module: PipelineModule) -> bool {
+        self.modules_covered
+            .iter()
+            .any(|covered| covered.eq_ignore_ascii_case(module.as_str()))
+    }
+
+    fn is_workflow(&self) -> bool {
+        self.fixture_type.eq_ignore_ascii_case("workflow") || self.modules_covered.len() > 1
+    }
+}
+
+#[derive(Debug, Clone)]
+struct CliContext {
+    working_dir: PathBuf,
+    workspace_root: PathBuf,
+    manifest: CliManifest,
+}
+
+struct CurrentDirGuard {
+    original: PathBuf,
+}
+
+impl CurrentDirGuard {
+    fn change_to(target: &Path) -> PipelineResult<Self> {
+        let original = std::env::current_dir().map_err(|source| {
+            FeffError::io_system(
+                "IO.CLI_CURRENT_DIR",
+                format!("failed to read current working directory: {}", source),
+            )
+        })?;
+        std::env::set_current_dir(target).map_err(|source| {
+            FeffError::io_system(
+                "IO.CLI_WORKDIR",
+                format!(
+                    "failed to switch CLI execution directory to '{}': {}",
+                    target.display(),
+                    source
+                ),
+            )
+        })?;
+        Ok(Self { original })
+    }
+}
+
+impl Drop for CurrentDirGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.original);
+    }
+}
 
 pub fn run_from_env() -> i32 {
-    match run(std::env::args().skip(1)) {
+    let mut args = std::env::args();
+    let program_name = args.next().unwrap_or_else(|| "feff10-rs".to_string());
+    match run_with_program_name(&program_name, args) {
         Ok(code) => code,
         Err(error) => {
             let compatibility_error = error.as_feff_error();
@@ -23,14 +225,36 @@ where
     I: IntoIterator<Item = S>,
     S: Into<String>,
 {
+    run_with_program_name("feff10-rs", args)
+}
+
+fn run_with_program_name<I, S>(program_name: &str, args: I) -> Result<i32, CliError>
+where
+    I: IntoIterator<Item = S>,
+    S: Into<String>,
+{
     let mut args: Vec<String> = args.into_iter().map(Into::into).collect();
+    if let Some(alias_command) = command_alias_from_program_name(program_name) {
+        return dispatch_command(alias_command, args);
+    }
+
     if args.is_empty() {
         return Err(CliError::Usage(usage_text().to_string()));
     }
 
     let command = args.remove(0);
-    match command.as_str() {
+    dispatch_command(&command, args)
+}
+
+fn dispatch_command(command: &str, args: Vec<String>) -> Result<i32, CliError> {
+    if let Some(spec) = module_command_spec(command) {
+        return run_module_command(spec, args);
+    }
+
+    match command {
         "regression" => run_regression_command(args),
+        "feff" => run_feff_command(args),
+        "feffmpi" => run_feffmpi_command(args),
         "help" | "--help" | "-h" => {
             println!("{}", usage_text());
             Ok(0)
@@ -44,7 +268,7 @@ where
 }
 
 fn run_regression_command(args: Vec<String>) -> Result<i32, CliError> {
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+    if help_requested(&args) {
         println!("{}", regression_usage_text());
         return Ok(0);
     }
@@ -55,6 +279,559 @@ fn run_regression_command(args: Vec<String>) -> Result<i32, CliError> {
     println!("JSON report: {}", config.report_path.display());
 
     if report.passed { Ok(0) } else { Ok(1) }
+}
+
+fn run_feff_command(args: Vec<String>) -> Result<i32, CliError> {
+    if help_requested(&args) {
+        println!("{}", feff_usage_text());
+        return Ok(0);
+    }
+    if !args.is_empty() {
+        return Err(CliError::Usage(format!(
+            "Command 'feff' does not accept positional arguments.\n{}",
+            feff_usage_text()
+        )));
+    }
+
+    let context = load_cli_context()?;
+    let fixture = select_serial_fixture(&context).map_err(CliError::Pipeline)?;
+    let modules = modules_for_serial_fixture(&fixture);
+    if modules.is_empty() {
+        return Err(CliError::Pipeline(FeffError::input_validation(
+            "INPUT.CLI_FIXTURE_MODULES",
+            format!(
+                "fixture '{}' does not provide any serial modules for 'feff'",
+                fixture.id
+            ),
+        )));
+    }
+
+    for module in modules {
+        if let Some(spec) = module_command_for_module(module) {
+            println!("Running {}...", spec.module);
+            execute_module_with_fixture(&context, spec, &fixture.id).map_err(CliError::Pipeline)?;
+        }
+    }
+    println!("Completed serial workflow for fixture '{}'.", fixture.id);
+    Ok(0)
+}
+
+fn run_feffmpi_command(args: Vec<String>) -> Result<i32, CliError> {
+    if help_requested(&args) {
+        println!("{}", feffmpi_usage_text());
+        return Ok(0);
+    }
+
+    if args.len() != 1 {
+        return Err(CliError::Usage(format!(
+            "Command 'feffmpi' requires exactly one argument: <nprocs>.\n{}",
+            feffmpi_usage_text()
+        )));
+    }
+
+    let process_count = args[0].parse::<usize>().map_err(|_| {
+        CliError::Usage(format!(
+            "Invalid process count '{}'; expected a positive integer.\n{}",
+            args[0],
+            feffmpi_usage_text()
+        ))
+    })?;
+    if process_count == 0 {
+        return Err(CliError::Usage(format!(
+            "Invalid process count '0'; expected a positive integer.\n{}",
+            feffmpi_usage_text()
+        )));
+    }
+
+    if process_count > 1 {
+        eprintln!(
+            "WARNING: [RUN.MPI_DEFERRED] MPI parity is deferred for Rust v1; executing serial compatibility chain instead (requested nprocs={}).",
+            process_count
+        );
+    }
+
+    run_feff_command(Vec::new())
+}
+
+fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> Result<i32, CliError> {
+    if help_requested(&args) {
+        println!("{}", module_usage_text(spec));
+        return Ok(0);
+    }
+    if !args.is_empty() {
+        return Err(CliError::Usage(format!(
+            "Command '{}' does not accept positional arguments.\n{}",
+            spec.command,
+            module_usage_text(spec)
+        )));
+    }
+
+    let context = load_cli_context()?;
+    let fixture_id =
+        select_fixture_for_module(&context, spec, false).map_err(CliError::Pipeline)?;
+    println!("Running {}...", spec.module);
+    let artifacts =
+        execute_module_with_fixture(&context, spec, &fixture_id).map_err(CliError::Pipeline)?;
+    println!(
+        "{} completed for fixture '{}' ({} artifacts).",
+        spec.module,
+        fixture_id,
+        artifacts.len()
+    );
+    Ok(0)
+}
+
+fn load_cli_context() -> Result<CliContext, CliError> {
+    let working_dir = std::env::current_dir().map_err(|source| {
+        CliError::Pipeline(FeffError::io_system(
+            "IO.CLI_CURRENT_DIR",
+            format!("failed to read current working directory: {}", source),
+        ))
+    })?;
+    let workspace_root = find_workspace_root(&working_dir).ok_or_else(|| {
+        CliError::Pipeline(FeffError::input_validation(
+            "INPUT.CLI_WORKSPACE",
+            format!(
+                "failed to locate workspace root from '{}'; expected to find '{}' and '{}'",
+                working_dir.display(),
+                MANIFEST_RELATIVE_PATH,
+                BASELINE_RELATIVE_PATH
+            ),
+        ))
+    })?;
+    let manifest = load_cli_manifest(&workspace_root)?;
+    Ok(CliContext {
+        working_dir,
+        workspace_root,
+        manifest,
+    })
+}
+
+fn find_workspace_root(start: &Path) -> Option<PathBuf> {
+    for candidate in start.ancestors() {
+        let manifest = candidate.join(MANIFEST_RELATIVE_PATH);
+        let baseline_root = candidate.join(BASELINE_RELATIVE_PATH);
+        if manifest.is_file() && baseline_root.is_dir() {
+            return Some(candidate.to_path_buf());
+        }
+    }
+    None
+}
+
+fn load_cli_manifest(workspace_root: &Path) -> Result<CliManifest, CliError> {
+    let path = workspace_root.join(MANIFEST_RELATIVE_PATH);
+    let content = fs::read_to_string(&path).map_err(|source| {
+        CliError::Pipeline(FeffError::io_system(
+            "IO.CLI_MANIFEST_READ",
+            format!(
+                "failed to read CLI manifest '{}': {}",
+                path.display(),
+                source
+            ),
+        ))
+    })?;
+    serde_json::from_str::<CliManifest>(&content).map_err(|source| {
+        CliError::Pipeline(FeffError::input_validation(
+            "INPUT.CLI_MANIFEST_PARSE",
+            format!(
+                "failed to parse CLI manifest '{}': {}",
+                path.display(),
+                source
+            ),
+        ))
+    })
+}
+
+fn select_serial_fixture(context: &CliContext) -> PipelineResult<CliManifestFixture> {
+    let mut candidates = fixtures_covering_module(&context.manifest, PipelineModule::Rdinp)
+        .into_iter()
+        .filter(|fixture| fixture.is_workflow())
+        .collect::<Vec<_>>();
+
+    if candidates.is_empty() {
+        return Err(FeffError::input_validation(
+            "INPUT.CLI_WORKFLOW_FIXTURE",
+            "no workflow fixtures covering RDINP were found in the manifest",
+        ));
+    }
+
+    if let Some(matched) = select_by_input_directory(context, &candidates) {
+        return Ok(matched.clone());
+    }
+    if let Some(matched) = select_by_input_content(context, &candidates, "feff.inp")? {
+        return Ok(matched.clone());
+    }
+
+    candidates.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(candidates[0].clone())
+}
+
+fn modules_for_serial_fixture(fixture: &CliManifestFixture) -> Vec<PipelineModule> {
+    let covered = fixture
+        .modules_covered
+        .iter()
+        .filter_map(|module| parse_pipeline_module(module))
+        .collect::<Vec<_>>();
+
+    SERIAL_CHAIN_ORDER
+        .iter()
+        .copied()
+        .filter(|module| covered.contains(module))
+        .collect()
+}
+
+fn select_fixture_for_module(
+    context: &CliContext,
+    spec: ModuleCommandSpec,
+    prefer_workflow: bool,
+) -> PipelineResult<String> {
+    let mut candidates = fixtures_covering_module(&context.manifest, spec.module);
+    if candidates.is_empty() {
+        return Err(FeffError::input_validation(
+            "INPUT.CLI_FIXTURE_LOOKUP",
+            format!(
+                "no fixtures in '{}' cover module {}",
+                MANIFEST_RELATIVE_PATH, spec.module
+            ),
+        ));
+    }
+
+    if spec.module == PipelineModule::Rdinp {
+        if let Some(matched) = select_by_input_directory(context, &candidates) {
+            return Ok(matched.id.clone());
+        }
+        if let Some(matched) = select_by_input_content(context, &candidates, spec.input_artifact)? {
+            return Ok(matched.id.clone());
+        }
+        if prefer_workflow {
+            if let Some(workflow) = choose_single_fixture_by_type(&candidates, true) {
+                return Ok(workflow.id.clone());
+            }
+        } else if let Some(module_fixture) = choose_single_fixture_by_type(&candidates, false) {
+            return Ok(module_fixture.id.clone());
+        }
+        candidates.sort_by(|a, b| a.id.cmp(&b.id));
+        return Ok(candidates[0].id.clone());
+    }
+
+    let mut passing = Vec::new();
+    let mut failure_messages = Vec::new();
+    for fixture in &candidates {
+        match probe_module_for_fixture(context, spec, &fixture.id) {
+            Ok(()) => passing.push(*fixture),
+            Err(error) => failure_messages.push(format!("{} => {}", fixture.id, error)),
+        }
+    }
+
+    if passing.is_empty() {
+        let detail = if failure_messages.is_empty() {
+            "no candidate fixtures matched module input contracts".to_string()
+        } else {
+            failure_messages.join("; ")
+        };
+        return Err(FeffError::input_validation(
+            "INPUT.CLI_FIXTURE_LOOKUP",
+            format!(
+                "unable to resolve fixture for module {} in '{}': {}",
+                spec.module,
+                context.working_dir.display(),
+                detail
+            ),
+        ));
+    }
+
+    if passing.len() == 1 {
+        return Ok(passing[0].id.clone());
+    }
+
+    if let Some(matched) = select_by_input_directory(context, &passing) {
+        return Ok(matched.id.clone());
+    }
+
+    if prefer_workflow {
+        if let Some(workflow) = choose_single_fixture_by_type(&passing, true) {
+            return Ok(workflow.id.clone());
+        }
+    } else if let Some(module_fixture) = choose_single_fixture_by_type(&passing, false) {
+        return Ok(module_fixture.id.clone());
+    }
+
+    passing.sort_by(|a, b| a.id.cmp(&b.id));
+    Ok(passing[0].id.clone())
+}
+
+fn fixtures_covering_module(
+    manifest: &CliManifest,
+    module: PipelineModule,
+) -> Vec<&CliManifestFixture> {
+    manifest
+        .fixtures
+        .iter()
+        .filter(|fixture| fixture.covers_module(module))
+        .collect()
+}
+
+fn choose_single_fixture_by_type<'a>(
+    candidates: &'a [&'a CliManifestFixture],
+    workflow: bool,
+) -> Option<&'a CliManifestFixture> {
+    let mut filtered = candidates
+        .iter()
+        .copied()
+        .filter(|fixture| fixture.is_workflow() == workflow)
+        .collect::<Vec<_>>();
+    if filtered.len() == 1 {
+        return Some(filtered.remove(0));
+    }
+    None
+}
+
+fn select_by_input_directory<'a>(
+    context: &CliContext,
+    candidates: &'a [&'a CliManifestFixture],
+) -> Option<&'a CliManifestFixture> {
+    let mut matches = Vec::new();
+    for fixture in candidates {
+        if fixture.input_directory.is_empty() {
+            continue;
+        }
+
+        let candidate_path = context.workspace_root.join(&fixture.input_directory);
+        if candidate_path == context.working_dir {
+            matches.push(*fixture);
+            continue;
+        }
+
+        let canonical_candidate = fs::canonicalize(&candidate_path).ok();
+        let canonical_working = fs::canonicalize(&context.working_dir).ok();
+        if canonical_candidate.is_some() && canonical_candidate == canonical_working {
+            matches.push(*fixture);
+        }
+    }
+
+    if matches.len() == 1 {
+        Some(matches[0])
+    } else {
+        None
+    }
+}
+
+fn select_by_input_content<'a>(
+    context: &CliContext,
+    candidates: &'a [&'a CliManifestFixture],
+    input_artifact: &str,
+) -> PipelineResult<Option<&'a CliManifestFixture>> {
+    let local_input = context.working_dir.join(input_artifact);
+    if !local_input.is_file() {
+        return Ok(None);
+    }
+
+    let local_source = fs::read(&local_input).map_err(|source| {
+        FeffError::io_system(
+            "IO.CLI_INPUT_READ",
+            format!(
+                "failed to read command input '{}' while selecting fixture: {}",
+                local_input.display(),
+                source
+            ),
+        )
+    })?;
+
+    let mut matches = Vec::new();
+    for fixture in candidates {
+        let baseline_input = context
+            .workspace_root
+            .join(BASELINE_RELATIVE_PATH)
+            .join(&fixture.id)
+            .join("baseline")
+            .join(input_artifact);
+        if !baseline_input.is_file() {
+            continue;
+        }
+
+        let baseline_source = fs::read(&baseline_input).map_err(|source| {
+            FeffError::io_system(
+                "IO.CLI_BASELINE_READ",
+                format!(
+                    "failed to read baseline input '{}' while selecting fixture '{}': {}",
+                    baseline_input.display(),
+                    fixture.id,
+                    source
+                ),
+            )
+        })?;
+
+        if normalize_line_endings(&local_source) == normalize_line_endings(&baseline_source) {
+            matches.push(*fixture);
+        }
+    }
+
+    if matches.len() == 1 {
+        Ok(Some(matches[0]))
+    } else {
+        Ok(None)
+    }
+}
+
+fn normalize_line_endings(source: &[u8]) -> Vec<u8> {
+    String::from_utf8_lossy(source)
+        .replace("\r\n", "\n")
+        .into_bytes()
+}
+
+fn probe_module_for_fixture(
+    context: &CliContext,
+    spec: ModuleCommandSpec,
+    fixture_id: &str,
+) -> PipelineResult<()> {
+    let probe_output_dir = probe_directory_for(spec.module, fixture_id)?;
+    let request = PipelineRequest::new(
+        fixture_id.to_string(),
+        spec.module,
+        context.working_dir.join(spec.input_artifact),
+        &probe_output_dir,
+    );
+
+    let result = {
+        let _guard = CurrentDirGuard::change_to(&context.workspace_root)?;
+        execute_pipeline_for_spec(spec, &request).map(|_| ())
+    };
+
+    let _ = fs::remove_dir_all(&probe_output_dir);
+    result
+}
+
+fn probe_directory_for(module: PipelineModule, fixture_id: &str) -> PipelineResult<PathBuf> {
+    let mut path = std::env::temp_dir();
+    let unix_nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|source| {
+            FeffError::internal(
+                "SYS.CLI_TIME",
+                format!(
+                    "failed to read system time for probe directory naming: {}",
+                    source
+                ),
+            )
+        })?
+        .as_nanos();
+    path.push(format!(
+        "feff10-rs-cli-probe-{}-{}-{}-{}",
+        module.as_str().to_ascii_lowercase(),
+        fixture_id,
+        std::process::id(),
+        unix_nanos
+    ));
+    fs::create_dir_all(&path).map_err(|source| {
+        FeffError::io_system(
+            "IO.CLI_PROBE_DIR",
+            format!(
+                "failed to create module probe directory '{}': {}",
+                path.display(),
+                source
+            ),
+        )
+    })?;
+    Ok(path)
+}
+
+fn execute_module_with_fixture(
+    context: &CliContext,
+    spec: ModuleCommandSpec,
+    fixture_id: &str,
+) -> PipelineResult<Vec<PipelineArtifact>> {
+    let request = PipelineRequest::new(
+        fixture_id.to_string(),
+        spec.module,
+        context.working_dir.join(spec.input_artifact),
+        &context.working_dir,
+    );
+    let _guard = CurrentDirGuard::change_to(&context.workspace_root)?;
+    execute_pipeline_for_spec(spec, &request)
+}
+
+fn execute_pipeline_for_spec(
+    spec: ModuleCommandSpec,
+    request: &PipelineRequest,
+) -> PipelineResult<Vec<PipelineArtifact>> {
+    match spec.module {
+        PipelineModule::Rdinp => RdinpPipelineScaffold.execute(request),
+        PipelineModule::Pot => PotPipelineScaffold.execute(request),
+        PipelineModule::Path => PathPipelineScaffold.execute(request),
+        PipelineModule::Fms => FmsPipelineScaffold.execute(request),
+        PipelineModule::Xsph => XsphPipelineScaffold.execute(request),
+        PipelineModule::Band => BandPipelineScaffold.execute(request),
+        PipelineModule::Ldos => LdosPipelineScaffold.execute(request),
+        PipelineModule::Rixs => RixsPipelineScaffold.execute(request),
+        PipelineModule::Crpa => CrpaPipelineScaffold.execute(request),
+        PipelineModule::Compton => ComptonPipelineScaffold.execute(request),
+        PipelineModule::Debye => DebyePipelineScaffold.execute(request),
+        PipelineModule::Dmdw => DmdwPipelineScaffold.execute(request),
+        PipelineModule::Screen => ScreenPipelineScaffold.execute(request),
+        PipelineModule::SelfEnergy => SelfEnergyPipelineScaffold.execute(request),
+        PipelineModule::Eels => EelsPipelineScaffold.execute(request),
+        PipelineModule::FullSpectrum => FullSpectrumPipelineScaffold.execute(request),
+    }
+}
+
+fn parse_pipeline_module(token: &str) -> Option<PipelineModule> {
+    match token.to_ascii_uppercase().as_str() {
+        "RDINP" => Some(PipelineModule::Rdinp),
+        "POT" => Some(PipelineModule::Pot),
+        "PATH" => Some(PipelineModule::Path),
+        "FMS" => Some(PipelineModule::Fms),
+        "XSPH" => Some(PipelineModule::Xsph),
+        "BAND" => Some(PipelineModule::Band),
+        "LDOS" => Some(PipelineModule::Ldos),
+        "RIXS" => Some(PipelineModule::Rixs),
+        "CRPA" => Some(PipelineModule::Crpa),
+        "COMPTON" => Some(PipelineModule::Compton),
+        "DEBYE" => Some(PipelineModule::Debye),
+        "DMDW" => Some(PipelineModule::Dmdw),
+        "SCREEN" => Some(PipelineModule::Screen),
+        "SELF" => Some(PipelineModule::SelfEnergy),
+        "EELS" => Some(PipelineModule::Eels),
+        "FULLSPECTRUM" => Some(PipelineModule::FullSpectrum),
+        _ => None,
+    }
+}
+
+fn module_command_spec(command: &str) -> Option<ModuleCommandSpec> {
+    MODULE_COMMANDS
+        .iter()
+        .copied()
+        .find(|spec| spec.command == command)
+}
+
+fn module_command_for_module(module: PipelineModule) -> Option<ModuleCommandSpec> {
+    MODULE_COMMANDS
+        .iter()
+        .copied()
+        .find(|spec| spec.module == module)
+}
+
+fn command_alias_from_program_name(program_name: &str) -> Option<&'static str> {
+    let executable_name = Path::new(program_name)
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or(program_name);
+    let normalized = executable_name
+        .strip_suffix(".exe")
+        .unwrap_or(executable_name);
+
+    if normalized == "feff10-rs" {
+        return None;
+    }
+
+    if normalized == "feff" || normalized == "feffmpi" {
+        return Some(if normalized == "feff" {
+            "feff"
+        } else {
+            "feffmpi"
+        });
+    }
+
+    module_command_spec(normalized).map(|spec| spec.command)
 }
 
 fn parse_regression_args(args: Vec<String>) -> Result<RegressionRunnerConfig, CliError> {
@@ -141,6 +918,10 @@ fn parse_regression_args(args: Vec<String>) -> Result<RegressionRunnerConfig, Cl
                 config.run_dmdw = true;
                 index += 1;
             }
+            "--run-fullspectrum" | "--run-fullspectrum-placeholder" => {
+                config.run_full_spectrum = true;
+                index += 1;
+            }
             "--run-screen" | "--run-screen-placeholder" => {
                 config.run_screen = true;
                 index += 1;
@@ -151,10 +932,6 @@ fn parse_regression_args(args: Vec<String>) -> Result<RegressionRunnerConfig, Cl
             }
             "--run-eels" | "--run-eels-placeholder" => {
                 config.run_eels = true;
-                index += 1;
-            }
-            "--run-fullspectrum" | "--run-fullspectrum-placeholder" => {
-                config.run_full_spectrum = true;
                 index += 1;
             }
             _ => {
@@ -186,12 +963,31 @@ fn value_for_option<'a>(
         })
 }
 
+fn help_requested(args: &[String]) -> bool {
+    args.iter().any(|arg| arg == "--help" || arg == "-h")
+}
+
 fn usage_text() -> &'static str {
-    "Usage:\n  feff10-rs regression [options]\n  feff10-rs help\n\nRun `feff10-rs regression --help` for command options."
+    "Usage:\n  feff10-rs <command> [options]\n  feff10-rs help\n\nCommands:\n  regression       Run fixture regression comparisons\n  feff             Run serial FEFF compatibility chain in current directory\n  feffmpi <nprocs> Run MPI-compatible FEFF entrypoint (serial fallback in v1)\n  rdinp            Run RDINP module in current directory\n  pot              Run POT module in current directory\n  xsph             Run XSPH module in current directory\n  path             Run PATH module in current directory\n  fms              Run FMS module in current directory\n  band             Run BAND module in current directory\n  ldos             Run LDOS module in current directory\n  rixs             Run RIXS module in current directory\n  crpa             Run CRPA module in current directory\n  compton          Run COMPTON module in current directory\n  ff2x             Run DEBYE module (`ff2x`) in current directory\n  dmdw             Run DMDW module in current directory\n  screen           Run SCREEN module in current directory\n  sfconv           Run SELF module (`sfconv`) in current directory\n  eels             Run EELS module in current directory\n  fullspectrum     Run FULLSPECTRUM module in current directory\n\nRun `feff10-rs regression --help` for regression options.\nRun `feff10-rs <module> --help` for module command usage."
 }
 
 fn regression_usage_text() -> &'static str {
     "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP pipeline before fixture comparisons\n  --run-pot                Run POT pipeline before fixture comparisons\n  --run-screen             Run SCREEN pipeline before fixture comparisons\n  --run-self               Run SELF pipeline before fixture comparisons\n  --run-eels               Run EELS pipeline before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM pipeline before fixture comparisons\n  --run-xsph               Run XSPH pipeline before fixture comparisons\n  --run-path               Run PATH pipeline before fixture comparisons\n  --run-fms                Run FMS pipeline before fixture comparisons\n  --run-band               Run BAND pipeline before fixture comparisons\n  --run-ldos               Run LDOS pipeline before fixture comparisons\n  --run-rixs               Run RIXS pipeline before fixture comparisons\n  --run-crpa               Run CRPA pipeline before fixture comparisons\n  --run-compton            Run COMPTON pipeline before fixture comparisons\n  --run-debye              Run DEBYE pipeline before fixture comparisons\n  --run-dmdw               Run DMDW pipeline before fixture comparisons"
+}
+
+fn feff_usage_text() -> &'static str {
+    "Usage:\n  feff10-rs feff\n\nRuns the serial FEFF compatibility chain in the current working directory. No positional arguments are accepted."
+}
+
+fn feffmpi_usage_text() -> &'static str {
+    "Usage:\n  feff10-rs feffmpi <nprocs>\n\nRuns the MPI-compatible FEFF entrypoint.\n`<nprocs>` must be a positive integer."
+}
+
+fn module_usage_text(spec: ModuleCommandSpec) -> String {
+    format!(
+        "Usage:\n  feff10-rs {}\n\nRuns module {} in the current working directory.\nRequired entry artifact: '{}'.",
+        spec.command, spec.module, spec.input_artifact
+    )
 }
 
 #[derive(Debug)]

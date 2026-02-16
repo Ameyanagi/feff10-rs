@@ -10,6 +10,41 @@ The current Rust migration scaffolding keeps module boundaries explicit in a sin
 - `src/pipelines`: pipeline-facing abstractions plus regression/comparator infrastructure
 - `src/cli`: CLI command parsing and orchestration
 
+## CLI Compatibility Commands
+
+The binary now exposes FEFF-compatible command surfaces in addition to `regression`:
+
+```bash
+cargo run -- feff
+cargo run -- feffmpi 4
+cargo run -- rdinp
+cargo run -- pot
+cargo run -- xsph
+```
+
+Supported module commands are:
+
+- `rdinp`
+- `pot`
+- `xsph`
+- `path`
+- `fms`
+- `band`
+- `ldos`
+- `rixs`
+- `crpa`
+- `compton`
+- `ff2x` (DEBYE)
+- `dmdw`
+- `screen`
+- `sfconv` (SELF)
+- `eels`
+- `fullspectrum`
+
+All module commands run in the current working directory and do not accept positional arguments.
+
+MPI parity is still deferred for Rust v1 (`D-2`). `feffmpi <nprocs>` validates `<nprocs>` and runs the serial compatibility chain, emitting a deterministic warning when `nprocs > 1`.
+
 ## Fortran Baseline Snapshots
 
 Regenerate committed fixture baselines and checksum metadata:
