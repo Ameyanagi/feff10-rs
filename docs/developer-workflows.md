@@ -69,6 +69,9 @@ jq -r '
 ' artifacts/regression/report.json > artifacts/regression/regression-diff.txt
 ```
 
+Baseline snapshots under `artifacts/fortran-baselines` are validation-only inputs for this workflow and for tests.
+Do not use baseline snapshot files as runtime output sources for `feff`/module commands.
+
 ## Baseline Snapshot Regeneration
 
 Refresh committed Fortran baselines and checksums:
@@ -102,3 +105,4 @@ The regression command supports module pre-compare execution flags such as:
 
 Use these flags when you need Rust pipelines to materialize module artifacts into
 `<actual-root>/<fixture-id>/<actual-subdir>` before comparison.
+These hooks are part of validation-only parity flows, not production runtime execution paths.

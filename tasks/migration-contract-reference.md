@@ -13,9 +13,11 @@ All artifacts listed below are release-blocking references for implementation an
 | Numeric tolerance policy (D-3) | `tasks/numeric-tolerance-policy.json` | Defines comparator modes, category matching order, and tolerance thresholds for numeric parity decisions. |
 | Fortran-to-Rust boundary map | `tasks/fortran-rust-boundary-map.md` | Defines module ownership boundaries, dependency order, and migration sequencing constraints. |
 | Warning/error contract (D-4) | `tasks/migration-decision-log.md#d-4-warning-and-error-compatibility-contract` | Defines fatal exit-code mapping, stderr/stdout diagnostics format, and failure-category mapping. |
+| Baseline-copy runtime guardrails (D-5) | `tasks/migration-decision-log.md#d-5-baseline-copy-runtime-guardrails` | Defines prohibited runtime baseline reads/copies and allowed baseline usage only in validation tooling and tests. |
 
 ## Enforcement Rules
 
 - Module rewrite stories must implement behavior consistent with every applicable contract artifact above.
-- Runtime module commands must not bypass these contracts by replaying baseline outputs.
+- Runtime module commands must not bypass these contracts by replaying baseline outputs or reading from `artifacts/fortran-baselines/**`.
+- Baseline snapshots are permitted only in validation/test flows defined by D-5 (`regression`, capture/snapshot tooling, and tests).
 - Any story that intentionally changes contract behavior must update the affected artifact and this index in the same change set.

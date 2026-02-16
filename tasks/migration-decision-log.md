@@ -117,6 +117,29 @@ Release-blocking contract artifact index: `tasks/migration-contract-reference.md
 - CI failure artifacts should include captured `stderr` for failing fixtures so compatibility drift in diagnostics is reviewable.
 - Warning-only fixtures must assert successful exit (`0`) while validating warning presence on `stderr`.
 
+## D-5: Baseline-Copy Runtime Guardrails
+
+### Decision
+- Production runtime commands (`feff`, `feffmpi`, and module commands) must not read `artifacts/fortran-baselines/**` to generate runtime outputs.
+- Production runtime commands must not copy baseline snapshot files to satisfy required output contracts.
+- Runtime outputs must be produced from runtime inputs plus Rust compute results in the active execution workspace.
+
+### Allowed baseline usage (validation-only and tests)
+- The `regression` command may read baseline snapshots for comparator behavior and parity reporting.
+- Regression pre-compare module hooks (`--run-*`) are validation-only execution paths and may stage approved baseline material needed for parity checks.
+- Baseline capture/snapshot scripts under `scripts/fortran/` may read and write baseline snapshot artifacts.
+- Unit, integration, and fixture tests may read/copy baseline artifacts for assertions and staging.
+
+### Runtime-vs-validation boundary contract
+- Runtime boundary: CLI paths invoked by `feff`, `feffmpi`, and module commands (`rdinp`, `pot`, `xsph`, etc.).
+- Validation boundary: CLI path invoked by `regression`, regression pre-compare hooks, baseline-capture tooling, and tests.
+- Any baseline snapshot dependency that crosses from validation boundary into runtime boundary is a release-blocking defect.
+
+### CI and review implications
+- Runtime pipeline changes must be reviewed for direct or transitive baseline snapshot access.
+- Validation tooling may evolve baseline snapshot handling, but those changes must remain isolated from runtime command paths.
+- Regression coverage should continue to verify baseline usage only in validation/test flows.
+
 ## Approval Record: D-1
 
 - Decision ID: `D-1`
@@ -156,3 +179,13 @@ Release-blocking contract artifact index: `tasks/migration-contract-reference.md
 - Approved by: FEFF10 Rust migration lead
 - Scope: Applies to CLI/process signaling, diagnostics formatting, and legacy failure-class migration behavior
 - Review trigger: Re-open when legacy automation requires additional exit-code classes or diagnostic token changes
+
+## Approval Record: D-5
+
+- Decision ID: `D-5`
+- Decision title: Define baseline-copy runtime guardrails
+- Status: `Approved`
+- Approved on: `2026-02-17`
+- Approved by: FEFF10 Rust migration lead
+- Scope: Applies to runtime module command behavior, regression validation boundaries, and baseline artifact handling policy
+- Review trigger: Re-open when runtime command architecture or baseline-validation workflows introduce new boundary requirements

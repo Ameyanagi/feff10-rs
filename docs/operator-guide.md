@@ -64,6 +64,8 @@ Exit code mapping:
 - `feffmpi <nprocs>` is available for compatibility, but MPI parity is deferred in v1.
 - When `nprocs > 1`, the command emits `WARNING: [RUN.MPI_DEFERRED]` and executes the serial compatibility chain.
 - Module selection and workflow resolution are driven by `tasks/golden-fixture-manifest.json`.
+- Runtime commands (`feff`, `feffmpi`, and module commands) must not read from `artifacts/fortran-baselines` to generate outputs.
+- Baseline snapshots are reserved for validation flows (`regression`) and test tooling only.
 
 ## Known Limits
 
