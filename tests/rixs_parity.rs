@@ -1,8 +1,8 @@
 use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
 use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::band::BandPipelineScaffold;
 use feff10_rs::pipelines::comparator::Comparator;
 use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
+use feff10_rs::pipelines::rixs::RixsPipelineScaffold;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -14,46 +14,49 @@ struct FixtureCase {
     input_directory: &'static str,
 }
 
-const APPROVED_BAND_FIXTURES: [FixtureCase; 1] = [FixtureCase {
-    id: "FX-BAND-001",
-    input_directory: "feff10/examples/KSPACE/Cr2GeC",
+const APPROVED_RIXS_FIXTURES: [FixtureCase; 1] = [FixtureCase {
+    id: "FX-RIXS-001",
+    input_directory: "feff10/examples/RIXS",
 }];
 
-const BAND_OUTPUT_CANDIDATES: [&str; 4] =
-    ["bandstructure.dat", "logband.dat", "list.dat", "log5.dat"];
-const REQUIRED_BAND_INPUT_ARTIFACTS: [&str; 3] = ["geom.dat", "global.inp", "phase.bin"];
+const RIXS_OUTPUT_CANDIDATES: [&str; 10] = [
+    "rixs0.dat",
+    "rixs1.dat",
+    "rixsET.dat",
+    "rixsEE.dat",
+    "rixsET-sat.dat",
+    "rixsEE-sat.dat",
+    "logrixs.dat",
+    "referenceherfd.dat",
+    "referenceherfd-sat.dat",
+    "referencerixsET.dat",
+];
 
 #[test]
-fn approved_band_fixtures_match_baseline_under_policy() {
+fn approved_rixs_fixtures_match_baseline_under_policy() {
     let comparator = Comparator::from_policy_path("tasks/numeric-tolerance-policy.json")
         .expect("policy should load");
 
-    for fixture in &APPROVED_BAND_FIXTURES {
+    for fixture in &APPROVED_RIXS_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = temp.path().join("actual");
 
-        stage_band_input(fixture.id, &output_dir.join("band.inp"));
-        for artifact in REQUIRED_BAND_INPUT_ARTIFACTS {
-            copy_file(
-                &baseline_artifact_path(fixture.id, Path::new(artifact)),
-                &output_dir.join(artifact),
-            );
-        }
+        stage_required_rixs_inputs(fixture.id, &output_dir);
 
-        let band_request = PipelineRequest::new(
+        let rixs_request = PipelineRequest::new(
             fixture.id,
-            PipelineModule::Band,
-            output_dir.join("band.inp"),
+            PipelineModule::Rixs,
+            output_dir.join("rixs.inp"),
             &output_dir,
         );
-        let artifacts = BandPipelineScaffold
-            .execute(&band_request)
-            .expect("BAND execution should succeed");
+        let artifacts = RixsPipelineScaffold
+            .execute(&rixs_request)
+            .expect("RIXS execution should succeed");
 
         assert_eq!(
             artifact_set(&artifacts),
-            expected_band_artifact_set_for_fixture(fixture.id),
-            "artifact contract should match expected BAND outputs"
+            expected_rixs_artifact_set_for_fixture(fixture.id),
+            "artifact contract should match expected RIXS outputs"
         );
 
         for artifact in artifacts {
@@ -79,15 +82,15 @@ fn approved_band_fixtures_match_baseline_under_policy() {
 }
 
 #[test]
-fn band_regression_suite_passes() {
+fn rixs_regression_suite_passes() {
     let temp = TempDir::new().expect("tempdir should be created");
     let baseline_root = temp.path().join("baseline-root");
     let actual_root = temp.path().join("actual-root");
     let report_path = temp.path().join("report/report.json");
-    let manifest_path = temp.path().join("band-manifest.json");
+    let manifest_path = temp.path().join("rixs-manifest.json");
 
-    for fixture in &APPROVED_BAND_FIXTURES {
-        for artifact in expected_band_artifacts_for_fixture(fixture.id) {
+    for fixture in &APPROVED_RIXS_FIXTURES {
+        for artifact in expected_rixs_artifacts_for_fixture(fixture.id) {
             let baseline_source = baseline_artifact_path(fixture.id, Path::new(&artifact));
             let baseline_target = baseline_root
                 .join(fixture.id)
@@ -96,35 +99,17 @@ fn band_regression_suite_passes() {
             copy_file(&baseline_source, &baseline_target);
         }
         let baseline_fixture_dir = baseline_root.join(fixture.id).join("baseline");
-        stage_band_input(fixture.id, &baseline_fixture_dir.join("band.inp"));
-        for artifact in REQUIRED_BAND_INPUT_ARTIFACTS {
-            copy_file(
-                &baseline_artifact_path(fixture.id, Path::new(artifact)),
-                &baseline_fixture_dir.join(artifact),
-            );
-        }
+        stage_required_rixs_inputs(fixture.id, &baseline_fixture_dir);
 
         let staged_dir = actual_root.join(fixture.id).join("actual");
-        stage_band_input(fixture.id, &staged_dir.join("band.inp"));
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("geom.dat")),
-            &staged_dir.join("geom.dat"),
-        );
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("global.inp")),
-            &staged_dir.join("global.inp"),
-        );
-        copy_file(
-            &baseline_artifact_path(fixture.id, Path::new("phase.bin")),
-            &staged_dir.join("phase.bin"),
-        );
+        stage_required_rixs_inputs(fixture.id, &staged_dir);
     }
 
     let manifest = json!({
-      "fixtures": APPROVED_BAND_FIXTURES.iter().map(|fixture| {
+      "fixtures": APPROVED_RIXS_FIXTURES.iter().map(|fixture| {
         json!({
           "id": fixture.id,
-          "modulesCovered": ["BAND"],
+          "modulesCovered": ["RIXS"],
           "inputDirectory": fixture.input_directory,
           "entryFiles": ["feff.inp"]
         })
@@ -149,14 +134,14 @@ fn band_regression_suite_passes() {
         run_xsph: false,
         run_path: false,
         run_fms: false,
-        run_band: true,
+        run_band: false,
         run_ldos: false,
-        run_rixs: false,
+        run_rixs: true,
     };
 
-    let report = run_regression(&config).expect("BAND regression suite should run");
-    assert!(report.passed, "expected BAND suite to pass");
-    assert_eq!(report.fixture_count, APPROVED_BAND_FIXTURES.len());
+    let report = run_regression(&config).expect("RIXS regression suite should run");
+    assert!(report.passed, "expected RIXS suite to pass");
+    assert_eq!(report.fixture_count, APPROVED_RIXS_FIXTURES.len());
     assert_eq!(report.failed_fixture_count, 0);
 }
 
@@ -167,22 +152,22 @@ fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
         .join(relative_path)
 }
 
-fn expected_band_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
-    let artifacts: BTreeSet<String> = BAND_OUTPUT_CANDIDATES
+fn expected_rixs_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
+    let artifacts: BTreeSet<String> = RIXS_OUTPUT_CANDIDATES
         .iter()
         .filter(|artifact| baseline_artifact_path(fixture_id, Path::new(artifact)).is_file())
         .map(|artifact| artifact.to_string())
         .collect();
     assert!(
         !artifacts.is_empty(),
-        "fixture '{}' should provide at least one BAND output artifact",
+        "fixture '{}' should provide at least one RIXS output artifact",
         fixture_id
     );
     artifacts
 }
 
-fn expected_band_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
-    expected_band_artifact_set_for_fixture(fixture_id)
+fn expected_rixs_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
+    expected_rixs_artifact_set_for_fixture(fixture_id)
         .into_iter()
         .collect()
 }
@@ -194,8 +179,47 @@ fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
         .collect()
 }
 
-fn stage_band_input(fixture_id: &str, destination: &Path) {
-    let source = baseline_artifact_path(fixture_id, Path::new("band.inp"));
+fn stage_required_rixs_inputs(fixture_id: &str, destination_dir: &Path) {
+    stage_text_input(
+        fixture_id,
+        "rixs.inp",
+        &destination_dir.join("rixs.inp"),
+        "nenergies\n3\nemin emax estep\n-10.0 10.0 0.5\n",
+    );
+    stage_binary_input(
+        fixture_id,
+        "phase_1.bin",
+        &destination_dir.join("phase_1.bin"),
+        &[0_u8, 1_u8, 2_u8, 3_u8],
+    );
+    stage_binary_input(
+        fixture_id,
+        "phase_2.bin",
+        &destination_dir.join("phase_2.bin"),
+        &[4_u8, 5_u8, 6_u8, 7_u8],
+    );
+    stage_text_input(
+        fixture_id,
+        "wscrn_1.dat",
+        &destination_dir.join("wscrn_1.dat"),
+        "0.0 0.0 0.0\n",
+    );
+    stage_text_input(
+        fixture_id,
+        "wscrn_2.dat",
+        &destination_dir.join("wscrn_2.dat"),
+        "0.0 0.0 0.0\n",
+    );
+    stage_text_input(
+        fixture_id,
+        "xsect_2.dat",
+        &destination_dir.join("xsect_2.dat"),
+        "0.0 0.0 0.0\n",
+    );
+}
+
+fn stage_text_input(fixture_id: &str, artifact: &str, destination: &Path, default: &str) {
+    let source = baseline_artifact_path(fixture_id, Path::new(artifact));
     if source.is_file() {
         copy_file(&source, destination);
         return;
@@ -204,11 +228,20 @@ fn stage_band_input(fixture_id: &str, destination: &Path) {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).expect("destination directory should exist");
     }
-    fs::write(
-        destination,
-        "mband : calculate bands if = 1\n   0\nemin, emax, estep : energy mesh\n      0.00000      0.00000      0.00000\nnkp : # points in k-path\n   0\nikpath : type of k-path\n  -1\nfreeprop :  empty lattice if = T\n F\n",
-    )
-    .expect("band input should be staged");
+    fs::write(destination, default).expect("text input should be staged");
+}
+
+fn stage_binary_input(fixture_id: &str, artifact: &str, destination: &Path, default: &[u8]) {
+    let source = baseline_artifact_path(fixture_id, Path::new(artifact));
+    if source.is_file() {
+        copy_file(&source, destination);
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination directory should exist");
+    }
+    fs::write(destination, default).expect("binary input should be staged");
 }
 
 fn copy_file(source: &Path, destination: &Path) {

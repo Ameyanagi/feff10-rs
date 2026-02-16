@@ -6,6 +6,7 @@ pub mod path;
 pub mod pot;
 pub mod rdinp;
 pub mod regression;
+pub mod rixs;
 pub mod xsph;
 
 use crate::domain::{

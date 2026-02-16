@@ -18,6 +18,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
 - Core parity hooks for `POT`/`PATH`/`FMS` should enforce baseline input-contract checks (text-normalized for `.inp`/`.dat`, byte-exact for `phase.bin`) before materializing approved outputs.
 - When an approved fixture baseline omits a module-specific input artifact (for example `band.inp`), keep that input required in staged outputs but gate baseline-content matching on file availability while still enforcing baseline checks for shared required artifacts.
+- For edge-case fixtures backed by `reference_file` baselines, keep the module input contract required in staged outputs, gate per-input baseline matching on availability, and derive expected outputs from whichever canonical or reference-named artifacts exist.
 - For modules with indexed output families (for example `LDOS`), derive expected output artifacts by scanning baseline filenames (for example `ldos*.dat`) plus required logs instead of hardcoding index counts.
 - RDINP `geom.dat` parity may require FEFF-specific atom ordering that differs from raw `ATOMS` card order; preserve baseline ordering when a header-compatible canonical baseline exists for the fixture.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
@@ -356,4 +357,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: LDOS parity should derive expected outputs from baseline filename families (`ldos*.dat`) plus required logs (`logdos.dat`) so fixture-specific atom-index counts do not require code changes.
   - Gotchas encountered: Regression-suite fixtures that stage module inputs in the same comparison directory must copy those inputs into the temporary baseline root, or regression reports false missing-baseline failures.
   - Useful context: `FX-LDOS-001` parity currently validates text-normalized `ldos.inp`/`geom.dat`/`reciprocal.inp`, byte-exact `pot.bin`, and materializes whatever LDOS output set is present in `artifacts/fortran-baselines/<fixture>/baseline`.
+---
+## 2026-02-16 20:55:49 JST - US-030
+- Implemented baseline-driven RIXS parity module `src/pipelines/rixs.rs` with required staged inputs (`rixs.inp`, `phase_1.bin`, `phase_2.bin`, `wscrn_1.dat`, `wscrn_2.dat`, `xsect_2.dat`), optional baseline-input matching when fixture baselines provide those inputs, and baseline artifact materialization for approved RIXS outputs.
+- Integrated RIXS into regression and CLI orchestration by adding `RegressionRunnerConfig.run_rixs`, the `run_rixs_if_enabled` regression hook, and CLI flags `--run-rixs`/`--run-rixs-placeholder`, with README usage updates.
+- Added RIXS parity coverage in `tests/rixs_parity.rs` (fixture-level comparator validation plus RIXS-only regression suite pass test) and extended regression runner unit tests with `run_regression_can_execute_rixs_scaffold`; updated existing parity-suite config literals for the new `run_rixs` field.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/rixs.rs`, `tests/rixs_parity.rs`, `tests/band_parity.rs`, `tests/fms_parity.rs`, `tests/ldos_parity.rs`, `tests/path_parity.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `tests/xsph_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: RIXS edge-case fixtures can follow the same baseline-driven parity contract when expected outputs are derived from available baseline files, including reference-named artifacts when canonical `rixs*.dat` outputs are absent.
+  - Gotchas encountered: `FX-RIXS-001` baseline snapshots currently provide reference-file outputs (`referenceherfd*.dat`, `referencerixsET.dat`) but omit canonical RIXS staged inputs; parity execution must stage required inputs while gating baseline-input matching on per-file availability.
+  - Useful context: Regression now supports `--run-rixs` for fixtures whose `modulesCovered` includes `RIXS`, using `<actual-root>/<fixture>/<actual-subdir>/rixs.inp` as the hook entrypoint and sibling staged input contract.
 ---

@@ -6,6 +6,7 @@ use super::ldos::LdosPipelineScaffold;
 use super::path::PathPipelineScaffold;
 use super::pot::PotPipelineScaffold;
 use super::rdinp::RdinpPipelineScaffold;
+use super::rixs::RixsPipelineScaffold;
 use super::xsph::XsphPipelineScaffold;
 use crate::domain::{FeffError, PipelineModule, PipelineRequest, PipelineResult};
 use serde::{Deserialize, Serialize};
@@ -32,6 +33,7 @@ pub struct RegressionRunnerConfig {
     pub run_fms: bool,
     pub run_band: bool,
     pub run_ldos: bool,
+    pub run_rixs: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -51,6 +53,7 @@ impl Default for RegressionRunnerConfig {
             run_fms: false,
             run_band: false,
             run_ldos: false,
+            run_rixs: false,
         }
     }
 }
@@ -125,6 +128,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         run_xsph_if_enabled(config, fixture)?;
         run_band_if_enabled(config, fixture)?;
         run_ldos_if_enabled(config, fixture)?;
+        run_rixs_if_enabled(config, fixture)?;
         run_path_if_enabled(config, fixture)?;
         run_fms_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
@@ -251,6 +255,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    RixsPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     PathPipeline {
         fixture_id: String,
         source: FeffError,
@@ -330,6 +338,11 @@ impl Display for RegressionRunnerError {
                 "LDOS parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::RixsPipeline { fixture_id, source } => write!(
+                f,
+                "RIXS parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::PathPipeline { fixture_id, source } => write!(
                 f,
                 "PATH scaffold execution failed for fixture '{}': {}",
@@ -379,6 +392,7 @@ impl Error for RegressionRunnerError {
             Self::XsphPipeline { source, .. } => Some(source),
             Self::BandPipeline { source, .. } => Some(source),
             Self::LdosPipeline { source, .. } => Some(source),
+            Self::RixsPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
             Self::FmsPipeline { source, .. } => Some(source),
             Self::ReadDirectory { source, .. } => Some(source),
@@ -408,6 +422,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::XsphPipeline { source, .. } => source,
             RegressionRunnerError::BandPipeline { source, .. } => source,
             RegressionRunnerError::LdosPipeline { source, .. } => source,
+            RegressionRunnerError::RixsPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
             RegressionRunnerError::FmsPipeline { source, .. } => source,
             RegressionRunnerError::ReadDirectory { .. }
@@ -638,6 +653,35 @@ fn run_ldos_if_enabled(
 
     LdosPipelineScaffold.execute(&request).map_err(|source| {
         RegressionRunnerError::LdosPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        }
+    })?;
+
+    Ok(())
+}
+
+fn run_rixs_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_rixs || !fixture.covers_module(PipelineModule::Rixs) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Rixs,
+        output_dir.join("rixs.inp"),
+        output_dir,
+    );
+
+    RixsPipelineScaffold.execute(&request).map_err(|source| {
+        RegressionRunnerError::RixsPipeline {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -991,8 +1035,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -1062,8 +1106,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1124,8 +1168,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1187,8 +1231,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1252,8 +1296,8 @@ mod tests {
             run_path: true,
             run_fms: false,
             run_band: false,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1318,8 +1362,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: false,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1383,8 +1427,8 @@ mod tests {
             run_path: false,
             run_fms: true,
             run_band: false,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1448,8 +1492,8 @@ mod tests {
             run_path: false,
             run_fms: false,
             run_band: true,
-
             run_ldos: false,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1518,6 +1562,7 @@ mod tests {
             run_fms: false,
             run_band: false,
             run_ldos: true,
+            run_rixs: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1532,6 +1577,79 @@ mod tests {
                 name == "logdos.dat" || (name.starts_with("ldos") && name.ends_with(".dat"))
             });
         assert!(has_ldos_output, "LDOS output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_rixs_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-RIXS-001",
+                  "modulesCovered": ["RIXS"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-RIXS-001").join("actual");
+        stage_repo_rixs_inputs("FX-RIXS-001", &staged_dir);
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: false,
+            run_ldos: false,
+            run_rixs: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-RIXS-001").join("actual");
+        let has_rixs_output = [
+            "rixs0.dat",
+            "rixs1.dat",
+            "rixsET.dat",
+            "rixsEE.dat",
+            "rixsET-sat.dat",
+            "rixsEE-sat.dat",
+            "logrixs.dat",
+            "referenceherfd.dat",
+            "referenceherfd-sat.dat",
+            "referencerixsET.dat",
+        ]
+        .iter()
+        .any(|artifact| output_dir.join(artifact).is_file());
+        assert!(has_rixs_output, "RIXS output should exist");
     }
 
     fn write_fixture_file(
@@ -1577,5 +1695,83 @@ mod tests {
             destination,
             "mband : calculate bands if = 1\n   0\nemin, emax, estep : energy mesh\n      0.00000      0.00000      0.00000\nnkp : # points in k-path\n   0\nikpath : type of k-path\n  -1\nfreeprop :  empty lattice if = T\n F\n",
         );
+    }
+
+    fn stage_repo_rixs_inputs(fixture_id: &str, destination_dir: &Path) {
+        stage_repo_text_input(
+            fixture_id,
+            "rixs.inp",
+            &destination_dir.join("rixs.inp"),
+            "nenergies\n3\nemin emax estep\n-10.0 10.0 0.5\n",
+        );
+        stage_repo_binary_input(
+            fixture_id,
+            "phase_1.bin",
+            &destination_dir.join("phase_1.bin"),
+            &[0_u8, 1_u8, 2_u8, 3_u8],
+        );
+        stage_repo_binary_input(
+            fixture_id,
+            "phase_2.bin",
+            &destination_dir.join("phase_2.bin"),
+            &[4_u8, 5_u8, 6_u8, 7_u8],
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "wscrn_1.dat",
+            &destination_dir.join("wscrn_1.dat"),
+            "0.0 0.0 0.0\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "wscrn_2.dat",
+            &destination_dir.join("wscrn_2.dat"),
+            "0.0 0.0 0.0\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "xsect_2.dat",
+            &destination_dir.join("xsect_2.dat"),
+            "0.0 0.0 0.0\n",
+        );
+    }
+
+    fn stage_repo_text_input(
+        fixture_id: &str,
+        relative_path: &str,
+        destination: &Path,
+        fallback_content: &str,
+    ) {
+        let source = Path::new("artifacts/fortran-baselines")
+            .join(fixture_id)
+            .join("baseline")
+            .join(relative_path);
+        if source.is_file() {
+            copy_repo_fixture_file(fixture_id, relative_path, destination);
+            return;
+        }
+
+        write_file(destination, fallback_content);
+    }
+
+    fn stage_repo_binary_input(
+        fixture_id: &str,
+        relative_path: &str,
+        destination: &Path,
+        fallback_bytes: &[u8],
+    ) {
+        let source = Path::new("artifacts/fortran-baselines")
+            .join(fixture_id)
+            .join("baseline")
+            .join(relative_path);
+        if source.is_file() {
+            copy_repo_fixture_file(fixture_id, relative_path, destination);
+            return;
+        }
+
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination directory should be created");
+        }
+        fs::write(destination, fallback_bytes).expect("binary input should be written");
     }
 }

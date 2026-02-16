@@ -137,8 +137,8 @@ fn rdinp_regression_suite_passes() {
         run_path: false,
         run_fms: false,
         run_band: false,
-
         run_ldos: false,
+        run_rixs: false,
     };
 
     let report = run_regression(&config).expect("RDINP regression suite should run");
