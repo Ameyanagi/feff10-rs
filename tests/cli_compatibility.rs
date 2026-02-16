@@ -109,6 +109,21 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
         temp.path().join("convergence.scf.fine").is_file(),
         "pot should emit convergence.scf.fine"
     );
+
+    let screen = run_cli_command(temp.path(), &["screen"]);
+    assert!(
+        screen.status.success(),
+        "screen should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&screen.stderr)
+    );
+    assert!(
+        temp.path().join("wscrn.dat").is_file(),
+        "screen should emit wscrn.dat"
+    );
+    assert!(
+        temp.path().join("logscreen.dat").is_file(),
+        "screen should emit logscreen.dat"
+    );
 }
 
 #[test]

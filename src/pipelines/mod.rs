@@ -52,7 +52,10 @@ where
 }
 
 pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
-    matches!(module, PipelineModule::Rdinp | PipelineModule::Pot)
+    matches!(
+        module,
+        PipelineModule::Rdinp | PipelineModule::Pot | PipelineModule::Screen
+    )
 }
 
 pub fn runtime_engine_unavailable_error(module: PipelineModule) -> FeffError {
@@ -82,6 +85,7 @@ pub fn execute_runtime_pipeline(
     match module {
         PipelineModule::Rdinp => RuntimeRdinpExecutor.execute_runtime(request),
         PipelineModule::Pot => RuntimePotExecutor.execute_runtime(request),
+        PipelineModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -101,6 +105,15 @@ struct RuntimePotExecutor;
 impl RuntimePipelineExecutor for RuntimePotExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         pot::PotPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeScreenExecutor;
+
+impl RuntimePipelineExecutor for RuntimeScreenExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        screen::ScreenPipelineScaffold.execute(request)
     }
 }
 
@@ -277,6 +290,7 @@ mod tests {
     fn runtime_dispatch_reports_available_compute_modules() {
         assert!(runtime_compute_engine_available(PipelineModule::Rdinp));
         assert!(runtime_compute_engine_available(PipelineModule::Pot));
+        assert!(runtime_compute_engine_available(PipelineModule::Screen));
         assert!(!runtime_compute_engine_available(PipelineModule::Xsph));
     }
 
@@ -342,6 +356,42 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_screen_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("pot.inp"), POT_INPUT_FIXTURE)
+            .expect("pot input should be written");
+        std::fs::write(input_dir.join("geom.dat"), GEOM_INPUT_FIXTURE)
+            .expect("geom input should be written");
+        std::fs::write(input_dir.join("ldos.inp"), LDOS_INPUT_FIXTURE)
+            .expect("ldos input should be written");
+        std::fs::write(input_dir.join("screen.inp"), SCREEN_OVERRIDE_INPUT_FIXTURE)
+            .expect("screen override should be written");
+
+        let request = PipelineRequest::new(
+            "FX-SCREEN-001",
+            PipelineModule::Screen,
+            input_dir.join("pot.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Screen, &request)
+            .expect("SCREEN runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("wscrn.dat")),
+            "SCREEN runtime should emit wscrn.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logscreen.dat")),
+            "SCREEN runtime should emit logscreen.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
         let error = runtime_engine_unavailable_error(PipelineModule::Path);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
@@ -368,5 +418,21 @@ gamach, rgrd, ca1, ecv, totvol, rfms1
    2      1.80500      1.80500      0.00000   1   1
    3     -1.80500      1.80500      0.00000   1   1
    4      0.00000      1.80500      1.80500   1   1
+";
+
+    const LDOS_INPUT_FIXTURE: &str = "mldos, lfms2, ixc, ispin, minv, neldos
+   0   0   0   0   0     101
+rfms2, emin, emax, eimag, rgrd
+      6.00000   1000.00000      0.00000     -1.00000      0.05000
+rdirec, toler1, toler2
+     12.00000      0.00100      0.00100
+ lmaxph(0:nph)
+   3   3
+";
+
+    const SCREEN_OVERRIDE_INPUT_FIXTURE: &str = "ner          40
+nei          20
+maxl           4
+rfms   4.00000000000000
 ";
 }
