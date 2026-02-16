@@ -1,0 +1,666 @@
+{
+  "project": "feff10-rs",
+  "branchName": "ralph/migrate-feff10-to-rust",
+  "description": "Full rewrite of FEFF10 from Fortran to Rust with exact compatibility for existing inputs, CLI contracts, and output artifacts.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Finalize platform certification matrix",
+      "description": "As a release owner, I want a fixed GA platform matrix so that CI and packaging targets are unambiguous.",
+      "acceptanceCriteria": [
+        "Document GA and non-GA OS/architecture targets.",
+        "Record compiler and runtime constraints per platform.",
+        "Store explicit approval in the migration decision log.",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Finalize MPI parity scope",
+      "description": "As a migration lead, I want an explicit MPI scope decision so that parallel module architecture is not blocked.",
+      "acceptanceCriteria": [
+        "Document whether MPI parity is in scope for v1 cutover or deferred.",
+        "If deferred, document fallback behavior and roadmap note.",
+        "Reference MPI decision in architecture and CI planning docs.",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Define numeric tolerance policy",
+      "description": "As a domain engineer, I want per-output tolerance rules so that parity checks are deterministic and defensible.",
+      "acceptanceCriteria": [
+        "Define exact-text or numeric comparison mode for each output-file category.",
+        "Define absolute and relative tolerances for numeric categories.",
+        "Publish policy in a machine-readable file consumed by the comparator.",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Define warning and error compatibility contract",
+      "description": "As a maintainer, I want stable warning and error behavior so that existing automation and diagnostics keep working.",
+      "acceptanceCriteria": [
+        "Document exit-code mapping for success and failure modes.",
+        "Document required stderr and stdout diagnostic behavior.",
+        "Map legacy failure classes to Rust error categories.",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Publish FEFF10 compatibility matrix",
+      "description": "As a migration engineer, I want an exhaustive compatibility matrix so that all module contracts are testable.",
+      "acceptanceCriteria": [
+        "Matrix includes all in-scope modules and required input and output artifacts.",
+        "Matrix includes required CLI commands, options, and output directories.",
+        "Each matrix row references at least one fixture ID.",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Create golden fixture manifest",
+      "description": "As a release owner, I want a bounded fixture manifest so that parity pass rates are meaningful.",
+      "acceptanceCriteria": [
+        "Manifest includes at least one fixture per in-scope module.",
+        "Manifest includes one end-to-end multi-module workflow fixture.",
+        "Manifest includes at least two documented edge-case fixtures.",
+        "Each fixture defines comparison mode and pass or fail threshold.",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Automate Fortran baseline output capture",
+      "description": "As a migration engineer, I want scripted baseline generation so that fixture outputs are reproducible.",
+      "acceptanceCriteria": [
+        "Add a script that runs Fortran FEFF10 for selected fixtures and collects outputs.",
+        "Script writes outputs to a deterministic directory structure.",
+        "Script exits non-zero when any fixture execution fails.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Generate baseline snapshots for approved fixtures",
+      "description": "As a release owner, I want baseline snapshots committed for approved fixtures so parity checks have stable references.",
+      "acceptanceCriteria": [
+        "Run baseline capture for all fixtures in the manifest.",
+        "Store baseline metadata with checksums for reproducibility.",
+        "Document snapshot regeneration command and prerequisites.",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Implement regression comparator core",
+      "description": "As a migration engineer, I want a comparator engine so that Rust outputs can be evaluated against Fortran baselines.",
+      "acceptanceCriteria": [
+        "Comparator supports exact text and numeric tolerance comparison modes.",
+        "Comparator reads per-file comparison policy from machine-readable config.",
+        "Comparator returns structured pass and fail results per artifact.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Add regression runner and diff reports",
+      "description": "As a release owner, I want one command to run all parity checks so that CI and local validation stay consistent.",
+      "acceptanceCriteria": [
+        "Add a single command that executes all fixtures and comparisons.",
+        "Generate human-readable summary and machine-readable JSON report.",
+        "Command exits non-zero when any fixture fails.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Create Rust workspace scaffolding",
+      "description": "As a developer, I want clear crate and module boundaries so that module ports can proceed safely.",
+      "acceptanceCriteria": [
+        "Create crates or modules for parser, numerics, pipelines, CLI, and shared domain types.",
+        "Workspace builds successfully with cargo check.",
+        "Scaffolding aligns with the architecture map in the PRD.",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Implement shared error and result types",
+      "description": "As a developer, I want common error and result conventions so that module behavior is consistent.",
+      "acceptanceCriteria": [
+        "Define shared error enums and result aliases used by parser and pipeline crates.",
+        "Map shared errors to compatibility contract placeholders for exit behavior.",
+        "Integrate shared error types in at least two Rust crates.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Document Fortran to Rust boundary map",
+      "description": "As a migration engineer, I want a module boundary map so that implementation ownership and dependency order are clear.",
+      "acceptanceCriteria": [
+        "Document mapping from each in-scope Fortran module to Rust crate or module target.",
+        "Document dependency order required for safe implementation sequencing.",
+        "Link each mapped module to at least one fixture ID in the manifest.",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Implement FEFF input tokenizer and AST parser",
+      "description": "As a user, I want existing FEFF input syntax parsed in Rust so that current input decks keep working.",
+      "acceptanceCriteria": [
+        "Parser handles all cards used by approved fixtures.",
+        "Parser emits typed AST structures consumed by pipeline entrypoints.",
+        "Unknown card tokens are preserved for validation and diagnostics.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Add parser validation and deterministic error tests",
+      "description": "As a maintainer, I want deterministic parse validation behavior so that invalid inputs fail consistently.",
+      "acceptanceCriteria": [
+        "Implement validation rules for required cards, optional cards, and defaults.",
+        "Map parse failures to documented error and exit-code behavior.",
+        "Add snapshot tests for valid and invalid parse cases.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Implement shared numerics foundation",
+      "description": "As a developer, I want Rust numerical primitives so that core scientific modules can share validated math behavior.",
+      "acceptanceCriteria": [
+        "Implement core numerical helpers required by RDINP, POT, PATH, FMS, and XSPH.",
+        "Public APIs use f64 with deterministic aggregation and ordering rules where required.",
+        "Integrate numerics crate with at least one core pipeline scaffold.",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Add numerics reference tests and precision helpers",
+      "description": "As a migration engineer, I want numerics validation tests so that parity drift is detected early.",
+      "acceptanceCriteria": [
+        "Add reference-value tests for numerical routines using approved baseline data.",
+        "Add formatting and comparison helpers aligned with numeric tolerance policy.",
+        "Store tolerance configuration in code-readable format.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Create RDINP pipeline scaffold",
+      "description": "As a developer, I want a Rust RDINP scaffold so that parity implementation can be added incrementally.",
+      "acceptanceCriteria": [
+        "Add RDINP pipeline entrypoint with input and output interfaces matching the compatibility matrix.",
+        "Wire RDINP into regression runner with placeholder execution path.",
+        "Build passes with Rust path enabled.",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Reach RDINP parity on approved fixtures",
+      "description": "As a user, I want RDINP outputs from Rust to match FEFF10 so downstream workflows remain valid.",
+      "acceptanceCriteria": [
+        "Implement RDINP logic required by approved RDINP fixtures.",
+        "RDINP outputs match baseline under configured comparison policy.",
+        "RDINP regression suite passes in CI.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Create POT pipeline scaffold",
+      "description": "As a developer, I want a Rust POT scaffold so that parity logic can be implemented safely.",
+      "acceptanceCriteria": [
+        "Add POT pipeline entrypoint with compatibility-matrix interfaces.",
+        "Wire POT into regression runner with placeholder execution path.",
+        "Build passes with POT scaffold enabled.",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Reach POT parity on approved fixtures",
+      "description": "As a user, I want POT outputs from Rust to match FEFF10 so potential calculations remain compatible.",
+      "acceptanceCriteria": [
+        "Implement POT logic required by approved POT fixtures.",
+        "POT outputs match baseline under configured comparison policy.",
+        "POT regression suite passes in CI.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Create PATH pipeline scaffold",
+      "description": "As a developer, I want a Rust PATH scaffold so that path parity can be delivered in controlled increments.",
+      "acceptanceCriteria": [
+        "Add PATH pipeline entrypoint with compatibility-matrix interfaces.",
+        "Wire PATH into regression runner with placeholder execution path.",
+        "Build passes with PATH scaffold enabled.",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Reach PATH parity on approved fixtures",
+      "description": "As a user, I want PATH outputs from Rust to match FEFF10 so path-dependent calculations remain valid.",
+      "acceptanceCriteria": [
+        "Implement PATH logic required by approved PATH fixtures.",
+        "PATH outputs match baseline under configured comparison policy.",
+        "PATH regression suite passes in CI.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Create FMS pipeline scaffold",
+      "description": "As a developer, I want a Rust FMS scaffold so that scattering parity can be implemented iteratively.",
+      "acceptanceCriteria": [
+        "Add FMS pipeline entrypoint with compatibility-matrix interfaces.",
+        "Wire FMS into regression runner with placeholder execution path.",
+        "Build passes with FMS scaffold enabled.",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Reach FMS parity on approved fixtures",
+      "description": "As a user, I want FMS outputs from Rust to match FEFF10 so core scattering workflows remain trustworthy.",
+      "acceptanceCriteria": [
+        "Implement FMS logic required by approved FMS fixtures.",
+        "FMS outputs match baseline under configured comparison policy.",
+        "FMS regression suite passes in CI.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Create XSPH pipeline scaffold",
+      "description": "As a developer, I want a Rust XSPH scaffold so that spectrum parity can be delivered incrementally.",
+      "acceptanceCriteria": [
+        "Add XSPH pipeline entrypoint with compatibility-matrix interfaces.",
+        "Wire XSPH into regression runner with placeholder execution path.",
+        "Build passes with XSPH scaffold enabled.",
+        "Typecheck passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Reach XSPH parity on approved fixtures",
+      "description": "As a user, I want XSPH outputs from Rust to match FEFF10 so spectroscopy workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement XSPH logic required by approved XSPH fixtures.",
+        "XSPH outputs match baseline under configured comparison policy.",
+        "XSPH regression suite passes in CI.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Reach BAND parity on approved fixtures",
+      "description": "As a user, I want BAND outputs from Rust to match FEFF10 so band-structure workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement BAND module behavior required by approved BAND fixtures.",
+        "BAND outputs match baseline under configured comparison policy.",
+        "BAND regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Reach LDOS parity on approved fixtures",
+      "description": "As a user, I want LDOS outputs from Rust to match FEFF10 so local density workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement LDOS module behavior required by approved LDOS fixtures.",
+        "LDOS outputs match baseline under configured comparison policy.",
+        "LDOS regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Reach RIXS parity on approved fixtures",
+      "description": "As a user, I want RIXS outputs from Rust to match FEFF10 so RIXS workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement RIXS module behavior required by approved RIXS fixtures.",
+        "RIXS outputs match baseline under configured comparison policy.",
+        "RIXS regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "Reach CRPA parity on approved fixtures",
+      "description": "As a user, I want CRPA outputs from Rust to match FEFF10 so CRPA workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement CRPA module behavior required by approved CRPA fixtures.",
+        "CRPA outputs match baseline under configured comparison policy.",
+        "CRPA regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-032",
+      "title": "Reach COMPTON parity on approved fixtures",
+      "description": "As a user, I want COMPTON outputs from Rust to match FEFF10 so Compton workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement COMPTON module behavior required by approved COMPTON fixtures.",
+        "COMPTON outputs match baseline under configured comparison policy.",
+        "COMPTON regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-033",
+      "title": "Reach DEBYE parity on approved fixtures",
+      "description": "As a user, I want DEBYE outputs from Rust to match FEFF10 so Debye workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement DEBYE module behavior required by approved DEBYE fixtures.",
+        "DEBYE outputs match baseline under configured comparison policy.",
+        "DEBYE regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "Reach DMDW parity on approved fixtures",
+      "description": "As a user, I want DMDW outputs from Rust to match FEFF10 so DMDW workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement DMDW module behavior required by approved DMDW fixtures.",
+        "DMDW outputs match baseline under configured comparison policy.",
+        "DMDW regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "Reach SCREEN parity on approved fixtures",
+      "description": "As a user, I want SCREEN outputs from Rust to match FEFF10 so screening workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement SCREEN module behavior required by approved SCREEN fixtures.",
+        "SCREEN outputs match baseline under configured comparison policy.",
+        "SCREEN regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-036",
+      "title": "Reach SELF parity on approved fixtures",
+      "description": "As a user, I want SELF outputs from Rust to match FEFF10 so self-energy workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement SELF module behavior required by approved SELF fixtures.",
+        "SELF outputs match baseline under configured comparison policy.",
+        "SELF regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 36,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-037",
+      "title": "Reach EELS parity on approved fixtures",
+      "description": "As a user, I want EELS outputs from Rust to match FEFF10 so EELS workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement EELS module behavior required by approved EELS fixtures.",
+        "EELS outputs match baseline under configured comparison policy.",
+        "EELS regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 37,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "Reach FULLSPECTRUM parity on approved fixtures",
+      "description": "As a user, I want FULLSPECTRUM outputs from Rust to match FEFF10 so full-spectrum workflows remain compatible.",
+      "acceptanceCriteria": [
+        "Implement FULLSPECTRUM module behavior required by approved FULLSPECTRUM fixtures.",
+        "FULLSPECTRUM outputs match baseline under configured comparison policy.",
+        "FULLSPECTRUM regression tests pass.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-039",
+      "title": "Implement CLI command and option compatibility",
+      "description": "As an existing FEFF user, I want CLI behavior preserved so that my automation scripts do not break.",
+      "acceptanceCriteria": [
+        "Implement required commands and options listed in compatibility matrix.",
+        "CLI help text and argument validation match documented contract.",
+        "Approved automation command set runs successfully on fixture workflows.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 39,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-040",
+      "title": "Enforce output and exit-code compatibility tests",
+      "description": "As a release owner, I want explicit contract tests so that file layout and exit behavior regressions are blocked.",
+      "acceptanceCriteria": [
+        "Add integration tests for required output filenames and directory structure.",
+        "Add integration tests for success and failure exit codes and diagnostics.",
+        "Regression runner validates contract checks for core workflows.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 40,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-041",
+      "title": "Add CI Rust quality gates",
+      "description": "As a maintainer, I want CI quality gates so that code health remains enforced throughout migration.",
+      "acceptanceCriteria": [
+        "CI runs cargo check, cargo test, cargo clippy with deny warnings, and cargo fmt check.",
+        "CI fails when any quality gate fails.",
+        "Repository documentation includes local commands matching CI checks.",
+        "Typecheck passes"
+      ],
+      "priority": 41,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-042",
+      "title": "Add CI parity gates and diff artifact upload",
+      "description": "As a release owner, I want parity gates in CI so that compatibility regressions are visible and blocking.",
+      "acceptanceCriteria": [
+        "CI runs full fixture regression suite against baseline snapshots.",
+        "CI uploads JSON and text diff artifacts when comparisons fail.",
+        "Pipeline status is failed on any parity mismatch.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 42,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-043",
+      "title": "Publish migration and operator documentation",
+      "description": "As a developer and operator, I want clear migration documentation so that build, run, and troubleshooting steps are repeatable.",
+      "acceptanceCriteria": [
+        "Publish developer docs for build, test, and regression workflows.",
+        "Publish user and operator docs for runtime behavior and known limits.",
+        "Add troubleshooting guidance for common migration failures.",
+        "Typecheck passes"
+      ],
+      "priority": 43,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-044",
+      "title": "Rehearse Rust cutover procedure",
+      "description": "As a release owner, I want a cutover rehearsal so that production rollout risk is reduced.",
+      "acceptanceCriteria": [
+        "Execute documented cutover checklist in a rehearsal environment.",
+        "Validate Rust release artifacts and smoke tests on GA platforms.",
+        "Record rehearsal outcomes and unresolved issues.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 44,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-045",
+      "title": "Rehearse rollback and finalize GA sign-off",
+      "description": "As a release owner, I want a rollback rehearsal so that recovery is proven before GA.",
+      "acceptanceCriteria": [
+        "Execute rollback from Rust artifacts to last stable Fortran release artifacts.",
+        "Verify rollback restores expected CLI and workflow behavior on smoke fixtures.",
+        "Capture final GA readiness sign-off record.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 45,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
