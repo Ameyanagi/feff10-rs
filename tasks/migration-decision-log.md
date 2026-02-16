@@ -62,7 +62,8 @@ This log records finalized migration governance decisions that unblock implement
 | `diagnostic_logs` | `exact_text` | `**/*.log`, `**/*.err`, `**/warnings*.txt` | N/A | N/A |
 | `columnar_spectra` | `numeric_tolerance` | `**/xmu.dat`, `**/chi.dat`, `**/danes.dat`, `**/eels.dat`, `**/compton.dat`, `**/rixs*.dat` | `1e-8` | `1e-6` |
 | `density_tables` | `numeric_tolerance` | `**/ldos*.dat`, `**/rho*.dat` | `5e-8` | `5e-6` |
-| `path_scattering_tables` | `numeric_tolerance` | `**/feff*.dat`, `**/paths.dat`, `**/path*.dat` | `1e-7` | `1e-5` |
+| `path_listing_reports` | `exact_text` | `**/paths.dat` | N/A | N/A |
+| `path_scattering_tables` | `numeric_tolerance` | `**/feff*.dat`, `**/path*.dat` | `1e-7` | `1e-5` |
 | `thermal_workflow_tables` | `numeric_tolerance` | `**/*.dmdw.out`, `**/debye*.dat`, `**/sig*.dat` | `1e-6` | `1e-4` |
 | `structured_reports` | `exact_text` | `**/*.json`, `**/*.toml` | N/A | N/A |
 
