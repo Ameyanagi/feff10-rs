@@ -57,6 +57,7 @@ Decision log reference:
 - D-3 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; machine-readable policy source is `tasks/numeric-tolerance-policy.json`.
 - D-4 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; includes exit-code mapping, stderr/stdout diagnostics contract, and legacy failure-class mapping.
 - Compatibility matrix status: Published on 2026-02-16 in `tasks/feff10-compatibility-matrix.md`.
+- Fixture manifest status: Published on 2026-02-16 in `tasks/golden-fixture-manifest.json`.
 
 ## 6. Story Execution Order
 

@@ -1,0 +1,587 @@
+{
+  "manifestVersion": "1.0.0",
+  "generatedOn": "2026-02-16",
+  "description": "Golden fixture manifest for FEFF10 parity validation during Fortran-to-Rust migration.",
+  "sourceContracts": {
+    "compatibilityMatrix": "tasks/feff10-compatibility-matrix.md",
+    "numericTolerancePolicy": "tasks/numeric-tolerance-policy.json"
+  },
+  "inScopeModules": [
+    "RDINP",
+    "POT",
+    "PATH",
+    "FMS",
+    "XSPH",
+    "BAND",
+    "LDOS",
+    "RIXS",
+    "CRPA",
+    "COMPTON",
+    "DEBYE",
+    "DMDW",
+    "SCREEN",
+    "SELF",
+    "EELS",
+    "FULLSPECTRUM"
+  ],
+  "defaultComparison": {
+    "mode": "policy_by_artifact",
+    "policyFile": "tasks/numeric-tolerance-policy.json",
+    "passFailThreshold": {
+      "minimumArtifactPassRate": 1.0,
+      "maxArtifactFailures": 0
+    }
+  },
+  "fixtures": [
+    {
+      "id": "FX-RDINP-001",
+      "title": "RDINP compatibility fixture from EXAFS Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "RDINP"
+      ],
+      "inputDirectory": "feff10/examples/EXAFS/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-POT-001",
+      "title": "POT compatibility fixture from EXAFS Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "POT"
+      ],
+      "inputDirectory": "feff10/examples/EXAFS/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-PATH-001",
+      "title": "PATH compatibility fixture from EXAFS Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "PATH"
+      ],
+      "inputDirectory": "feff10/examples/EXAFS/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-FMS-001",
+      "title": "FMS compatibility fixture from XANES Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "FMS"
+      ],
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-XSPH-001",
+      "title": "XSPH compatibility fixture from XANES Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "XSPH"
+      ],
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-BAND-001",
+      "title": "BAND fixture seed from KSPACE Cr2GeC example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "BAND"
+      ],
+      "inputDirectory": "feff10/examples/KSPACE/Cr2GeC",
+      "entryFiles": [
+        "feff.inp",
+        "REFERENCE/band.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/KSPACE/Cr2GeC/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-LDOS-001",
+      "title": "LDOS compatibility fixture from HUBBARD CeO2 example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "LDOS"
+      ],
+      "inputDirectory": "feff10/examples/HUBBARD/CeO2",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/HUBBARD/CeO2/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-RIXS-001",
+      "title": "RIXS fixture from dedicated RIXS example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "RIXS"
+      ],
+      "inputDirectory": "feff10/examples/RIXS",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/RIXS/referenceherfd.dat"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/RIXS/referenceherfd-sat.dat"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/RIXS/referencerixsET.dat"
+        }
+      ],
+      "baselineStatus": "reference_files_available",
+      "comparison": {
+        "mode": "numeric_tolerance",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "RIXS fixture uses multiple spectrum outputs and does not ship a full REFERENCE.zip archive."
+      }
+    },
+    {
+      "id": "FX-CRPA-001",
+      "title": "CRPA compatibility fixture from CRPA example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "CRPA"
+      ],
+      "inputDirectory": "feff10/examples/CRPA",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/CRPA/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-COMPTON-001",
+      "title": "COMPTON compatibility fixture from COMPTON Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "COMPTON"
+      ],
+      "inputDirectory": "feff10/examples/COMPTON/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/COMPTON/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-DEBYE-001",
+      "title": "DEBYE RM compatibility fixture from Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "DEBYE"
+      ],
+      "inputDirectory": "feff10/examples/DEBYE/RM/Cu",
+      "entryFiles": [
+        "feff.inp",
+        "spring.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/DEBYE/RM/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-DMDW-001",
+      "title": "DMDW compatibility fixture from DEBYE DM EXAFS Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "DMDW"
+      ],
+      "inputDirectory": "feff10/examples/DEBYE/DM/EXAFS/Cu",
+      "entryFiles": [
+        "feff.inp",
+        "feff.dym"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/DEBYE/DM/EXAFS/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Dynamic-matrix Debye workflow exercises thermal perturbation and additional dmdw inputs."
+      }
+    },
+    {
+      "id": "FX-SCREEN-001",
+      "title": "SCREEN compatibility fixture from MPSE Cu_OPCONS example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "SCREEN"
+      ],
+      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
+      "entryFiles": [
+        "feff.inp",
+        "REFERENCE/screen.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Screened-core-hole behavior (`COREHOLE RPA`) changes wscrn artifacts and diagnostics."
+      }
+    },
+    {
+      "id": "FX-SELF-001",
+      "title": "SELF compatibility fixture from MPSE Cu_OPCONS example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "SELF"
+      ],
+      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
+      "entryFiles": [
+        "feff.inp",
+        "loss.dat",
+        "REFERENCE/sfconv.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-EELS-001",
+      "title": "EELS compatibility fixture from ELNES Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "EELS"
+      ],
+      "inputDirectory": "feff10/examples/ELNES/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/ELNES/Cu/REFERENCE.zip"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/ELNES/Cu/reference_eels.dat"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    },
+    {
+      "id": "FX-FULLSPECTRUM-001",
+      "title": "FULLSPECTRUM fixture seed from XES Cu example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "FULLSPECTRUM"
+      ],
+      "inputDirectory": "feff10/examples/XES/Cu",
+      "entryFiles": [
+        "feff.inp",
+        "REFERENCE/fullspectrum.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XES/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Combined-spectrum fixture depends on generated `fullspectrum.inp` and staged module outputs."
+      }
+    },
+    {
+      "id": "FX-WORKFLOW-XAS-001",
+      "title": "End-to-end serial XAS workflow fixture",
+      "fixtureType": "workflow",
+      "modulesCovered": [
+        "RDINP",
+        "POT",
+        "XSPH",
+        "FMS",
+        "PATH"
+      ],
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    }
+  ]
+}
