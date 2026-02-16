@@ -1,5 +1,15 @@
 # feff85-rs
 
+## Rust Architecture Scaffolding
+
+The current Rust migration scaffolding keeps module boundaries explicit in a single workspace crate:
+
+- `src/domain`: shared FEFF-domain types and execution request models
+- `src/parser`: FEFF input deck tokenizer/parser entrypoint
+- `src/numerics`: shared numeric helper primitives
+- `src/pipelines`: pipeline-facing abstractions plus regression/comparator infrastructure
+- `src/cli`: CLI command parsing and orchestration
+
 ## Fortran Baseline Snapshots
 
 Regenerate committed fixture baselines and checksum metadata:

@@ -13,6 +13,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
+- Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -122,4 +123,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Keep generated Rust fixture outputs in a deterministic `<root>/<fixture-id>/<subdir>` layout so they can be consumed directly by `feff10-rs regression --actual-root ... --actual-subdir ...`.
   - Gotchas encountered: Current numeric policy matches `paths.dat` under numeric tolerance, but those files include non-numeric tokens; the runner will correctly mark these as failures until policy globs or file formatting are aligned.
   - Useful context: Default runner config compares `artifacts/fortran-baselines/<fixture>/baseline` to the same layout and writes machine-readable results to `artifacts/regression/report.json`; pass real Rust outputs via `--actual-root`/`--actual-subdir`.
+---
+## 2026-02-16 18:09:01 JST - US-011
+- Implemented Rust workspace scaffolding boundaries in the main crate by adding dedicated modules for `cli`, `domain`, `parser`, `numerics`, and `pipelines`.
+- Moved comparator/regression infrastructure into `src/pipelines/` and kept behavior stable by routing binary startup through `src/cli::run_from_env()` with a thin `src/main.rs`.
+- Added shared domain contracts (`PipelineModule`, `PipelineRequest`, input deck/card types), parser scaffolding entrypoint, numerics helper primitives, and pipeline abstraction interfaces with focused unit tests.
+- Documented the scaffolded architecture layout in `README.md` to keep future module-port stories aligned with the PRD boundary guidance.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/lib.rs`, `src/main.rs`, `src/cli/mod.rs`, `src/domain/mod.rs`, `src/parser/mod.rs`, `src/numerics/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/comparator.rs`, `src/pipelines/regression.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Shared FEFF contracts should live in `src/domain`, and runtime orchestration code should remain isolated under `src/pipelines` so module ports can plug into stable interfaces.
+  - Gotchas encountered: `cargo test` still requires the clang linker override on this macOS host; keep using the environment variable from `Codebase Patterns`.
+  - Useful context: Existing regression behavior is now accessed through `crate::pipelines::regression`, so future pipeline stories can evolve module execution without changing CLI argument contracts.
 ---

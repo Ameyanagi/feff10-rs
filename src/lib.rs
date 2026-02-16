@@ -1,2 +1,5 @@
-pub mod comparator;
-pub mod regression;
+pub mod cli;
+pub mod domain;
+pub mod numerics;
+pub mod parser;
+pub mod pipelines;

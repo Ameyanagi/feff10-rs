@@ -1,4 +1,4 @@
-use crate::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
+use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::error::Error;
