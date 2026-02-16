@@ -18,6 +18,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
 - FEFF deck parsing should treat numeric-leading lines as continuations of the preceding card (for example `ATOMS`, `POTENTIALS`, `ELNES`, `STRETCHES`) and only fail when such a line appears before any card.
 - Parser validation in `src/parser/mod.rs` is profile-driven: main decks require `TITLE|CIF`, `ATOMS|CIF`, and `POTENTIALS|POTENTIAL|CIF`, while DEBYE spring decks require `VDOS` and `STRETCHES`; missing `CONTROL`, `PRINT`, and `END` are synthesized with deterministic defaults.
+- Core-science pipeline scaffolds should consume deterministic helpers from `src/numerics/mod.rs` (`deterministic_argsort`, compensated aggregation helpers, and grid/interpolation helpers) instead of local float logic.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -184,4 +185,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Parser validation now switches behavior by profile (`main` vs `spring`) so `feff.inp` and `spring.inp` contracts can coexist in one parser entrypoint.
   - Gotchas encountered: In `zsh`, avoid using `path` as a loop variable because it overrides `PATH` and makes shell commands unavailable.
   - Useful context: Parser snapshot tests compare pretty-JSON output against `tests/snapshots/parser/*.snap`, so parser contract changes should update those snapshot files in the same commit.
+---
+## 2026-02-16 18:41:01 JST - US-016
+- Implemented shared numerics foundation in `src/numerics/mod.rs` with deterministic `f64` APIs for compensated aggregation (`stable_sum`, weighted sum/mean), 3D geometry distance helpers, deterministic numeric ordering (`deterministic_argsort`), and linear grid/interpolation primitives.
+- Added focused numerics unit coverage for aggregation edge cases, deterministic ordering behavior, geometry helpers, and interpolation/grid validation.
+- Integrated numerics with a core pipeline scaffold by adding `CorePipelineScaffold` in `src/pipelines/mod.rs`, which now uses numerics helpers for deterministic neighbor-shell ordering and weighted channel aggregation across core modules (`RDINP`, `POT`, `PATH`, `FMS`, `XSPH`).
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `src/numerics/mod.rs`, `src/pipelines/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep float ordering deterministic by sorting indices with `total_cmp` plus index tie-breaks instead of relying on unstable equal-value ordering.
+  - Gotchas encountered: Weighted aggregation helpers should reject zero total weight and mismatched vector lengths so module scaffolds fail fast before parity logic is added.
+  - Useful context: `CorePipelineScaffold::new` intentionally gates to core modules only; non-core modules return `None`, which keeps the scaffold contract aligned with core-chain scope.
 ---
