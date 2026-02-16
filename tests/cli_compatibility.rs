@@ -19,25 +19,32 @@ fn feff_command_runs_workflow_fixture_chain() {
         "feff command should succeed, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    for artifact in [
+        "geom.dat",
+        "global.inp",
+        "pot.inp",
+        "xsph.inp",
+        "paths.inp",
+        "fms.inp",
+        "pot.bin",
+        "phase.bin",
+        "paths.dat",
+        "gg.bin",
+        "log.dat",
+        "log1.dat",
+        "log2.dat",
+        "log3.dat",
+        "log4.dat",
+    ] {
+        assert!(
+            temp.path().join(artifact).is_file(),
+            "core workflow artifact '{}' should exist in current directory",
+            artifact
+        );
+    }
     assert!(
-        temp.path().join("geom.dat").is_file(),
-        "RDINP output geom.dat should exist"
-    );
-    assert!(
-        temp.path().join("pot.bin").is_file(),
-        "POT output pot.bin should exist"
-    );
-    assert!(
-        temp.path().join("phase.bin").is_file(),
-        "XSPH output phase.bin should exist"
-    );
-    assert!(
-        temp.path().join("paths.dat").is_file(),
-        "PATH output paths.dat should exist"
-    );
-    assert!(
-        temp.path().join("gg.bin").is_file(),
-        "FMS output gg.bin should exist"
+        !temp.path().join("FX-WORKFLOW-XAS-001").exists(),
+        "workflow outputs should be written directly into current directory, not nested fixture directories"
     );
 }
 
@@ -115,12 +122,48 @@ fn cli_argument_validation_matches_contract() {
         String::from_utf8_lossy(&invalid_mpi.stderr).contains("INPUT.CLI_USAGE"),
         "invalid usage should be surfaced through compatibility error mapping"
     );
+    let invalid_mpi_stderr = String::from_utf8_lossy(&invalid_mpi.stderr);
+    assert!(
+        invalid_mpi_stderr.contains("ERROR: [INPUT.CLI_USAGE]"),
+        "fatal usage failures should include ERROR diagnostic prefix, stderr: {}",
+        invalid_mpi_stderr
+    );
+    assert!(
+        invalid_mpi_stderr.contains("FATAL EXIT CODE: 2"),
+        "fatal usage failures should include fatal exit summary line, stderr: {}",
+        invalid_mpi_stderr
+    );
 
     let invalid_module_args = run_cli_command(temp.path(), &["pot", "unexpected"]);
     assert_eq!(
         invalid_module_args.status.code(),
         Some(2),
         "module command with extra args should fail usage validation"
+    );
+}
+
+#[test]
+fn regression_command_missing_manifest_emits_io_diagnostic_contract() {
+    let temp = fixture_tempdir();
+
+    let output = run_cli_command(temp.path(), &["regression", "--manifest", "missing.json"]);
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "missing manifest should map to IO fatal exit code, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ERROR: [IO.REGRESSION_MANIFEST]"),
+        "stderr should include IO diagnostic prefix contract, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("FATAL EXIT CODE: 3"),
+        "stderr should include fatal exit summary line, stderr: {}",
+        stderr
     );
 }
 

@@ -140,6 +140,151 @@ fn regression_command_exits_non_zero_when_fixture_fails() {
     assert_eq!(parsed["failed_fixture_count"], Value::from(1));
 }
 
+#[test]
+fn regression_command_writes_core_workflow_outputs_to_fixture_subdirectory_contract() {
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-WORKFLOW-XAS-001";
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = temp.path().join("policy.json");
+    let baseline_root = temp.path().join("baseline-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/report.json");
+    let fixture_input_dir = temp.path().join("fixtures/workflow");
+
+    stage_workspace_fixture_file(fixture_id, "feff.inp", &fixture_input_dir.join("feff.inp"));
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["RDINP", "POT", "XSPH", "PATH", "FMS"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+          ]
+        }}
+        "#,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+    write_file(
+        &policy_path,
+        r#"
+        {
+          "defaultMode": "exact_text"
+        }
+        "#,
+    );
+
+    let output = run_regression_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &baseline_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--run-rdinp",
+            "--run-pot",
+            "--run-xsph",
+            "--run-path",
+            "--run-fms",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "empty baseline root should fail comparison after hook execution, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let fixture_actual_dir = actual_root.join(fixture_id).join("actual");
+    for artifact in ["geom.dat", "pot.bin", "phase.bin", "paths.dat", "gg.bin"] {
+        assert!(
+            fixture_actual_dir.join(artifact).is_file(),
+            "core workflow artifact '{}' should be written under fixture actual directory",
+            artifact
+        );
+    }
+    assert!(
+        !actual_root.join(fixture_id).join("geom.dat").is_file(),
+        "core outputs should not be written directly under fixture root without actual-subdir"
+    );
+}
+
+#[test]
+fn regression_command_run_pot_input_mismatch_emits_computation_diagnostic_contract() {
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-POT-001";
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = temp.path().join("policy.json");
+    let baseline_root = temp.path().join("baseline-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/report.json");
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+
+    write_file(
+        &manifest_path,
+        r#"
+        {
+          "fixtures": [
+            {
+              "id": "FX-POT-001",
+              "modulesCovered": ["POT"]
+            }
+          ]
+        }
+        "#,
+    );
+    write_file(
+        &policy_path,
+        r#"
+        {
+          "defaultMode": "exact_text"
+        }
+        "#,
+    );
+
+    stage_workspace_fixture_file(fixture_id, "pot.inp", &staged_output_dir.join("pot.inp"));
+    stage_workspace_fixture_file(fixture_id, "geom.dat", &staged_output_dir.join("geom.dat"));
+    write_file(&staged_output_dir.join("pot.inp"), "BROKEN POT INPUT\n");
+
+    let output = run_regression_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &baseline_root,
+        &actual_root,
+        &report_path,
+        &["--run-pot"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(4),
+        "POT contract mismatch should map to computation fatal exit code, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ERROR: [RUN.POT_INPUT_MISMATCH]"),
+        "stderr should include computation diagnostic prefix, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("FATAL EXIT CODE: 4"),
+        "stderr should include fatal exit summary line, stderr: {}",
+        stderr
+    );
+    assert!(
+        !report_path.exists(),
+        "fatal pre-compare hook failures should not write a regression report"
+    );
+}
+
 fn run_regression_command(
     manifest_path: &Path,
     policy_path: &Path,
@@ -147,9 +292,28 @@ fn run_regression_command(
     actual_root: &Path,
     report_path: &Path,
 ) -> std::process::Output {
+    run_regression_command_with_extra_args(
+        manifest_path,
+        policy_path,
+        baseline_root,
+        actual_root,
+        report_path,
+        &[],
+    )
+}
+
+fn run_regression_command_with_extra_args(
+    manifest_path: &Path,
+    policy_path: &Path,
+    baseline_root: &Path,
+    actual_root: &Path,
+    report_path: &Path,
+    extra_args: &[&str],
+) -> std::process::Output {
     let binary_path = env!("CARGO_BIN_EXE_feff10-rs");
 
-    Command::new(binary_path)
+    let mut command = Command::new(binary_path);
+    command
         .arg("regression")
         .arg("--manifest")
         .arg(manifest_path)
@@ -164,9 +328,9 @@ fn run_regression_command(
         .arg("--actual-subdir")
         .arg("actual")
         .arg("--report")
-        .arg(report_path)
-        .output()
-        .expect("regression command should run")
+        .arg(report_path);
+    command.args(extra_args);
+    command.output().expect("regression command should run")
 }
 
 fn write_fixture_file(
@@ -185,4 +349,18 @@ fn write_file(path: &Path, content: &str) {
         fs::create_dir_all(parent).expect("parent dir should be created");
     }
     fs::write(path, content).expect("file should be written");
+}
+
+fn stage_workspace_fixture_file(fixture_id: &str, relative_path: &str, destination: &Path) {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("artifacts/fortran-baselines")
+        .join(fixture_id)
+        .join("baseline")
+        .join(relative_path);
+    let source_bytes = fs::read(&source)
+        .unwrap_or_else(|_| panic!("fixture baseline should be readable: {}", source.display()));
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should be created");
+    }
+    fs::write(destination, source_bytes).expect("fixture baseline should be staged");
 }
