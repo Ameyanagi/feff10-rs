@@ -19,3 +19,20 @@ Prerequisites:
 Optional execution modes:
 - `--capture-runner "<command>"` to run a custom capture command per fixture.
 - `--capture-bin-dir <path>` to run Fortran module executables directly.
+
+## Regression Runner
+
+Run all fixture comparisons in one command and emit a JSON report:
+
+```bash
+cargo run -- regression \
+  --manifest tasks/golden-fixture-manifest.json \
+  --policy tasks/numeric-tolerance-policy.json \
+  --baseline-root artifacts/fortran-baselines \
+  --actual-root artifacts/fortran-baselines \
+  --baseline-subdir baseline \
+  --actual-subdir baseline \
+  --report artifacts/regression/report.json
+```
+
+The command prints a human-readable pass/fail summary and exits with status `1` when any fixture fails.

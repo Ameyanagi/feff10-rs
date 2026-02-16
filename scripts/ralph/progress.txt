@@ -10,6 +10,8 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Fixture manifests should be machine-readable JSON under `tasks/`, must reuse reserved `FX-*` IDs from the compatibility matrix, and must define `comparison.mode` plus `comparison.passFailThreshold` per fixture.
 - Baseline capture tooling should treat manifest `entryFiles` as authoritative and materialize `REFERENCE/<file>` inputs from `baselineSources` archives into a flat fixture working directory.
 - Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
+- Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
+- Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
@@ -108,4 +110,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Comparator policy matching should preserve category order (`first_match`), so broad globs must be placed below specific globs.
   - Gotchas encountered: On this machine, plain `cargo test` fails to link `-liconv`; use the clang linker override command from `Codebase Patterns`.
   - Useful context: `Comparator::compare_artifacts` already yields structured per-artifact results, so `US-010` can consume it directly for summary/report generation.
+---
+## 2026-02-16 18:03:49 JST - US-010
+- Implemented regression runner core in `src/regression.rs`, including manifest-driven fixture enumeration, per-artifact comparison against baselines using `Comparator`, fixture-level threshold evaluation, human-readable summary rendering, and JSON report emission.
+- Replaced `src/main.rs` with a real CLI command (`feff10-rs regression`) that runs all fixtures in one command, supports configurable manifest/policy/root/subdir/report paths, and exits with status `1` when any fixture fails.
+- Added regression coverage with unit tests in `src/regression.rs` and integration CLI tests in `tests/regression_cli.rs` to verify summary/report behavior and non-zero exit on failures.
+- Documented runner invocation and report output in `README.md`.
+- Quality checks: `cargo fmt --all`, `cargo check`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test`, and `cargo run -- regression` (expected non-zero with current policy/file-match set) completed.
+- Files changed: `README.md`, `src/lib.rs`, `src/main.rs`, `src/regression.rs`, `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep generated Rust fixture outputs in a deterministic `<root>/<fixture-id>/<subdir>` layout so they can be consumed directly by `feff10-rs regression --actual-root ... --actual-subdir ...`.
+  - Gotchas encountered: Current numeric policy matches `paths.dat` under numeric tolerance, but those files include non-numeric tokens; the runner will correctly mark these as failures until policy globs or file formatting are aligned.
+  - Useful context: Default runner config compares `artifacts/fortran-baselines/<fixture>/baseline` to the same layout and writes machine-readable results to `artifacts/regression/report.json`; pass real Rust outputs via `--actual-root`/`--actual-subdir`.
 ---
