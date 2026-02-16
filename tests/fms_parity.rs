@@ -167,6 +167,7 @@ fn fms_regression_suite_passes() {
         run_xsph: false,
         run_path: false,
         run_fms: true,
+        run_band: false,
     };
 
     let report = run_regression(&config).expect("FMS regression suite should run");

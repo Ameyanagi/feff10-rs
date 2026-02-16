@@ -1,3 +1,4 @@
+pub mod band;
 pub mod comparator;
 pub mod fms;
 pub mod path;

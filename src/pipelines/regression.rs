@@ -1,4 +1,5 @@
 use super::PipelineExecutor;
+use super::band::BandPipelineScaffold;
 use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
 use super::fms::FmsPipelineScaffold;
 use super::path::PathPipelineScaffold;
@@ -28,6 +29,7 @@ pub struct RegressionRunnerConfig {
     pub run_xsph: bool,
     pub run_path: bool,
     pub run_fms: bool,
+    pub run_band: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -45,6 +47,7 @@ impl Default for RegressionRunnerConfig {
             run_xsph: false,
             run_path: false,
             run_fms: false,
+            run_band: false,
         }
     }
 }
@@ -117,6 +120,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         run_rdinp_if_enabled(config, fixture)?;
         run_pot_if_enabled(config, fixture)?;
         run_xsph_if_enabled(config, fixture)?;
+        run_band_if_enabled(config, fixture)?;
         run_path_if_enabled(config, fixture)?;
         run_fms_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
@@ -235,6 +239,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    BandPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     PathPipeline {
         fixture_id: String,
         source: FeffError,
@@ -304,6 +312,11 @@ impl Display for RegressionRunnerError {
                 "XSPH parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::BandPipeline { fixture_id, source } => write!(
+                f,
+                "BAND parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::PathPipeline { fixture_id, source } => write!(
                 f,
                 "PATH scaffold execution failed for fixture '{}': {}",
@@ -351,6 +364,7 @@ impl Error for RegressionRunnerError {
             Self::RdinpPipeline { source, .. } => Some(source),
             Self::PotPipeline { source, .. } => Some(source),
             Self::XsphPipeline { source, .. } => Some(source),
+            Self::BandPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
             Self::FmsPipeline { source, .. } => Some(source),
             Self::ReadDirectory { source, .. } => Some(source),
@@ -378,6 +392,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::RdinpPipeline { source, .. } => source,
             RegressionRunnerError::PotPipeline { source, .. } => source,
             RegressionRunnerError::XsphPipeline { source, .. } => source,
+            RegressionRunnerError::BandPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
             RegressionRunnerError::FmsPipeline { source, .. } => source,
             RegressionRunnerError::ReadDirectory { .. }
@@ -550,6 +565,35 @@ fn run_xsph_if_enabled(
 
     XsphPipelineScaffold.execute(&request).map_err(|source| {
         RegressionRunnerError::XsphPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        }
+    })?;
+
+    Ok(())
+}
+
+fn run_band_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_band || !fixture.covers_module(PipelineModule::Band) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Band,
+        output_dir.join("band.inp"),
+        output_dir,
+    );
+
+    BandPipelineScaffold.execute(&request).map_err(|source| {
+        RegressionRunnerError::BandPipeline {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -902,6 +946,7 @@ mod tests {
             run_xsph: false,
             run_path: false,
             run_fms: false,
+            run_band: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -970,6 +1015,7 @@ mod tests {
             run_xsph: false,
             run_path: false,
             run_fms: false,
+            run_band: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1029,6 +1075,7 @@ mod tests {
             run_xsph: false,
             run_path: false,
             run_fms: false,
+            run_band: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1089,6 +1136,7 @@ mod tests {
             run_xsph: false,
             run_path: false,
             run_fms: false,
+            run_band: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1151,6 +1199,7 @@ mod tests {
             run_xsph: false,
             run_path: true,
             run_fms: false,
+            run_band: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1214,6 +1263,7 @@ mod tests {
             run_xsph: true,
             run_path: false,
             run_fms: false,
+            run_band: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1276,6 +1326,7 @@ mod tests {
             run_xsph: false,
             run_path: false,
             run_fms: true,
+            run_band: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1286,6 +1337,69 @@ mod tests {
             .join("actual")
             .join("log3.dat");
         assert!(generated.exists(), "FMS output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_band_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-BAND-001",
+                  "modulesCovered": ["BAND"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-BAND-001").join("actual");
+        stage_repo_band_input("FX-BAND-001", &staged_dir.join("band.inp"));
+        copy_repo_fixture_file("FX-BAND-001", "geom.dat", &staged_dir.join("geom.dat"));
+        copy_repo_fixture_file("FX-BAND-001", "global.inp", &staged_dir.join("global.inp"));
+        copy_repo_fixture_file("FX-BAND-001", "phase.bin", &staged_dir.join("phase.bin"));
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-BAND-001").join("actual");
+        let has_band_output = ["bandstructure.dat", "logband.dat", "list.dat", "log5.dat"]
+            .iter()
+            .any(|artifact| output_dir.join(artifact).is_file());
+        assert!(has_band_output, "BAND output should exist");
     }
 
     fn write_fixture_file(
@@ -1315,5 +1429,21 @@ mod tests {
             fs::create_dir_all(parent).expect("destination directory should be created");
         }
         fs::copy(&source, destination).expect("fixture file should be copied");
+    }
+
+    fn stage_repo_band_input(fixture_id: &str, destination: &Path) {
+        let source = Path::new("artifacts/fortran-baselines")
+            .join(fixture_id)
+            .join("baseline")
+            .join("band.inp");
+        if source.is_file() {
+            copy_repo_fixture_file(fixture_id, "band.inp", destination);
+            return;
+        }
+
+        write_file(
+            destination,
+            "mband : calculate bands if = 1\n   0\nemin, emax, estep : energy mesh\n      0.00000      0.00000      0.00000\nnkp : # points in k-path\n   0\nikpath : type of k-path\n  -1\nfreeprop :  empty lattice if = T\n F\n",
+        );
     }
 }
