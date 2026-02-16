@@ -15,6 +15,7 @@ use super::rdinp::RdinpPipelineScaffold;
 use super::rixs::RixsPipelineScaffold;
 use super::screen::ScreenPipelineScaffold;
 use super::self_energy::SelfEnergyPipelineScaffold;
+use super::serialization::write_text_artifact;
 use super::xsph::XsphPipelineScaffold;
 use crate::domain::{FeffError, PipelineModule, PipelineRequest, PipelineResult};
 use serde::{Deserialize, Serialize};
@@ -1356,9 +1357,11 @@ fn write_report_file(
             source,
         }
     })?;
-    fs::write(report_path, report_json).map_err(|source| RegressionRunnerError::WriteReport {
-        path: report_path.to_path_buf(),
-        source,
+    write_text_artifact(report_path, &report_json).map_err(|source| {
+        RegressionRunnerError::WriteReport {
+            path: report_path.to_path_buf(),
+            source,
+        }
     })
 }
 

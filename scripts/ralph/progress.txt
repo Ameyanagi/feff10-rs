@@ -9,6 +9,7 @@
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
 - Parser invalid-input compatibility contracts are snapshot-locked in `tests/parser_validation_snapshots.rs` and `tests/snapshots/parser/*.snap`; update both when changing parser placeholders or diagnostic messages.
 - Numeric comparator D-3 enforcement is line-aware: treat line-count and per-line token-count mismatches as hard failures before numeric tolerance checks.
+- Use `src/pipelines/serialization.rs` helpers (`format_fixed_f64`, `write_text_artifact`, `write_binary_artifact`) for deterministic artifact formatting/writes instead of ad hoc `fs::write` calls in runtime/report generation paths.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -99,4 +100,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Keep comparator category selection tied to policy order (`first_match`) and assert selected tolerance via `matched_category`/metrics in tests.
   - Gotchas encountered: Flattened numeric-token comparison can hide D-3 structural mismatches; compare line rows first, then numeric values.
   - Useful context: This repository still has no `AGENTS.md`, so reusable conventions should continue to be stored in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 07:51:27 JST] - US-009
+- Added reusable deterministic serialization utilities in `src/pipelines/serialization.rs` for fixed-width float formatting, canonical text normalization/writing, and binary artifact writes.
+- Wired the shared text serializer into RDINP runtime artifact emission (`src/pipelines/rdinp.rs`) and regression JSON report writes (`src/pipelines/regression.rs`) to remove ad hoc formatting/write paths.
+- Added deterministic stability tests that verify repeated same-input text and binary writes produce identical bytes on the same target.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-009` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/pipelines/serialization.rs`, `src/pipelines/mod.rs`, `src/pipelines/rdinp.rs`, `src/pipelines/regression.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Use `write_text_artifact` for text outputs that must remain line-ending stable, and use `write_binary_artifact` for deterministic byte-for-byte artifact writes.
+  - Gotchas encountered: `write_text_artifact` canonicalizes line endings and appends a trailing newline only when content is non-empty; use `write_binary_artifact` if exact raw bytes (including no trailing newline) are required.
+  - Useful context: There are still no repository-local `AGENTS.md` files in this project, so reusable module/workflow notes should continue to be captured in `scripts/ralph/progress.txt`.
 ---

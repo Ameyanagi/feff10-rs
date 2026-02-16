@@ -1,4 +1,5 @@
 use super::PipelineExecutor;
+use super::serialization::{format_fixed_f64, write_text_artifact};
 use crate::domain::{
     FeffError, InputCard, InputDeck, PipelineArtifact, PipelineModule, PipelineRequest,
     PipelineResult,
@@ -176,7 +177,7 @@ impl PipelineExecutor for RdinpPipelineScaffold {
 
             let artifact_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
             let content = model.render_artifact(&artifact_path)?;
-            fs::write(&output_path, content).map_err(|source| {
+            write_text_artifact(&output_path, &content).map_err(|source| {
                 FeffError::io_system(
                     "IO.RDINP_OUTPUT_WRITE",
                     format!(
@@ -854,7 +855,7 @@ fn render_lmaxph_line(nph: i32) -> String {
 }
 
 fn format_f64_13(value: f64) -> String {
-    format!("{value:>13.5}")
+    format_fixed_f64(value, 13, 5)
 }
 
 fn expected_outputs_for_screen_card(has_screen_card: bool) -> Vec<PipelineArtifact> {

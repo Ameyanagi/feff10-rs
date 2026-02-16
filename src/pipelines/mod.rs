@@ -15,6 +15,7 @@ pub mod regression;
 pub mod rixs;
 pub mod screen;
 pub mod self_energy;
+pub mod serialization;
 pub mod xsph;
 
 use crate::domain::{
