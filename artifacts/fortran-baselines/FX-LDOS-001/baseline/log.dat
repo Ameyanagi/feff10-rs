@@ -1,0 +1,12 @@
+Launching FEFF version FEFF 10.0.1
+Taking crystal structure from .cif file.
+cif file opened
+Done reading .cif file.
+using exact crystallographic equivalence to choose unique potentials.
+Core hole lifetime is   0.156 eV.
+Your calculation:
+ Once upon a time ...
+O K edge XANES using FSR corehole.
+Using:     * Self-Consistent Field potentials   * SCF-converged f-states
+Using cards:   POTENTIALS XANES EDGE SCF FMS LDOS UNFREEZEF COREHOLE TARGET CIF HUBBARD
+

@@ -1,0 +1,42 @@
+Launching FEFF version FEFF 9.7.1
+Resetting lmaxsc to 2 for iph =    0.  Use  UNFREEZE to prevent this.
+Resetting lmaxsc to 2 for iph =    1.  Use  UNFREEZE to prevent this.
+Core hole lifetime is   1.729 eV.
+Your calculation:
+ Cu crystal
+Cu K edge COMPTON using no corehole.
+Using:     * Self-Consistent Field potentials
+Using cards:   ATOMS CONTROL EXCHANGE TITLE POTENTIALS SCF LDOS COREHOLE COMPTON RHOZZP CGRID
+
+Calculating atomic potentials ...
+    overlapped atomic potential and density for unique potential    0
+    overlapped atomic potential and density for unique potential    1
+Done with module: atomic potentials.
+
+Calculating Debye-Waller factors in the Dynamical Matrix approach ...
+Done with module: Debye-Waller factors (DMDW).
+
+Calculating SCF potentials ...
+FEFF-serial using 1 thread.
+Muffin tin radii and interstitial parameters [bohr]:
+type, norman radius, muffin tin, overlap factor
+    0  1.39856E+00  1.36189E+00  1.06704E+00
+    1  1.39856E+00  1.36189E+00  1.06704E+00
+Core-valence separation energy:  ecv=   -40.000 eV
+Initial Fermi level:              mu=    -3.298 eV
+SCF ITERATION NUMBER  1
+     point #   1  energy = -40.000
+FMS for a cluster of   19 atoms around atom type   0
+FMS for a cluster of   19 atoms around atom type   1
+     point #  20  energy = -28.807
+     point #  40  energy =  -8.557
+     point #  60  energy =  -1.797
+     point #  80  energy =  -2.863
+     point # 100  energy =  -3.225
+New Fermi level:    mu=  -3.252 eV  Charge distance=  0.0000 (partial c.d.=  9.0392)
+SCF ITERATION NUMBER  2
+     point #   1  energy = -40.000
+     point #  20  energy = -28.771
+     point #  40  energy =  -8.356
+     point #  60  energy =  -3.252
+     point #  80  energy =  -5.152

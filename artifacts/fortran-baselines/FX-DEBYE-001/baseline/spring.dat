@@ -1,0 +1,4 @@
+  Statistics on spring constants in spring.inp.
+    STRETCHES  i  j  aa   found_number
+           0           1   27.9000000000000              624
+    BENDS   i  j  k   aa   found_number

@@ -149,6 +149,52 @@ EOF_MANIFEST
   fi
 }
 
+run_test_allow_missing_entry_files() {
+  local temp_root="$1"
+  local fixture_missing="${temp_root}/fixtures/fx-missing-entry"
+  local manifest_path="${temp_root}/manifest-missing-entry.json"
+  local output_root="${temp_root}/out-missing-entry"
+  local runner_path="${temp_root}/runner-missing-entry.sh"
+
+  mkdir -p "${fixture_missing}"
+  printf 'TITLE\n' > "${fixture_missing}/feff.inp"
+
+  cat > "${runner_path}" <<'RUNNER'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'runner with missing entry support\n'
+printf 'baseline\n' > baseline.dat
+RUNNER
+  chmod +x "${runner_path}"
+
+  cat > "${manifest_path}" <<EOF_MANIFEST
+{
+  "fixtures": [
+    {
+      "id": "FX-MISSING-ENTRY-001",
+      "inputDirectory": "${fixture_missing}",
+      "entryFiles": ["feff.inp", "missing-entry.inp"],
+      "baselineSources": [],
+      "baselineStatus": "requires_fortran_capture"
+    }
+  ]
+}
+EOF_MANIFEST
+
+  "${CAPTURE_SCRIPT}" \
+    --manifest "${manifest_path}" \
+    --output-root "${output_root}" \
+    --runner "${runner_path}" \
+    --fixture FX-MISSING-ENTRY-001 \
+    --allow-missing-entry-files
+
+  assert_file "${output_root}/FX-MISSING-ENTRY-001/outputs/baseline.dat"
+  if ! grep -q '^missing_entry_files=missing-entry.inp$' "${output_root}/FX-MISSING-ENTRY-001/metadata.txt"; then
+    echo 'ASSERTION FAILED: missing entry metadata was not recorded' >&2
+    exit 1
+  fi
+}
+
 main() {
   if [[ ! -x "${CAPTURE_SCRIPT}" ]]; then
     echo "Missing capture script: ${CAPTURE_SCRIPT}" >&2
@@ -161,6 +207,7 @@ main() {
 
   run_test_default_selection_and_deterministic_tree "${temp_root}"
   run_test_nonzero_on_failure "${temp_root}"
+  run_test_allow_missing_entry_files "${temp_root}"
 
   echo 'test-capture-baselines: PASS'
 }

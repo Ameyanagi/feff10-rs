@@ -1,0 +1,10 @@
+FMS calculation of full Green's function ...
+FEFF-serial using 1 thread.
+Using    75 energy points.
+Applying Debye-Waller factors using the ab-initio Dynamical Matrix model.
+xprep done
+Done with module: FMS.
+
+MKGTR: Tracing over Green's function ...
+Done with module: MKGTR.
+

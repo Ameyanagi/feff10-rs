@@ -1,0 +1,19 @@
+Calculating LDOS ...
+FEFF-serial using 1 thread.
+Using   101 energy points
+FMS for a cluster of  19 atoms around atom type  0
+Energy point    1/ 101
+Energy point   10/ 101
+Energy point   30/ 101
+Energy point   50/ 101
+Energy point   70/ 101
+Energy point   90/ 101
+FMS for a cluster of  19 atoms around atom type  1
+Energy point    1/ 101
+Energy point   10/ 101
+Energy point   30/ 101
+Energy point   50/ 101
+Energy point   70/ 101
+Energy point   90/ 101
+Writing DOS for atom type     0
+Writing DOS for atom type     1

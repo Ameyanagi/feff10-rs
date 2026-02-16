@@ -1,0 +1,31 @@
+FMS calculation of full Green's function ...
+FEFF-serial using 1 thread.
+Using   115 energy points.
+FMS for a cluster of  137 atoms
+Energy point    1/ 115
+    0   FMS matrix (LUD) at point   1, number of state kets =2152
+Energy point   10/ 115
+    0   FMS matrix (LUD) at point  10, number of state kets =2152
+Energy point   20/ 115
+    0   FMS matrix (LUD) at point  20, number of state kets =2152
+Energy point   30/ 115
+    0   FMS matrix (LUD) at point  30, number of state kets =2152
+Energy point   40/ 115
+    0   FMS matrix (LUD) at point  40, number of state kets =2152
+Energy point   50/ 115
+    0   FMS matrix (LUD) at point  50, number of state kets =2152
+Energy point   60/ 115
+    0   FMS matrix (LUD) at point  60, number of state kets =2152
+Energy point   70/ 115
+    0   FMS matrix (LUD) at point  70, number of state kets =2152
+Energy point   80/ 115
+    0   FMS matrix (LUD) at point  80, number of state kets =2152
+Energy point   90/ 115
+    0   FMS matrix (LUD) at point  90, number of state kets =2152
+Energy point  100/ 115
+    0   FMS matrix (LUD) at point 100, number of state kets =2152
+Energy point  110/ 115
+    0   FMS matrix (LUD) at point 110, number of state kets =2152
+MKGTR: Tracing over Green's function ...
+Done with module: MKGTR.
+

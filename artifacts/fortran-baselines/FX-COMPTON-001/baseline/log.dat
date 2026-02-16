@@ -1,0 +1,10 @@
+Launching FEFF version FEFF 9.7.1
+Resetting lmaxsc to 2 for iph =    0.  Use  UNFREEZE to prevent this.
+Resetting lmaxsc to 2 for iph =    1.  Use  UNFREEZE to prevent this.
+Core hole lifetime is   1.729 eV.
+Your calculation:
+ Cu crystal
+Cu K edge COMPTON using no corehole.
+Using:     * Self-Consistent Field potentials
+Using cards:   ATOMS CONTROL EXCHANGE TITLE POTENTIALS SCF FMS LDOS COREHOLE COMPTON RHOZZP CGRID
+

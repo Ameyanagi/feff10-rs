@@ -1,0 +1,19 @@
+ Calculating HUBBARD LDOS ...
+FEFF-serial using 1 thread.
+     LDOS calculation for specified grid
+ Calculating energy and space dependent l-DOS for i_opt=
+     potential type  0
+     potential type  1
+     potential type  2
+ Number of energy points = 200
+ Doing FMS for a cluster of 137 atoms around iph =  0
+ Please, wait (updates every 20 points) ...
+ Number of energy points = 200
+ Doing FMS for a cluster of 137 atoms around iph =  1
+ Please, wait (updates every 20 points) ...
+ Number of energy points = 200
+ Doing FMS for a cluster of 137 atoms around iph =  2
+ Please, wait (updates every 20 points) ...
+ Calculating chi and rho...    0
+ Calculating chi and rho...    1
+ Calculating chi and rho...    2

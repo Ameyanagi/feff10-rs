@@ -1,0 +1,29 @@
+ lxhardlimit          20
+ nphxhardlimit          31
+ nclxtd         100
+ nspx           2
+ natx        4000
+ nattx        4000
+ nphx          14
+ ltot          24
+ nrptx        1251
+ nex        2000
+ lamtot          15
+ mtot           4
+ ntot           2
+ npatx           8
+ legtot           9
+ novrx           8
+ nheadx          51
+ MxPole        1000
+ nwordx         100
+ novp          50
+ ********************************
+ nclusx         137
+ lx           3
+ ********************************
+ natxx        4000
+ nexx        2000
+ nkmin           1
+ nphasx          14
+ istatx        4384

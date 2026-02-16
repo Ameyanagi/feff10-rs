@@ -12,6 +12,10 @@ err() {
   printf '[capture-baselines] ERROR: %s\n' "$*" >&2
 }
 
+warn() {
+  printf '[capture-baselines] WARNING: %s\n' "$*" >&2
+}
+
 usage() {
   cat <<'USAGE'
 Usage:
@@ -25,6 +29,8 @@ Options:
   --fixture <id>          Fixture ID to run (repeatable)
   --fixtures <id,id,...>  Comma-separated fixture IDs to run
   --all-fixtures          Run all fixtures in the manifest
+  --allow-missing-entry-files
+                          Continue a fixture when an entry file cannot be materialized; record it in metadata
   --help                  Show this help text
 
 Notes:
@@ -232,6 +238,7 @@ output_root='artifacts/fortran-baselines'
 runner_command=''
 module_bin_dir=''
 all_fixtures=0
+allow_missing_entry_files=0
 declare -a requested_fixtures=()
 
 while [[ "$#" -gt 0 ]]; do
@@ -263,6 +270,10 @@ while [[ "$#" -gt 0 ]]; do
       ;;
     --all-fixtures)
       all_fixtures=1
+      shift
+      ;;
+    --allow-missing-entry-files)
+      allow_missing_entry_files=1
       shift
       ;;
     --help)
@@ -383,8 +394,14 @@ for fixture_id in "${fixture_ids[@]}"; do
   done < <(jq -r '.baselineSources[]? | select(.kind == "reference_archive") | .path' <<< "${fixture_json}")
 
   entry_failure=0
+  declare -a missing_entry_files=()
   for entry_file in "${entry_files[@]}"; do
     if ! materialize_entry_file "${resolved_input_directory}" "${entry_file}" "${fixture_inputs_dir}" "${fixture_outputs_dir}" "${archive_sources[@]}"; then
+      if [[ "${allow_missing_entry_files}" -eq 1 ]]; then
+        warn "Fixture '${fixture_id}' could not materialize entry '${entry_file}'. Continuing because --allow-missing-entry-files is set."
+        missing_entry_files+=("${entry_file}")
+        continue
+      fi
       entry_failure=1
       break
     fi
@@ -399,6 +416,12 @@ for fixture_id in "${fixture_ids[@]}"; do
     printf 'fixture_id=%s\n' "${fixture_id}"
     printf 'baseline_status=%s\n' "${baseline_status}"
     printf 'input_directory=%s\n' "${resolved_input_directory}"
+    printf 'allow_missing_entry_files=%s\n' "${allow_missing_entry_files}"
+    if [[ "${#missing_entry_files[@]}" -gt 0 ]]; then
+      printf 'missing_entry_files=%s\n' "$(IFS=','; echo "${missing_entry_files[*]}")"
+    else
+      printf 'missing_entry_files=\n'
+    fi
     if [[ -n "${runner_command}" ]]; then
       printf 'run_mode=runner\n'
     else

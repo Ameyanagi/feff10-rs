@@ -1,0 +1,8 @@
+Launching FEFF version FEFF 10.0
+Core hole lifetime is   1.729 eV.
+Your calculation:
+ Cu DEBYE DM Method
+Cu K edge EXAFS using FSR corehole.
+Using:     * Debye-Waller factors   * Self-Consistent Field potentials
+Using cards:   ATOMS CONTROL EXCHANGE TITLE RPATH DEBYE PRINT POTENTIALS EXAFS EDGE SCF S02
+

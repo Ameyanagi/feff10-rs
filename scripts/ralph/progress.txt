@@ -9,6 +9,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Compatibility matrix rows belong in `tasks/feff10-compatibility-matrix.md` and should always include command surface, required cards/options, input/output artifacts, output directory contract, and fixture IDs.
 - Fixture manifests should be machine-readable JSON under `tasks/`, must reuse reserved `FX-*` IDs from the compatibility matrix, and must define `comparison.mode` plus `comparison.passFailThreshold` per fixture.
 - Baseline capture tooling should treat manifest `entryFiles` as authoritative and materialize `REFERENCE/<file>` inputs from `baselineSources` archives into a flat fixture working directory.
+- Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -83,4 +84,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: For capture automation, `--runner` mode is the lowest-friction integration path when teams already have a stable Fortran orchestration command.
   - Gotchas encountered: `FX-BAND-001` currently references `REFERENCE/band.inp`, but that file is absent from `feff10/examples/KSPACE/Cr2GeC/REFERENCE.zip`; default capture therefore reports a fixture failure until that input contract is corrected.
   - Useful context: With `set -o pipefail`, archive-entry checks should avoid `grep -q` on `unzip -Z1` pipelines to prevent false negatives from SIGPIPE.
+---
+## 2026-02-16 17:47:02 JST - US-008
+- Implemented `scripts/fortran/generate-baseline-snapshots.sh` to run capture for `--all-fixtures`, materialize baseline artifacts from fixture `baselineSources` (`reference_archive` and `reference_file`), and write committed fixture snapshots under `artifacts/fortran-baselines/`.
+- Added reproducibility metadata for each fixture via `checksums.sha256` and `snapshot-metadata.json`, plus top-level snapshot index `artifacts/fortran-baselines/snapshot-index.json`.
+- Extended `scripts/fortran/capture-baselines.sh` with `--allow-missing-entry-files` so full-manifest capture can proceed while recording unresolved entries in metadata.
+- Documented snapshot regeneration command and prerequisites in `README.md`.
+- Quality checks: `cargo check`, `cargo test`, `scripts/fortran/tests/test-capture-baselines.sh`, and `scripts/fortran/tests/test-generate-baseline-snapshots.sh` passed.
+- Files changed: `README.md`, `scripts/fortran/capture-baselines.sh`, `scripts/fortran/generate-baseline-snapshots.sh`, `scripts/fortran/tests/test-capture-baselines.sh`, `scripts/fortran/tests/test-generate-baseline-snapshots.sh`, `artifacts/fortran-baselines/*`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Snapshot generation should copy seeded capture outputs first, then overlay `baselineSources` so archive/file references become the canonical baseline view per fixture.
+  - Gotchas encountered: `FX-BAND-001` still lacks `REFERENCE/band.inp` in its source archive; this run records it under `missingEntryFiles` while retaining a checksumed baseline from available artifacts.
+  - Useful context: `snapshot-index.json` now contains `checksummedFileCount` and `missingEntryFiles` for every fixture, which can be consumed by upcoming comparator/runner stories.
 ---

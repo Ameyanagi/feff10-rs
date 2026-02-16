@@ -1,0 +1,303 @@
+{
+  "manifestPath": "/Users/ryuichi/dev/feff10-rs/tasks/golden-fixture-manifest.json",
+  "outputRoot": "/Users/ryuichi/dev/feff10-rs/artifacts/fortran-baselines",
+  "generatedAt": "2026-02-16T08:46:30Z",
+  "capture": {
+    "mode": "runner",
+    "runner": ":",
+    "moduleBinDir": "",
+    "allowMissingEntryFiles": true
+  },
+  "fixtureCount": 17,
+  "fixtures": [
+    {
+      "fixtureId": "FX-BAND-001",
+      "inputDirectory": "feff10/examples/KSPACE/Cr2GeC",
+      "baselineStatus": "requires_fortran_capture",
+      "generatedAt": "2026-02-16T08:45:31Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 61,
+      "missingEntryFiles": [
+        "REFERENCE/band.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/KSPACE/Cr2GeC/REFERENCE.zip",
+          "sha256": "48f0ad42c0700a1c01b346704172212b4ad475302504e2ab644d0f198acd009e"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-COMPTON-001",
+      "inputDirectory": "feff10/examples/COMPTON/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:51Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 63,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/COMPTON/Cu/REFERENCE.zip",
+          "sha256": "0eaa5aa81dac04c18b36c750aaea51d0da927e1beea26995a8ac567a0668d967"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-CRPA-001",
+      "inputDirectory": "feff10/examples/CRPA",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:45Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 39,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/CRPA/REFERENCE.zip",
+          "sha256": "7dd8f44ace1ab228e785084334e97b4bdccb6cd0fba5dca3484408b4dc3115e4"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-DEBYE-001",
+      "inputDirectory": "feff10/examples/DEBYE/RM/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:55Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 41,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/DEBYE/RM/Cu/REFERENCE.zip",
+          "sha256": "8d68c15f45b23cbbebfea12800ac75bf67e7d673f9ba38eb7d8c5a132d608a48"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-DMDW-001",
+      "inputDirectory": "feff10/examples/DEBYE/DM/EXAFS/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:46:01Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 66,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/DEBYE/DM/EXAFS/Cu/REFERENCE.zip",
+          "sha256": "01c6556ce6bb5f52c75e2438247f2f1fe770faf8931bf274c8d5286e33a711c8"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-EELS-001",
+      "inputDirectory": "feff10/examples/ELNES/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:46:19Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 71,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/ELNES/Cu/REFERENCE.zip",
+          "sha256": "9e0eb1e5d20a0817ec700358cf8a4ac48bade21e5d987268aa31ff71b4845371"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/ELNES/Cu/reference_eels.dat",
+          "sha256": "bb6be755fbedf067beee815272b4cd34a7df426f73bd94f937b56feb8058e42e"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-FMS-001",
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:21Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 45,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip",
+          "sha256": "141f1df1d7e96f7a49cf00b17fbbe8417517871ef6c5166ca96313f30754d2b3"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-FULLSPECTRUM-001",
+      "inputDirectory": "feff10/examples/XES/Cu",
+      "baselineStatus": "requires_fortran_capture",
+      "generatedAt": "2026-02-16T08:46:26Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 76,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XES/Cu/REFERENCE.zip",
+          "sha256": "915a48454f315fd85e0185e249119402762ba827cc5d5232fd803450fa3ab9e6"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-LDOS-001",
+      "inputDirectory": "feff10/examples/HUBBARD/CeO2",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:40Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 97,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/HUBBARD/CeO2/REFERENCE.zip",
+          "sha256": "ad1bd60b4ccb058d898b6fe8c06d259e9aba3112aa18d44c20106fbc99409420"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-PATH-001",
+      "inputDirectory": "feff10/examples/EXAFS/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:17Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 49,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu/REFERENCE.zip",
+          "sha256": "705e4645a5608a44a62587d092f29ad651e9092f0407d8ac7d4bfd9acbe2b4a9"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-POT-001",
+      "inputDirectory": "feff10/examples/EXAFS/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:12Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 49,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu/REFERENCE.zip",
+          "sha256": "705e4645a5608a44a62587d092f29ad651e9092f0407d8ac7d4bfd9acbe2b4a9"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-RDINP-001",
+      "inputDirectory": "feff10/examples/EXAFS/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:07Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 49,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu/REFERENCE.zip",
+          "sha256": "705e4645a5608a44a62587d092f29ad651e9092f0407d8ac7d4bfd9acbe2b4a9"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-RIXS-001",
+      "inputDirectory": "feff10/examples/RIXS",
+      "baselineStatus": "reference_files_available",
+      "generatedAt": "2026-02-16T08:45:41Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 5,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/RIXS/referenceherfd.dat",
+          "sha256": "e40ea605a4f8d907a5e22e27ffe5b1ce8df5f2a1a1e68d22082164a9fe0d9c54"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/RIXS/referenceherfd-sat.dat",
+          "sha256": "4ca94951dac1ec626f0cf7e581c3debf65b4af5b0b062cc8031177861103f0ef"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/RIXS/referencerixsET.dat",
+          "sha256": "cb7444991b3df994d1b64d2b6b74dcab71ebd0d0ea330e4d0a09930e9e1479aa"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-SCREEN-001",
+      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:46:07Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 60,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip",
+          "sha256": "9e67a422308ac7e3d558a42a873ca8736f3a5f494d6c1c35f961d2e97b697ebb"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-SELF-001",
+      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:46:12Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 60,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip",
+          "sha256": "9e67a422308ac7e3d558a42a873ca8736f3a5f494d6c1c35f961d2e97b697ebb"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-WORKFLOW-XAS-001",
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:46:30Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 45,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip",
+          "sha256": "141f1df1d7e96f7a49cf00b17fbbe8417517871ef6c5166ca96313f30754d2b3"
+        }
+      ]
+    },
+    {
+      "fixtureId": "FX-XSPH-001",
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "baselineStatus": "reference_archive_available",
+      "generatedAt": "2026-02-16T08:45:25Z",
+      "checksumsFile": "checksums.sha256",
+      "checksummedFileCount": 45,
+      "missingEntryFiles": [],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip",
+          "sha256": "141f1df1d7e96f7a49cf00b17fbbe8417517871ef6c5166ca96313f30754d2b3"
+        }
+      ]
+    }
+  ]
+}

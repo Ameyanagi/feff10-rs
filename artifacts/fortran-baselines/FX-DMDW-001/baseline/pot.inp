@@ -1,0 +1,25 @@
+mpot, nph, ntitle, ihole, ipr1, iafolp, ixc,ispec, iscfxc
+   1   1   1   1   1   0   0   0  11
+nmix, nohole, jumprm, inters, nscmt, icoul, lfms1, iunf
+   1  -1   0   0 100   0   0   0
+Cu DEBYE DM Method                                                              
+gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
+      1.72919      0.05000      0.20000    -40.00000      0.00000      4.00000    -70.00000
+ iz, lmaxsc, xnatph, xion, folp
+   29    2      1.00000      0.00000      1.15000
+   29    2    140.00000      0.00000      1.15000
+ExternalPot switch, StartFromFile switch
+ F F
+OVERLAP option: novr(iph)
+   0   0
+ iphovr  nnovr rovr 
+ChSh_Type:
+   0
+ConfigType:
+   1
+Temperature (in eV):
+   0.0000000000000000                1
+Scf_th,  xntol,  nmu
+           1   1.0000000000000000E-004         100
+FiniteNucleus
+ F

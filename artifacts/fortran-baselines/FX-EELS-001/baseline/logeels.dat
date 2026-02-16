@@ -1,0 +1,18 @@
+Starting EELS module.
+Reading spectra from file.
+Calculation using cross-terms.
+Calculating ELNES spectrum.
+Relativistic corrections are switched on.
+Beam energy in eV :    300000.0
+Beam direction w.r.t. coordinate frame of feff.inp :    0.000    1.000    0.000
+collection semiangle in mrad :   2.40
+convergence semiangle in mrad :   0.00
+Integration mesh for q-vectors :     5     3
+
+
+
+Converting XAS to EELS.
+Setting up k_i and k_f vectors, and calculating integration weights.
+Creating headers.
+Entering big loop over energy.
+Module 8 is finished.  Exiting.

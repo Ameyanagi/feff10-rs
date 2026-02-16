@@ -1,0 +1,9 @@
+ Calculating potentials ...
+muffin tin radii and interstitial parameters
+ iph, rnrm(iph)*bohr, rmt(iph)*bohr, folp(iph)
+    0  1.50209E+00  1.44879E+00  1.09389E+00
+    1  1.39297E+00  1.35556E+00  1.06882E+00
+ mu_old=    -3.777
+ ecv=   -40.000
+ ca1=     0.000
+ Done with module 1: potentials.

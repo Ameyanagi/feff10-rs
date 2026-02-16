@@ -1,0 +1,18 @@
+FMS calculation of full Green's function ...
+FEFF-serial using 1 thread.
+Using    98 energy points.
+Applying Debye-Waller factors using a Correlated Debye model.
+FMS for a cluster of   79 atoms
+Energy point    1/  98
+Energy point   10/  98
+Energy point   20/  98
+Energy point   30/  98
+Energy point   40/  98
+Energy point   50/  98
+Energy point   60/  98
+Energy point   70/  98
+Energy point   80/  98
+Energy point   90/  98
+MKGTR: Tracing over Green's function ...
+Done with module: MKGTR.
+

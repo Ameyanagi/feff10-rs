@@ -1,0 +1,11 @@
+ Number of energy points =   121
+ Doing FMS for a cluster of  19 atoms around iph =  0
+ Please, wait (updates every 20 points) ...
+    0   FMS matrix (LUD) at point  20, number of state kets = 304
+    0   FMS matrix (LUD) at point  40, number of state kets = 304
+    0   FMS matrix (LUD) at point  60, number of state kets = 304
+    0   FMS matrix (LUD) at point  80, number of state kets = 304
+    0   FMS matrix (LUD) at point 100, number of state kets = 304
+    0   FMS matrix (LUD) at point 120, number of state kets = 304
+ Done with module 3: FMS.
+ Done with module: MKGTR.

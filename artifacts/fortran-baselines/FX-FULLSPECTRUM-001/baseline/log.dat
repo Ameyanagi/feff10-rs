@@ -1,0 +1,11 @@
+Launching FEFF version FEFF 10.0.0
+  XES:
+Resetting lmaxsc to 2 for iph =    0.  Use  UNFREEZE to prevent this.
+Resetting lmaxsc to 2 for iph =    1.  Use  UNFREEZE to prevent this.
+Core hole lifetime is   1.729 eV.
+Your calculation:
+ Cu crystal
+Cu K edge XES using RPA corehole.
+Using:     * Self-Consistent Field potentials
+Using cards:   ATOMS CONTROL EXCHANGE TITLE PRINT POTENTIALS SCF FMS XES COREHOLE
+
