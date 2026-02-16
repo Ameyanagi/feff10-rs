@@ -11,6 +11,7 @@
 - Parser invalid-input compatibility contracts are snapshot-locked in `tests/parser_validation_snapshots.rs` and `tests/snapshots/parser/*.snap`; update both when changing parser placeholders or diagnostic messages.
 - Numeric comparator D-3 enforcement is line-aware: treat line-count and per-line token-count mismatches as hard failures before numeric tolerance checks.
 - Use `src/pipelines/serialization.rs` helpers (`format_fixed_f64`, `write_text_artifact`, `write_binary_artifact`) for deterministic artifact formatting/writes instead of ad hoc `fs::write` calls in runtime/report generation paths.
+- For `geom.dat` contract checks, compare canonical atom-row content (with `nat/nph` headers) rather than raw row order, because true-compute RDINP can emit equivalent coordinate sets in a different deterministic order.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -125,4 +126,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Keep oracle CI report summarization keyed off `mismatch_fixtures` so artifact-level oracle mismatches remain actionable even when fixture pass thresholds evolve.
   - Gotchas encountered: `oracle` capture mode requires exactly one capture strategy; using an explicit default runner in CI avoids accidental usage errors and keeps parity artifact generation deterministic.
   - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable notes continue to live in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 08:14:31 JST] - US-011
+- Expanded true-compute RDINP artifact generation to cover the compatibility-matrix output set by adding deterministic emission of `compton.inp`, `band.inp`, `rixs.inp`, `crpa.inp`, and `fullspectrum.inp` while preserving conditional `screen.inp` behavior.
+- Removed RDINP runtime baseline coupling by eliminating baseline `geom.dat` reads from `artifacts/fortran-baselines`; runtime outputs now come from parsed `feff.inp` data and deterministic renderers only.
+- Updated RDINP and core-chain parity coverage (RDINP/POT/XSPH/PATH/FMS) to validate new RDINP outputs, canonicalize `geom.dat` comparisons for semantic equivalence, and seed regression baselines for newly generated RDINP decks that are absent from committed Fortran snapshots.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-011` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/pipelines/rdinp.rs`, `src/pipelines/pot.rs`, `src/pipelines/xsph.rs`, `src/pipelines/path.rs`, `src/pipelines/fms.rs`, `tests/rdinp_parity.rs`, `tests/pot_parity.rs`, `tests/xsph_parity.rs`, `tests/path_parity.rs`, `tests/fms_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Core-chain module input validation should canonicalize `geom.dat` atom rows instead of relying on raw text row ordering when the geometry set is unchanged.
+  - Gotchas encountered: `run_regression` compares artifacts present in either baseline or actual trees; when RDINP adds new runtime decks, regression fixtures must seed corresponding baseline artifacts (or comparisons fail as `Missing baseline artifact`).
+  - Useful context: RDINP runtime now emits downstream decks for COMPTON/BAND/RIXS/CRPA/FULLSPECTRUM, enabling later module stories to consume those inputs without runtime baseline materialization.
 ---

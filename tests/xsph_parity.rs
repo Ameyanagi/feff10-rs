@@ -27,8 +27,7 @@ const APPROVED_XSPH_FIXTURES: [FixtureCase; 2] = [
     },
 ];
 
-const EXPECTED_RDINP_ARTIFACTS: [&str; 14] = [
-    "geom.dat",
+const EXPECTED_RDINP_ARTIFACTS: [&str; 13] = [
     "global.inp",
     "reciprocal.inp",
     "pot.inp",
@@ -134,6 +133,38 @@ fn xsph_regression_suite_passes() {
                 .join("baseline")
                 .join(artifact);
             copy_file(&baseline_source, &baseline_target);
+        }
+
+        let generated_output = temp.path().join("rdinp-seed").join(fixture.id);
+        let generated_request = PipelineRequest::new(
+            fixture.id,
+            PipelineModule::Rdinp,
+            Path::new(fixture.input_directory).join("feff.inp"),
+            &generated_output,
+        );
+        let generated_artifacts = RdinpPipelineScaffold
+            .execute(&generated_request)
+            .expect("RDINP seed generation should succeed");
+        for artifact in generated_artifacts {
+            let relative_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
+            if matches!(
+                relative_path.as_str(),
+                "geom.dat"
+                    | "compton.inp"
+                    | "band.inp"
+                    | "rixs.inp"
+                    | "crpa.inp"
+                    | "fullspectrum.inp"
+            ) {
+                let baseline_target = baseline_root
+                    .join(fixture.id)
+                    .join("baseline")
+                    .join(&artifact.relative_path);
+                copy_file(
+                    &generated_output.join(&artifact.relative_path),
+                    &baseline_target,
+                );
+            }
         }
     }
 

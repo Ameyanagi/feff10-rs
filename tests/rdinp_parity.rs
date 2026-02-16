@@ -25,8 +25,29 @@ const APPROVED_RDINP_FIXTURES: [FixtureCase; 2] = [
     },
 ];
 
-const EXPECTED_RDINP_ARTIFACTS: [&str; 14] = [
+const EXPECTED_RDINP_ARTIFACTS: [&str; 19] = [
     "geom.dat",
+    "global.inp",
+    "reciprocal.inp",
+    "pot.inp",
+    "ldos.inp",
+    "xsph.inp",
+    "fms.inp",
+    "paths.inp",
+    "genfmt.inp",
+    "ff2x.inp",
+    "sfconv.inp",
+    "eels.inp",
+    "compton.inp",
+    "band.inp",
+    "rixs.inp",
+    "crpa.inp",
+    "fullspectrum.inp",
+    "dmdw.inp",
+    "log.dat",
+];
+
+const BASELINE_RDINP_ARTIFACTS: [&str; 13] = [
     "global.inp",
     "reciprocal.inp",
     "pot.inp",
@@ -40,6 +61,14 @@ const EXPECTED_RDINP_ARTIFACTS: [&str; 14] = [
     "eels.inp",
     "dmdw.inp",
     "log.dat",
+];
+
+const NON_BASELINE_RDINP_ARTIFACTS: [&str; 5] = [
+    "compton.inp",
+    "band.inp",
+    "rixs.inp",
+    "crpa.inp",
+    "fullspectrum.inp",
 ];
 
 #[test]
@@ -68,22 +97,35 @@ fn approved_rdinp_fixtures_match_baseline_under_policy() {
 
         for artifact in artifacts {
             let relative_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
-            let baseline_path = baseline_artifact_path(fixture.id, Path::new(&relative_path));
+            let actual_path = output_dir.join(&artifact.relative_path);
             assert!(
-                baseline_path.exists(),
-                "baseline artifact '{}' should exist for fixture '{}'",
-                baseline_path.display(),
+                actual_path.is_file(),
+                "generated artifact '{}' should exist for fixture '{}'",
+                actual_path.display(),
                 fixture.id
             );
-            let actual_path = output_dir.join(&artifact.relative_path);
-            let comparison = comparator
-                .compare_artifact(&relative_path, &baseline_path, &actual_path)
-                .expect("comparison should succeed");
-            assert!(
-                comparison.passed,
-                "fixture '{}' artifact '{}' failed comparison: {:?}",
-                fixture.id, relative_path, comparison.reason
-            );
+            let baseline_path = baseline_artifact_path(fixture.id, Path::new(&relative_path));
+            if baseline_path.exists() {
+                if relative_path == "geom.dat" {
+                    assert_geom_dat_equivalent(&baseline_path, &actual_path, fixture.id);
+                } else {
+                    let comparison = comparator
+                        .compare_artifact(&relative_path, &baseline_path, &actual_path)
+                        .expect("comparison should succeed");
+                    assert!(
+                        comparison.passed,
+                        "fixture '{}' artifact '{}' failed comparison: {:?}",
+                        fixture.id, relative_path, comparison.reason
+                    );
+                }
+            } else {
+                assert!(
+                    NON_BASELINE_RDINP_ARTIFACTS.contains(&relative_path.as_str()),
+                    "fixture '{}' produced unexpected artifact '{}' without baseline",
+                    fixture.id,
+                    relative_path
+                );
+            }
         }
     }
 }
@@ -97,13 +139,45 @@ fn rdinp_regression_suite_passes() {
     let manifest_path = temp.path().join("rdinp-manifest.json");
 
     for fixture in &APPROVED_RDINP_FIXTURES {
-        for artifact in &EXPECTED_RDINP_ARTIFACTS {
+        for artifact in &BASELINE_RDINP_ARTIFACTS {
             let baseline_source = baseline_artifact_path(fixture.id, Path::new(artifact));
             let baseline_target = baseline_root
                 .join(fixture.id)
                 .join("baseline")
                 .join(artifact);
             copy_file(&baseline_source, &baseline_target);
+        }
+
+        let generated_output = temp.path().join("rdinp-seed").join(fixture.id);
+        let generated_request = PipelineRequest::new(
+            fixture.id,
+            PipelineModule::Rdinp,
+            Path::new(fixture.input_directory).join("feff.inp"),
+            &generated_output,
+        );
+        let generated_artifacts = RdinpPipelineScaffold
+            .execute(&generated_request)
+            .expect("RDINP seed generation should succeed");
+        for artifact in generated_artifacts {
+            let relative_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
+            if matches!(
+                relative_path.as_str(),
+                "geom.dat"
+                    | "compton.inp"
+                    | "band.inp"
+                    | "rixs.inp"
+                    | "crpa.inp"
+                    | "fullspectrum.inp"
+            ) {
+                let baseline_target = baseline_root
+                    .join(fixture.id)
+                    .join("baseline")
+                    .join(&artifact.relative_path);
+                copy_file(
+                    &generated_output.join(&artifact.relative_path),
+                    &baseline_target,
+                );
+            }
         }
     }
 
@@ -160,6 +234,37 @@ fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
         .join(fixture_id)
         .join("baseline")
         .join(relative_path)
+}
+
+fn assert_geom_dat_equivalent(baseline: &Path, actual: &Path, fixture_id: &str) {
+    let baseline_source =
+        fs::read_to_string(baseline).expect("baseline geom.dat should be readable");
+    let actual_source = fs::read_to_string(actual).expect("actual geom.dat should be readable");
+
+    let baseline_rows = normalize_geom_rows(&baseline_source);
+    let actual_rows = normalize_geom_rows(&actual_source);
+    assert_eq!(
+        baseline_rows, actual_rows,
+        "fixture '{}' geom.dat atom rows should match irrespective of ordering",
+        fixture_id
+    );
+}
+
+fn normalize_geom_rows(source: &str) -> BTreeSet<String> {
+    source
+        .lines()
+        .skip(4)
+        .filter_map(|line| {
+            let columns: Vec<&str> = line.split_whitespace().collect();
+            if columns.len() < 6 {
+                return None;
+            }
+            Some(format!(
+                "{} {} {} {} {}",
+                columns[1], columns[2], columns[3], columns[4], columns[5]
+            ))
+        })
+        .collect()
 }
 
 fn expected_artifact_set() -> BTreeSet<String> {

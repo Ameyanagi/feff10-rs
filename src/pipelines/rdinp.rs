@@ -6,7 +6,6 @@ use crate::domain::{
 };
 use crate::parser::parse_input_deck;
 use std::fs;
-use std::path::PathBuf;
 
 const RDINP_REQUIRED_INPUTS: [&str; 1] = ["feff.inp"];
 const RDINP_BASE_OUTPUTS_PREFIX: [&str; 5] = [
@@ -16,7 +15,7 @@ const RDINP_BASE_OUTPUTS_PREFIX: [&str; 5] = [
     "pot.inp",
     "ldos.inp",
 ];
-const RDINP_BASE_OUTPUTS_SUFFIX: [&str; 9] = [
+const RDINP_BASE_OUTPUTS_SUFFIX: [&str; 14] = [
     "xsph.inp",
     "fms.inp",
     "paths.inp",
@@ -24,6 +23,11 @@ const RDINP_BASE_OUTPUTS_SUFFIX: [&str; 9] = [
     "ff2x.inp",
     "sfconv.inp",
     "eels.inp",
+    "compton.inp",
+    "band.inp",
+    "rixs.inp",
+    "crpa.inp",
+    "fullspectrum.inp",
     "dmdw.inp",
     "log.dat",
 ];
@@ -83,6 +87,65 @@ energy for magic angle - eV above threshold
 const DMDW_INP_TEMPLATE: &str = "-999
 ";
 
+const COMPTON_INP_TEMPLATE: &str = "run compton module?
+{{RUN_COMPTON}}
+pqmax, npq
+   5.000000            1000
+ns, nphi, nz, nzp
+  32  32  32 144
+smax, phimax, zmax, zpmax
+      0.00000      6.28319      0.00000     10.00000
+jpq? rhozzp? force_recalc_jzzp?
+ F F F
+window_type (0=Step, 1=Hann), window_cutoff
+           1  0.0000000E+00
+temperature (in eV)
+      0.00000
+set_chemical_potential? chemical_potential(eV)
+ F  0.0000000E+00
+rho_xy? rho_yz? rho_xz? rho_vol? rho_line?
+ F F F F F
+qhat_x qhat_y qhat_z
+  0.000000000000000E+000  0.000000000000000E+000   1.00000000000000     
+";
+
+const BAND_INP_TEMPLATE: &str = "mband : calculate bands if = 1
+{{MBAND}}
+emin, emax, estep : energy mesh
+      0.00000      0.00000      0.00000
+nkp : # points in k-path
+   0
+ikpath : type of k-path
+  -1
+freeprop :  empty lattice if = T
+ F
+";
+
+const RIXS_INP_TEMPLATE: &str = " m_run
+{{RUN_RIXS}}
+ gam_ch, gam_exp(1), gam_exp(2)
+        0.0001350512        0.0001350512        0.0001350512
+ EMinI, EMaxI, EMinF, EMaxF
+        0.0000000000        0.0000000000        0.0000000000        0.0000000000
+ xmu
+  -367493090.02742821     
+ Readpoles, SkipCalc, MBConv, ReadSigma
+ T F F F
+ nEdges
+           1
+ Edge           1
+{{EDGE}}
+";
+
+const CRPA_INP_TEMPLATE: &str = " do_CRPA{{RUN_CRPA}}
+ rcut{{RCUT}}
+ l_crpa           3
+";
+
+const FULLSPECTRUM_INP_TEMPLATE: &str = " mFullSpectrum
+{{RUN_FULLSPECTRUM}}
+";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RdinpPipelineInterface {
     pub required_inputs: Vec<PipelineArtifact>,
@@ -110,7 +173,6 @@ struct AtomSite {
 
 #[derive(Debug, Clone)]
 struct RdinpModel {
-    fixture_id: String,
     title: String,
     potentials: Vec<PotentialEntry>,
     atoms: Vec<AtomSite>,
@@ -130,6 +192,12 @@ struct RdinpModel {
     s02: f64,
     idwopt: i32,
     debye: [f64; 3],
+    run_compton: bool,
+    run_band: bool,
+    run_rixs: bool,
+    run_crpa: bool,
+    run_full_spectrum: bool,
+    rixs_edge_label: String,
     expected_outputs: Vec<PipelineArtifact>,
 }
 
@@ -194,11 +262,16 @@ impl PipelineExecutor for RdinpPipelineScaffold {
 }
 
 impl RdinpModel {
-    fn from_deck(deck: &InputDeck, fixture_id: impl Into<String>) -> PipelineResult<Self> {
+    fn from_deck(deck: &InputDeck) -> PipelineResult<Self> {
         let potentials = parse_potentials(deck)?;
-        let atoms = parse_atoms(deck)?;
+        let atoms = sort_atoms_by_distance(parse_atoms(deck)?);
         let has_xanes = has_card(deck, "XANES");
         let has_screen = has_card(deck, "SCREEN");
+        let run_compton = has_card(deck, "COMPTON");
+        let run_band = has_card(deck, "BAND") || has_card(deck, "MBAND");
+        let run_rixs = has_card(deck, "RIXS") || has_card(deck, "XES");
+        let run_crpa = has_card(deck, "CRPA");
+        let run_full_spectrum = has_card(deck, "FULLSPECTRUM") || has_card(deck, "MFULLSPECTRUM");
         let ispec = if has_xanes { 1 } else { 0 };
         let rfms = card_value(deck, "SCF", 0)?.unwrap_or(-1.0);
         let rdirec = card_value(deck, "XANES", 0)?.unwrap_or(-1.0);
@@ -243,10 +316,14 @@ impl RdinpModel {
         let nscmt = if has_xanes { 30 } else { 0 };
         let ca1 = if has_card(deck, "SCF") { 0.2 } else { 0.0 };
         let title = deck_title(deck);
+        let rixs_edge_label = if run_rixs {
+            deck_edge_label(deck)
+        } else {
+            "NULL".to_string()
+        };
         let expected_outputs = expected_outputs_for_screen_card(has_screen);
 
         Ok(Self {
-            fixture_id: fixture_id.into(),
             title,
             potentials,
             atoms,
@@ -266,6 +343,12 @@ impl RdinpModel {
             s02,
             idwopt,
             debye,
+            run_compton,
+            run_band,
+            run_rixs,
+            run_crpa,
+            run_full_spectrum,
+            rixs_edge_label,
             expected_outputs,
         })
     }
@@ -285,6 +368,11 @@ impl RdinpModel {
             "ff2x.inp" => Ok(self.render_ff2x_inp()),
             "sfconv.inp" => Ok(self.render_sfconv_inp()),
             "eels.inp" => Ok(EELS_INP_TEMPLATE.to_string()),
+            "compton.inp" => Ok(self.render_compton_inp()),
+            "band.inp" => Ok(self.render_band_inp()),
+            "rixs.inp" => Ok(self.render_rixs_inp()),
+            "crpa.inp" => Ok(self.render_crpa_inp()),
+            "fullspectrum.inp" => Ok(self.render_fullspectrum_inp()),
             "dmdw.inp" => Ok(DMDW_INP_TEMPLATE.to_string()),
             "log.dat" => Ok(self.render_log_dat()),
             _ => Err(FeffError::internal(
@@ -295,10 +383,6 @@ impl RdinpModel {
     }
 
     fn render_geom_dat(&self) -> String {
-        if let Some(content) = self.baseline_geom_dat_if_compatible() {
-            return content;
-        }
-
         let nph = self.nph();
         let mut content = String::new();
         content.push_str(&format!("nat, nph ={:>6}{:>5}\n", self.atoms.len(), nph));
@@ -318,21 +402,6 @@ impl RdinpModel {
             ));
         }
         content
-    }
-
-    fn baseline_geom_dat_if_compatible(&self) -> Option<String> {
-        let baseline_path = PathBuf::from("artifacts/fortran-baselines")
-            .join(&self.fixture_id)
-            .join("baseline")
-            .join("geom.dat");
-        let content = fs::read_to_string(&baseline_path).ok()?;
-        let expected_header = format!("nat, nph ={:>6}{:>5}", self.atoms.len(), self.nph());
-        let first_line = content.lines().next()?;
-        if first_line == expected_header {
-            Some(content)
-        } else {
-            None
-        }
     }
 
     fn render_pot_inp(&self) -> String {
@@ -560,6 +629,46 @@ impl RdinpModel {
         content
     }
 
+    fn render_compton_inp(&self) -> String {
+        COMPTON_INP_TEMPLATE.replace(
+            "{{RUN_COMPTON}}",
+            &format!("{:>12}", if self.run_compton { 1 } else { 0 }),
+        )
+    }
+
+    fn render_band_inp(&self) -> String {
+        BAND_INP_TEMPLATE.replace(
+            "{{MBAND}}",
+            &format!("{:>4}", if self.run_band { 1 } else { 0 }),
+        )
+    }
+
+    fn render_rixs_inp(&self) -> String {
+        RIXS_INP_TEMPLATE
+            .replace(
+                "{{RUN_RIXS}}",
+                &format!("{:>12}", if self.run_rixs { 1 } else { 0 }),
+            )
+            .replace("{{EDGE}}", &self.rixs_edge_label)
+    }
+
+    fn render_crpa_inp(&self) -> String {
+        let rcut = if self.rfms > 0.0 { self.rfms } else { 1.5 };
+        CRPA_INP_TEMPLATE
+            .replace(
+                "{{RUN_CRPA}}",
+                &format!("{:>12}", if self.run_crpa { 1 } else { 0 }),
+            )
+            .replace("{{RCUT}}", &format!("{:>18.11}", rcut))
+    }
+
+    fn render_fullspectrum_inp(&self) -> String {
+        FULLSPECTRUM_INP_TEMPLATE.replace(
+            "{{RUN_FULLSPECTRUM}}",
+            &format!("{:>12}", if self.run_full_spectrum { 1 } else { 0 }),
+        )
+    }
+
     fn render_log_dat(&self) -> String {
         let mut content = String::new();
         if self.has_xanes {
@@ -606,7 +715,7 @@ fn model_for_request(request: &PipelineRequest) -> PipelineResult<RdinpModel> {
     validate_request_shape(request)?;
     let input_source = read_input_source(&request.input_path)?;
     let deck = parse_input_deck(&input_source)?;
-    RdinpModel::from_deck(&deck, &request.fixture_id)
+    RdinpModel::from_deck(&deck)
 }
 
 fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
@@ -753,6 +862,43 @@ fn parse_atoms(deck: &InputDeck) -> PipelineResult<Vec<AtomSite>> {
     Ok(atoms)
 }
 
+fn sort_atoms_by_distance(mut atoms: Vec<AtomSite>) -> Vec<AtomSite> {
+    if atoms.is_empty() {
+        return atoms;
+    }
+
+    let absorber_index = atoms.iter().position(|atom| atom.ipot == 0).unwrap_or(0);
+    let absorber = atoms[absorber_index];
+    let mut distances: Vec<f64> = atoms
+        .iter()
+        .map(|atom| {
+            ((atom.x - absorber.x).powi(2)
+                + (atom.y - absorber.y).powi(2)
+                + (atom.z - absorber.z).powi(2))
+            .sqrt()
+        })
+        .collect();
+
+    let mut index = 0;
+    while index < atoms.len() {
+        let mut swap_index = index;
+        let mut minimum = distances[index];
+        let mut candidate = index;
+        while candidate < atoms.len() {
+            if distances[candidate] < minimum {
+                swap_index = candidate;
+                minimum = distances[candidate];
+            }
+            candidate += 1;
+        }
+        distances.swap(index, swap_index);
+        atoms.swap(index, swap_index);
+        index += 1;
+    }
+
+    atoms
+}
+
 fn card_value(deck: &InputDeck, keyword: &str, index: usize) -> PipelineResult<Option<f64>> {
     let Some(card) = first_card(deck, keyword) else {
         return Ok(None);
@@ -836,6 +982,14 @@ fn deck_title(deck: &InputDeck) -> String {
     "FEFF Input".to_string()
 }
 
+fn deck_edge_label(deck: &InputDeck) -> String {
+    first_card(deck, "EDGE")
+        .and_then(|card| card.values.first())
+        .map(|value| value.trim().to_ascii_uppercase())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "NULL".to_string())
+}
+
 fn normalize_label(label: &str) -> String {
     let trimmed = label.trim();
     if trimmed.is_empty() {
@@ -916,19 +1070,31 @@ mod tests {
             contract.required_inputs[0].relative_path,
             PathBuf::from("feff.inp")
         );
-        assert_eq!(contract.expected_outputs.len(), 14);
+        assert_eq!(contract.expected_outputs.len(), 19);
         assert!(
             contract
                 .expected_outputs
                 .iter()
                 .all(|artifact| artifact.relative_path.as_path() != Path::new("screen.inp"))
         );
+        assert!(
+            contract
+                .expected_outputs
+                .iter()
+                .any(|artifact| artifact.relative_path.as_path() == Path::new("compton.inp"))
+        );
+        assert!(
+            contract
+                .expected_outputs
+                .iter()
+                .any(|artifact| artifact.relative_path.as_path() == Path::new("fullspectrum.inp"))
+        );
     }
 
     #[test]
     fn contract_adds_screen_output_when_screen_card_is_present() {
         let outputs = expected_outputs_for_screen_card(true);
-        assert_eq!(outputs.len(), 15);
+        assert_eq!(outputs.len(), 20);
         assert!(
             outputs
                 .iter()
@@ -958,12 +1124,26 @@ mod tests {
             .execute(&request)
             .expect("RDINP execution should succeed");
 
-        assert_eq!(artifacts.len(), 14);
+        assert_eq!(artifacts.len(), 19);
         let log_dat = output_dir.join("log.dat");
         assert!(log_dat.exists());
         let content = fs::read_to_string(log_dat).expect("log output should be readable");
         assert!(content.contains("Core hole lifetime"));
         assert!(content.contains("Cu"));
+
+        for generated in [
+            "compton.inp",
+            "band.inp",
+            "rixs.inp",
+            "crpa.inp",
+            "fullspectrum.inp",
+        ] {
+            assert!(
+                output_dir.join(generated).is_file(),
+                "expected '{}' to be generated",
+                generated
+            );
+        }
     }
 
     #[test]

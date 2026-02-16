@@ -288,7 +288,12 @@ fn validate_text_input_against_baseline(
     artifact: &str,
     fixture_id: &str,
 ) -> PipelineResult<()> {
-    if normalize_path_source(actual) == normalize_path_source(baseline) {
+    let matches = if artifact.eq_ignore_ascii_case("geom.dat") {
+        normalize_geom_source(actual) == normalize_geom_source(baseline)
+    } else {
+        normalize_path_source(actual) == normalize_path_source(baseline)
+    };
+    if matches {
         return Ok(());
     }
 
@@ -326,6 +331,42 @@ fn normalize_path_source(content: &str) -> String {
         .filter(|line| !line.is_empty())
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn normalize_geom_source(content: &str) -> String {
+    let mut lines = content.lines();
+    let header_line = lines
+        .next()
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let count_line = lines
+        .next()
+        .unwrap_or_default()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // Skip fixed column header and separator rows.
+    let _ = lines.next();
+    let _ = lines.next();
+
+    let mut rows = lines
+        .filter_map(|line| {
+            let columns: Vec<&str> = line.split_whitespace().collect();
+            if columns.len() < 6 {
+                return None;
+            }
+            Some(format!(
+                "{} {} {} {} {}",
+                columns[1], columns[2], columns[3], columns[4], columns[5]
+            ))
+        })
+        .collect::<Vec<_>>();
+    rows.sort();
+
+    format!("{}\n{}\n{}", header_line, count_line, rows.join("\n"))
 }
 
 fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
