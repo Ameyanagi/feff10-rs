@@ -1,4 +1,4 @@
-use feff10_rs::domain::InputDeck;
+use feff10_rs::domain::{FeffError, InputDeck};
 use feff10_rs::parser::parse_input_deck;
 use serde_json::{Value, json};
 use std::fs;
@@ -31,17 +31,36 @@ POTENTIALS
 END
 ";
 
-    let error = parse_input_deck(input).expect_err("deck should fail without a structure card");
-    let snapshot = serde_json::to_string_pretty(&json!({
-        "category": format!("{:?}", error.category()),
-        "placeholder": error.placeholder(),
-        "message": error.message(),
-        "diagnostic": error.diagnostic_line(),
-        "fatalExitLine": error.fatal_exit_line(),
-        "exitCode": error.exit_code()
-    }))
-    .expect("error snapshot should serialize");
-    assert_snapshot("invalid_missing_required_cards", &snapshot);
+    assert_invalid_snapshot("invalid_missing_required_cards", input);
+}
+
+#[test]
+fn parser_snapshot_invalid_empty_deck() {
+    let input = "\
+* full-line comments should be removed
+  
+* and this still stays empty
+";
+    assert_invalid_snapshot("invalid_empty_deck", input);
+}
+
+#[test]
+fn parser_snapshot_invalid_orphaned_continuation() {
+    let input = "\
+300 0 1
+";
+    assert_invalid_snapshot("invalid_orphaned_continuation", input);
+}
+
+#[test]
+fn parser_snapshot_invalid_duplicate_singleton_card() {
+    let input = "\
+CIF cu.cif
+CONTROL 1 1 1 1 1 1
+CONTROL 0 0 0 0 0 0
+END
+";
+    assert_invalid_snapshot("invalid_duplicate_singleton_card", input);
 }
 
 fn deck_snapshot(deck: &InputDeck) -> Value {
@@ -62,6 +81,24 @@ fn deck_snapshot(deck: &InputDeck) -> Value {
                 }).collect::<Vec<_>>()
             })
         }).collect::<Vec<_>>()
+    })
+}
+
+fn assert_invalid_snapshot(name: &str, input: &str) {
+    let error = parse_input_deck(input).expect_err("deck should fail parser validation");
+    let snapshot = serde_json::to_string_pretty(&error_snapshot(&error))
+        .expect("error snapshot should serialize");
+    assert_snapshot(name, &snapshot);
+}
+
+fn error_snapshot(error: &FeffError) -> Value {
+    json!({
+        "category": format!("{:?}", error.category()),
+        "placeholder": error.placeholder(),
+        "message": error.message(),
+        "diagnostic": error.diagnostic_line(),
+        "fatalExitLine": error.fatal_exit_line(),
+        "exitCode": error.exit_code()
     })
 }
 

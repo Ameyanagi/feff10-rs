@@ -1,0 +1,8 @@
+{
+  "category": "InputValidationError",
+  "diagnostic": "ERROR: [INPUT.INVALID_CARD] invalid card keyword '300' at line 1",
+  "exitCode": 2,
+  "fatalExitLine": "FATAL EXIT CODE: 2",
+  "message": "invalid card keyword '300' at line 1",
+  "placeholder": "INPUT.INVALID_CARD"
+}

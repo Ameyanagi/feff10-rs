@@ -7,6 +7,7 @@
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
+- Parser invalid-input compatibility contracts are snapshot-locked in `tests/parser_validation_snapshots.rs` and `tests/snapshots/parser/*.snap`; update both when changing parser placeholders or diagnostic messages.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -75,4 +76,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Auxiliary FEFF module decks frequently use punctuation-suffixed keywords (`msfconv,`, `emin,`) and should be normalized before keyword classification to avoid false unsupported-card diagnostics.
   - Gotchas encountered: `FX-BAND-001` still lacks `REFERENCE/band.inp` in both fixture source and baseline snapshot, so parser coverage must treat it as an expected capture-time prerequisite until fixture sources are refreshed.
   - Useful context: `artifacts/fortran-baselines/FX-SELF-001/baseline/band.inp`, `screen.inp`, `sfconv.inp`, and `artifacts/fortran-baselines/FX-FULLSPECTRUM-001/baseline/fullspectrum.inp` provide concrete auxiliary deck inputs for parser regression coverage.
+---
+## [2026-02-17 07:39:01 JST] - US-007
+- Expanded parser validation snapshot coverage with representative invalid decks (empty deck, orphaned continuation, duplicate singleton card) while retaining missing-required-card coverage.
+- Added deterministic snapshot assertions for parser placeholders, messages, diagnostic lines, fatal exit summary lines, and exit codes under D-4 INPUT validation mapping.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-007` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/parser_validation_snapshots.rs`, `tests/snapshots/parser/invalid_empty_deck.snap`, `tests/snapshots/parser/invalid_orphaned_continuation.snap`, `tests/snapshots/parser/invalid_duplicate_singleton_card.snap`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Treat parser invalid-input compatibility outputs as snapshot contracts and update both test case definitions and `.snap` files together.
+  - Gotchas encountered: `cargo test parser_validation_snapshots` filters by test name and can run zero tests; use `cargo test --test parser_validation_snapshots` when validating that suite directly.
+  - Useful context: No repository-local `AGENTS.md` files exist under this project tree, so reusable workflow notes should continue to be captured in `scripts/ralph/progress.txt`.
 ---

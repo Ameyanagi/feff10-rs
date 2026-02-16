@@ -1,0 +1,8 @@
+{
+  "category": "InputValidationError",
+  "diagnostic": "ERROR: [INPUT.DUPLICATE_SINGLETON_CARD] card 'CONTROL' may only appear once (found 2)",
+  "exitCode": 2,
+  "fatalExitLine": "FATAL EXIT CODE: 2",
+  "message": "card 'CONTROL' may only appear once (found 2)",
+  "placeholder": "INPUT.DUPLICATE_SINGLETON_CARD"
+}

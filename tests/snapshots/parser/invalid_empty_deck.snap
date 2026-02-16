@@ -1,0 +1,8 @@
+{
+  "category": "InputValidationError",
+  "diagnostic": "ERROR: [INPUT.EMPTY_DECK] input deck is empty after removing comments and blank lines",
+  "exitCode": 2,
+  "fatalExitLine": "FATAL EXIT CODE: 2",
+  "message": "input deck is empty after removing comments and blank lines",
+  "placeholder": "INPUT.EMPTY_DECK"
+}
