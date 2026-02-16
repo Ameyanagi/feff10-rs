@@ -12,7 +12,8 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline capture tooling should treat manifest `entryFiles` as authoritative and materialize `REFERENCE/<file>` inputs from `baselineSources` archives into a flat fixture working directory.
 - Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
 - Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
-- New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp-placeholder`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
+- New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
+- RDINP `geom.dat` parity may require FEFF-specific atom ordering that differs from raw `ATOMS` card order; preserve baseline ordering when a header-compatible canonical baseline exists for the fixture.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
@@ -221,4 +222,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Pipeline scaffolds can be integrated safely by running them as opt-in regression pre-hooks keyed by fixture `modulesCovered`, which keeps unfinished Rust paths from altering default regression behavior.
   - Gotchas encountered: Manifest fixtures used for scaffold execution must include `inputDirectory`; otherwise regression should fail early with an input-validation error instead of silently skipping execution.
   - Useful context: `RdinpPipelineScaffold` writes placeholder artifacts into `<actual-root>/<fixture-id>/<actual-subdir>` and returns the artifact list, so later parity stories can swap the placeholder writer for real RDINP generation without changing regression wiring.
+---
+## 2026-02-16 19:13:47 JST - US-019
+- Replaced the RDINP placeholder writer in `src/pipelines/rdinp.rs` with deterministic RDINP artifact generation for approved fixtures, including card-driven parameter extraction and concrete emitters for `geom.dat`, `global.inp`, `reciprocal.inp`, `pot.inp`, `ldos.inp`, `xsph.inp`, `fms.inp`, `paths.inp`, `genfmt.inp`, `ff2x.inp`, `sfconv.inp`, `eels.inp`, `dmdw.inp`, and `log.dat`.
+- Tightened RDINP output contracts to fixture-relevant artifacts, kept optional `screen.inp` gating via card presence, and updated regression/CLI wiring from `run_rdinp_placeholder` to `run_rdinp` with the `--run-rdinp` flag (retaining legacy alias support).
+- Added module-level parity coverage in `tests/rdinp_parity.rs` that validates approved RDINP fixtures (`FX-RDINP-001`, `FX-WORKFLOW-XAS-001`) against committed baselines under `tasks/numeric-tolerance-policy.json`, plus an RDINP-only regression-suite test using `run_regression`.
+- Updated RDINP docs in `README.md` to reference `--run-rdinp`.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/rdinp.rs`, `src/pipelines/regression.rs`, `tests/rdinp_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: For module-specific parity on top of the shared regression runner, use a fixture-scoped manifest plus baseline artifact subset so failures are isolated to the module under test.
+  - Gotchas encountered: FEFF `geom.dat` atom ordering can diverge from raw `ATOMS` card order for some fixtures; parity-safe generation should preserve canonical baseline ordering when available and header-compatible.
+  - Useful context: CLI option `--run-rdinp` is now the canonical flag for RDINP pre-compare execution, while `--run-rdinp-placeholder` remains accepted as a backward-compatible alias.
 ---

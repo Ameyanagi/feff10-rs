@@ -93,8 +93,8 @@ fn parse_regression_args(args: Vec<String>) -> Result<RegressionRunnerConfig, Cl
                 config.report_path = PathBuf::from(value_for_option(&args, next_index, option)?);
                 index += 2;
             }
-            "--run-rdinp-placeholder" => {
-                config.run_rdinp_placeholder = true;
+            "--run-rdinp" | "--run-rdinp-placeholder" => {
+                config.run_rdinp = true;
                 index += 1;
             }
             _ => {
@@ -131,7 +131,7 @@ fn usage_text() -> &'static str {
 }
 
 fn regression_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp-placeholder   Run RDINP scaffold placeholder before fixture comparisons"
+    "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP pipeline before fixture comparisons"
 }
 
 #[derive(Debug)]

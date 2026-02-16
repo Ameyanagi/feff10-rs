@@ -19,7 +19,7 @@ pub struct RegressionRunnerConfig {
     pub baseline_subdir: String,
     pub actual_subdir: String,
     pub report_path: PathBuf,
-    pub run_rdinp_placeholder: bool,
+    pub run_rdinp: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -32,7 +32,7 @@ impl Default for RegressionRunnerConfig {
             baseline_subdir: "baseline".to_string(),
             actual_subdir: "baseline".to_string(),
             report_path: PathBuf::from("artifacts/regression/report.json"),
-            run_rdinp_placeholder: false,
+            run_rdinp: false,
         }
     }
 }
@@ -102,7 +102,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
 
     let mut fixture_reports = Vec::with_capacity(manifest.fixtures.len());
     for fixture in &manifest.fixtures {
-        run_rdinp_placeholder_if_enabled(config, fixture)?;
+        run_rdinp_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
         let report = compare_fixture(config, fixture, threshold, &comparator)?;
         fixture_reports.push(report);
@@ -410,11 +410,11 @@ fn threshold_for_fixture(
         .unwrap_or_default()
 }
 
-fn run_rdinp_placeholder_if_enabled(
+fn run_rdinp_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_rdinp_placeholder || !fixture.covers_module(PipelineModule::Rdinp) {
+    if !config.run_rdinp || !fixture.covers_module(PipelineModule::Rdinp) {
         return Ok(());
     }
 
@@ -721,7 +721,7 @@ mod tests {
             baseline_subdir: "baseline".to_string(),
             actual_subdir: "actual".to_string(),
             report_path: report_path.clone(),
-            run_rdinp_placeholder: false,
+            run_rdinp: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -785,7 +785,7 @@ mod tests {
             baseline_subdir: "baseline".to_string(),
             actual_subdir: "actual".to_string(),
             report_path,
-            run_rdinp_placeholder: false,
+            run_rdinp: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -803,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn run_regression_can_execute_rdinp_placeholder_path() {
+    fn run_regression_can_execute_rdinp_path() {
         let temp = TempDir::new().expect("tempdir should be created");
         let baseline_root = temp.path().join("baseline-root");
         let actual_root = temp.path().join("actual-root");
@@ -840,7 +840,7 @@ mod tests {
             baseline_subdir: "baseline".to_string(),
             actual_subdir: "actual".to_string(),
             report_path,
-            run_rdinp_placeholder: true,
+            run_rdinp: true,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -850,7 +850,7 @@ mod tests {
             .join("FX-RDINP-001")
             .join("actual")
             .join("log.dat");
-        assert!(generated.exists(), "RDINP placeholder output should exist");
+        assert!(generated.exists(), "RDINP output should exist");
     }
 
     fn write_fixture_file(
