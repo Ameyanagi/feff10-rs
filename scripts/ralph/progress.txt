@@ -36,6 +36,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Contract-level CLI integration tests for fatal paths should assert the full diagnostic pair (`ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>`) alongside the numeric exit code.
 - CLI compatibility commands that execute baseline-driven module scaffolds should resolve fixture IDs from `tasks/golden-fixture-manifest.json` and run pipeline execution with the workspace root as the process CWD so module-relative baseline paths (`artifacts/fortran-baselines/...`) resolve correctly.
 - CLI smoke rehearsals must run from a directory under the workspace root so `feff10-rs` workspace discovery can locate `tasks/golden-fixture-manifest.json` and `artifacts/fortran-baselines`.
+- Rollback rehearsals should model deployment state with `deployment/current` symlink switching from `deployment/rust-current` to `deployment/fortran-stable`, then validate restored fixture artifacts with a focused single-fixture regression manifest.
 - FEFF deck parsing should treat numeric-leading lines as continuations of the preceding card (for example `ATOMS`, `POTENTIALS`, `ELNES`, `STRETCHES`) and only fail when such a line appears before any card.
 - Parser validation in `src/parser/mod.rs` is profile-driven: main decks require `TITLE|CIF`, `ATOMS|CIF`, and `POTENTIALS|POTENTIAL|CIF`, while DEBYE spring decks require `VDOS` and `STRETCHES`; missing `CONTROL`, `PRINT`, and `END` are synthesized with deterministic defaults.
 - Core-science pipeline scaffolds should consume deterministic helpers from `src/numerics/mod.rs` (`deterministic_argsort`, compensated aggregation helpers, and grid/interpolation helpers) instead of local float logic.
@@ -538,4 +539,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Cutover rehearsals are more repeatable when platform-specific build/smoke contracts and required output artifacts are captured in a dedicated checklist under docs/.
   - Gotchas encountered: feff10-rs CLI workspace discovery fails when smoke tests run outside the repository tree; use workspace-descendant smoke directories.
   - Useful context: Linux GA validation can be exercised on this arm64 host with ubuntu:22.04 plus --platform linux/amd64, but final GA sign-off should still re-run on native Ubuntu x86_64 infrastructure.
+---
+## 2026-02-16 22:59:37 JST - US-045
+- Added a reusable rollback rehearsal checklist in `docs/rollback-rehearsal-checklist.md` covering artifact reversion flow, smoke artifact assertions, focused rollback regression, and required GA sign-off recording.
+- Executed rollback rehearsal evidence capture under `artifacts/rollback-rehearsal/2026-02-16`: built a Rust release candidate, ran `feff10-rs feff` smoke for `FX-WORKFLOW-XAS-001`, switched `deployment/current` from `deployment/rust-current` to `deployment/fortran-stable`, and validated rollback artifact restoration.
+- Recorded rollback outcomes and final GA readiness decision (`GO`) in `tasks/rollback-rehearsal-2026-02-16.md`, including focused rollback regression PASS (`1/1` fixtures, `45/45` artifacts) and full end-to-end regression PASS (`17/17` fixtures, `921/921` artifacts).
+- Updated documentation index links in `README.md` for the new rollback checklist/report artifacts.
+- Quality checks: `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, and `cargo fmt --all -- --check` passed.
+- Files changed: `README.md`, `docs/rollback-rehearsal-checklist.md`, `tasks/rollback-rehearsal-2026-02-16.md`, `artifacts/rollback-rehearsal/2026-02-16/*`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Rollback evidence is clearest when deployment-pointer transitions (`current -> rust-current` then `current -> fortran-stable`) are captured alongside fixture-scoped regression results.
+  - Gotchas encountered: Focused rollback validation should use a filtered single-fixture manifest; full-manifest rollback checks can fail for fixtures not staged in the rehearsal deployment root.
+  - Useful context: `FX-WORKFLOW-XAS-001` rollback validation artifacts now live under `artifacts/rollback-rehearsal/2026-02-16/` (`workflow-manifest.json`, regression summary/report, and smoke stdout/stderr).
 ---
