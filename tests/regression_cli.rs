@@ -342,6 +342,17 @@ fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
         "oracle command should return regression mismatch status when oracle outputs differ, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Mismatches:"),
+        "oracle summary should include mismatch totals, stdout: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+        "oracle summary should include fixture-level mismatch details, stdout: {}",
+        stdout
+    );
     assert!(
         oracle_root
             .join(fixture_id)
@@ -361,6 +372,17 @@ fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
     assert!(
         report_path.is_file(),
         "oracle command should emit a regression report"
+    );
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+    assert!(
+        parsed["mismatch_artifact_count"]
+            .as_u64()
+            .map(|count| count > 0)
+            .unwrap_or(false),
+        "oracle report should include artifact-level mismatch entries"
     );
 }
 

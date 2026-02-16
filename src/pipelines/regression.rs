@@ -98,6 +98,9 @@ pub struct RegressionRunReport {
     pub artifact_count: usize,
     pub passed_artifact_count: usize,
     pub failed_artifact_count: usize,
+    pub mismatch_fixture_count: usize,
+    pub mismatch_artifact_count: usize,
+    pub mismatch_fixtures: Vec<FixtureMismatchReport>,
     pub fixtures: Vec<FixtureRegressionReport>,
 }
 
@@ -138,6 +141,21 @@ pub struct ArtifactRegressionReport {
     pub passed: bool,
     pub reason: Option<String>,
     pub comparison: Option<ArtifactComparisonResult>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct FixtureMismatchReport {
+    pub fixture_id: String,
+    pub failed_artifact_count: usize,
+    pub artifacts: Vec<ArtifactMismatchReport>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct ArtifactMismatchReport {
+    pub artifact_path: String,
+    pub baseline_path: String,
+    pub actual_path: String,
+    pub reason: String,
 }
 
 pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<RegressionRunReport> {
@@ -184,6 +202,12 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         .map(|fixture| fixture.passed_artifact_count)
         .sum::<usize>();
     let failed_artifact_count = artifact_count.saturating_sub(passed_artifact_count);
+    let mismatch_fixtures = collect_fixture_mismatches(&fixture_reports);
+    let mismatch_fixture_count = mismatch_fixtures.len();
+    let mismatch_artifact_count = mismatch_fixtures
+        .iter()
+        .map(|fixture| fixture.failed_artifact_count)
+        .sum::<usize>();
     let passed = failed_fixture_count == 0;
 
     let report = RegressionRunReport {
@@ -201,6 +225,9 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         artifact_count,
         passed_artifact_count,
         failed_artifact_count,
+        mismatch_fixture_count,
+        mismatch_artifact_count,
+        mismatch_fixtures,
         fixtures: fixture_reports,
     };
 
@@ -220,6 +247,10 @@ pub fn render_human_summary(report: &RegressionRunReport) -> String {
         "Artifacts: {} total ({} passed, {} failed)",
         report.artifact_count, report.passed_artifact_count, report.failed_artifact_count
     ));
+    lines.push(format!(
+        "Mismatches: {} fixture(s), {} artifact(s)",
+        report.mismatch_fixture_count, report.mismatch_artifact_count
+    ));
 
     for fixture in &report.fixtures {
         let fixture_status = if fixture.passed { "PASS" } else { "FAIL" };
@@ -233,22 +264,60 @@ pub fn render_human_summary(report: &RegressionRunReport) -> String {
             fixture.threshold.minimum_artifact_pass_rate,
             fixture.threshold.max_artifact_failures
         ));
+    }
 
-        if !fixture.passed
-            && let Some(first_failure) = fixture.artifacts.iter().find(|artifact| !artifact.passed)
-        {
-            let reason = first_failure
-                .reason
-                .as_deref()
-                .unwrap_or("artifact comparison failed without a reason");
+    if report.mismatch_fixtures.is_empty() {
+        lines.push("No artifact mismatches detected.".to_string());
+    } else {
+        lines.push("Mismatch details:".to_string());
+        for fixture in &report.mismatch_fixtures {
             lines.push(format!(
-                "  first failure: {} ({})",
-                first_failure.artifact_path, reason
+                "Fixture {} mismatches: {} artifact(s)",
+                fixture.fixture_id, fixture.failed_artifact_count
             ));
+            for artifact in &fixture.artifacts {
+                lines.push(format!(
+                    "  {}: {} (baseline={}, actual={})",
+                    artifact.artifact_path,
+                    artifact.reason,
+                    artifact.baseline_path,
+                    artifact.actual_path
+                ));
+            }
         }
     }
 
     lines.join("\n")
+}
+
+fn collect_fixture_mismatches(fixtures: &[FixtureRegressionReport]) -> Vec<FixtureMismatchReport> {
+    fixtures
+        .iter()
+        .filter_map(|fixture| {
+            let artifacts = fixture
+                .artifacts
+                .iter()
+                .filter(|artifact| !artifact.passed)
+                .map(|artifact| ArtifactMismatchReport {
+                    artifact_path: artifact.artifact_path.clone(),
+                    baseline_path: artifact.baseline_path.clone(),
+                    actual_path: artifact.actual_path.clone(),
+                    reason: artifact.reason.clone().unwrap_or_else(|| {
+                        "artifact comparison failed without a reason".to_string()
+                    }),
+                })
+                .collect::<Vec<_>>();
+            if artifacts.is_empty() {
+                None
+            } else {
+                Some(FixtureMismatchReport {
+                    fixture_id: fixture.fixture_id.clone(),
+                    failed_artifact_count: artifacts.len(),
+                    artifacts,
+                })
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug)]
@@ -1405,14 +1474,41 @@ mod tests {
         assert_eq!(report.failed_fixture_count, 0);
         assert_eq!(report.artifact_count, 5);
         assert_eq!(report.failed_artifact_count, 1);
+        assert_eq!(report.mismatch_fixture_count, 1);
+        assert_eq!(report.mismatch_artifact_count, 1);
+        assert_eq!(report.mismatch_fixtures[0].fixture_id, "FX-FAIL-001");
+        assert_eq!(report.mismatch_fixtures[0].failed_artifact_count, 1);
+        assert_eq!(
+            report.mismatch_fixtures[0].artifacts[0].artifact_path,
+            "b.dat"
+        );
+        assert!(
+            report.mismatch_fixtures[0].artifacts[0]
+                .reason
+                .contains("Exact-text mismatch"),
+            "mismatch reason should include comparator detail"
+        );
 
         let summary = render_human_summary(&report);
         assert!(summary.contains("Regression status: PASS"));
+        assert!(summary.contains("Mismatches: 1 fixture(s), 1 artifact(s)"));
+        assert!(summary.contains("Fixture FX-FAIL-001 mismatches: 1 artifact(s)"));
+        assert!(summary.contains("b.dat: Exact-text mismatch"));
         assert!(report_path.exists());
 
         let report_json = fs::read_to_string(&report_path).expect("report file should be readable");
         let parsed: Value = serde_json::from_str(&report_json).expect("report should parse");
         assert_eq!(parsed["passed"], Value::Bool(true));
+        assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+        assert_eq!(parsed["mismatch_artifact_count"], Value::from(1));
+        assert_eq!(
+            parsed["mismatch_fixtures"][0]["fixture_id"],
+            Value::from("FX-FAIL-001")
+        );
+        assert_eq!(
+            parsed["mismatch_fixtures"][0]["artifacts"][0]["artifact_path"],
+            Value::from("b.dat")
+        );
     }
 
     #[test]
@@ -1481,6 +1577,8 @@ mod tests {
         assert!(!report.passed);
         assert_eq!(report.failed_fixture_count, 1);
         assert_eq!(report.failed_artifact_count, 1);
+        assert_eq!(report.mismatch_fixture_count, 1);
+        assert_eq!(report.mismatch_artifact_count, 1);
 
         let fixture = &report.fixtures[0];
         assert!(!fixture.passed);
@@ -1488,6 +1586,15 @@ mod tests {
         assert_eq!(
             fixture.artifacts[0].reason.as_deref(),
             Some("Missing actual artifact")
+        );
+        assert_eq!(report.mismatch_fixtures[0].fixture_id, "FX-MISSING-001");
+        assert_eq!(
+            report.mismatch_fixtures[0].artifacts[0].artifact_path,
+            "log.dat"
+        );
+        assert_eq!(
+            report.mismatch_fixtures[0].artifacts[0].reason,
+            "Missing actual artifact"
         );
     }
 
