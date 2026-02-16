@@ -8,6 +8,7 @@
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
 - Parser invalid-input compatibility contracts are snapshot-locked in `tests/parser_validation_snapshots.rs` and `tests/snapshots/parser/*.snap`; update both when changing parser placeholders or diagnostic messages.
+- Numeric comparator D-3 enforcement is line-aware: treat line-count and per-line token-count mismatches as hard failures before numeric tolerance checks.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -87,4 +88,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Treat parser invalid-input compatibility outputs as snapshot contracts and update both test case definitions and `.snap` files together.
   - Gotchas encountered: `cargo test parser_validation_snapshots` filters by test name and can run zero tests; use `cargo test --test parser_validation_snapshots` when validating that suite directly.
   - Useful context: No repository-local `AGENTS.md` files exist under this project tree, so reusable workflow notes should continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 07:46:43 JST] - US-008
+- Hardened D-3 comparator behavior in `src/pipelines/comparator.rs` by making policy `matchStrategy` explicit (`first_match`) and by comparing numeric artifacts with line-aware tokenization so line-count and per-line token-count mismatches fail deterministically.
+- Added comparator coverage for policy strategy parsing, NaN/Inf mismatch handling, first-match tolerance selection during comparisons, and line-count mismatch diagnostics while preserving Fortran `D`/`d` exponent parsing coverage.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-008` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/pipelines/comparator.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep comparator category selection tied to policy order (`first_match`) and assert selected tolerance via `matched_category`/metrics in tests.
+  - Gotchas encountered: Flattened numeric-token comparison can hide D-3 structural mismatches; compare line rows first, then numeric values.
+  - Useful context: This repository still has no `AGENTS.md`, so reusable conventions should continue to be stored in `scripts/ralph/progress.txt`.
 ---

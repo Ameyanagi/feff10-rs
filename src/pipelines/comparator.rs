@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 
 pub struct Comparator {
     default_mode: ComparisonMode,
+    match_strategy: MatchStrategy,
     numeric_parsing: NumericParsingOptions,
     categories: Vec<CompiledCategory>,
 }
@@ -32,6 +33,13 @@ impl CompiledCategory {
 pub enum ComparisonMode {
     ExactText,
     NumericTolerance,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+enum MatchStrategy {
+    #[default]
+    FirstMatch,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -124,13 +132,17 @@ impl Comparator {
 
     pub fn resolve_rule_for_artifact(&self, artifact_path: impl AsRef<Path>) -> ResolvedRule {
         let artifact_path = normalize_artifact_path(artifact_path.as_ref());
-        for category in &self.categories {
-            if category.matches(&artifact_path) {
-                return ResolvedRule {
-                    mode: category.mode,
-                    category_id: Some(category.id.clone()),
-                    tolerance: category.tolerance,
-                };
+        match self.match_strategy {
+            MatchStrategy::FirstMatch => {
+                for category in &self.categories {
+                    if category.matches(&artifact_path) {
+                        return ResolvedRule {
+                            mode: category.mode,
+                            category_id: Some(category.id.clone()),
+                            tolerance: category.tolerance,
+                        };
+                    }
+                }
             }
         }
 
@@ -213,6 +225,7 @@ impl Comparator {
 
         Ok(Self {
             default_mode: raw.default_mode,
+            match_strategy: raw.match_strategy,
             numeric_parsing: raw.numeric_parsing,
             categories,
         })
@@ -268,79 +281,115 @@ impl Comparator {
         let baseline_text = read_artifact_utf8(baseline_path)?;
         let actual_text = read_artifact_utf8(actual_path)?;
 
-        let baseline_values = self
-            .parse_numeric_values(&baseline_text)
-            .map_err(|source| ComparatorError::NumericParse {
+        let baseline_rows = self.parse_numeric_rows(&baseline_text).map_err(|source| {
+            ComparatorError::NumericParse {
                 path: baseline_path.to_path_buf(),
                 source,
-            })?;
-        let actual_values = self.parse_numeric_values(&actual_text).map_err(|source| {
+            }
+        })?;
+        let actual_rows = self.parse_numeric_rows(&actual_text).map_err(|source| {
             ComparatorError::NumericParse {
                 path: actual_path.to_path_buf(),
                 source,
             }
         })?;
 
-        let compared_values = baseline_values.len().min(actual_values.len());
-        let mut failing_values = baseline_values
-            .len()
-            .max(actual_values.len())
-            .saturating_sub(compared_values);
+        let baseline_value_count = baseline_rows.iter().map(Vec::len).sum::<usize>();
+        let actual_value_count = actual_rows.iter().map(Vec::len).sum::<usize>();
+        let line_count_mismatch = baseline_rows.len() != actual_rows.len();
+        let mut first_token_count_mismatch: Option<(usize, usize, usize)> = None;
+
+        let mut compared_values = 0usize;
+        let mut failing_values = 0usize;
         let mut max_abs_diff = 0.0_f64;
         let mut max_rel_diff = 0.0_f64;
         let mut first_failure: Option<String> = None;
+        let mut comparison_index = 0usize;
 
-        for (index, (baseline_value, actual_value)) in
-            baseline_values.iter().zip(actual_values.iter()).enumerate()
+        for (line_index, (baseline_row, actual_row)) in
+            baseline_rows.iter().zip(actual_rows.iter()).enumerate()
         {
-            if baseline_value.is_finite() && actual_value.is_finite() {
-                let comparison =
-                    compare_with_policy_tolerance(*baseline_value, *actual_value, tolerance);
-                max_abs_diff = max_abs_diff.max(comparison.abs_diff);
-                max_rel_diff = max_rel_diff.max(comparison.rel_diff);
+            let row_compared = baseline_row.len().min(actual_row.len());
+            let row_unmatched = baseline_row.len().max(actual_row.len()) - row_compared;
+            compared_values += row_compared;
+            if row_unmatched > 0 {
+                failing_values += row_unmatched;
+                if first_token_count_mismatch.is_none() {
+                    first_token_count_mismatch =
+                        Some((line_index + 1, baseline_row.len(), actual_row.len()));
+                }
+            }
 
-                if !comparison.passes {
+            for (baseline_value, actual_value) in baseline_row.iter().zip(actual_row.iter()) {
+                if baseline_value.is_finite() && actual_value.is_finite() {
+                    let comparison =
+                        compare_with_policy_tolerance(*baseline_value, *actual_value, tolerance);
+                    max_abs_diff = max_abs_diff.max(comparison.abs_diff);
+                    max_rel_diff = max_rel_diff.max(comparison.rel_diff);
+
+                    if !comparison.passes {
+                        failing_values += 1;
+                        if first_failure.is_none() {
+                            first_failure = Some(format!(
+                                "index {} baseline={} actual={} abs_diff={} rel_diff={}",
+                                comparison_index,
+                                format_numeric_for_policy(*baseline_value),
+                                format_numeric_for_policy(*actual_value),
+                                format_numeric_for_policy(comparison.abs_diff),
+                                format_numeric_for_policy(comparison.rel_diff)
+                            ));
+                        }
+                    }
+                    comparison_index += 1;
+                    continue;
+                }
+
+                let non_finite_match = non_finite_values_match(*baseline_value, *actual_value);
+                let finite_mismatch = baseline_value.is_finite() != actual_value.is_finite();
+                let should_fail = finite_mismatch
+                    || (self.numeric_parsing.fail_on_nan_or_inf_mismatch && !non_finite_match);
+
+                if should_fail {
                     failing_values += 1;
                     if first_failure.is_none() {
                         first_failure = Some(format!(
-                            "index {} baseline={} actual={} abs_diff={} rel_diff={}",
-                            index,
+                            "index {} baseline={} actual={} non-finite mismatch",
+                            comparison_index,
                             format_numeric_for_policy(*baseline_value),
-                            format_numeric_for_policy(*actual_value),
-                            format_numeric_for_policy(comparison.abs_diff),
-                            format_numeric_for_policy(comparison.rel_diff)
+                            format_numeric_for_policy(*actual_value)
                         ));
                     }
                 }
-                continue;
-            }
 
-            let non_finite_match = non_finite_values_match(*baseline_value, *actual_value);
-            let finite_mismatch = baseline_value.is_finite() != actual_value.is_finite();
-            let should_fail = finite_mismatch
-                || (self.numeric_parsing.fail_on_nan_or_inf_mismatch && !non_finite_match);
-
-            if should_fail {
-                failing_values += 1;
-                if first_failure.is_none() {
-                    first_failure = Some(format!(
-                        "index {} baseline={} actual={} non-finite mismatch",
-                        index,
-                        format_numeric_for_policy(*baseline_value),
-                        format_numeric_for_policy(*actual_value)
-                    ));
-                }
+                comparison_index += 1;
             }
+        }
+
+        for row in baseline_rows.iter().skip(actual_rows.len()) {
+            failing_values += row.len();
+        }
+        for row in actual_rows.iter().skip(baseline_rows.len()) {
+            failing_values += row.len();
         }
 
         let passed = failing_values == 0;
         let reason = if passed {
             None
-        } else if baseline_values.len() != actual_values.len() {
+        } else if line_count_mismatch {
+            Some(format!(
+                "Numeric line count mismatch (baseline={}, actual={}).",
+                baseline_rows.len(),
+                actual_rows.len()
+            ))
+        } else if let Some((line, baseline_tokens, actual_tokens)) = first_token_count_mismatch {
+            Some(format!(
+                "Numeric token count mismatch at line {} (baseline={}, actual={}).",
+                line, baseline_tokens, actual_tokens
+            ))
+        } else if baseline_value_count != actual_value_count {
             Some(format!(
                 "Numeric token count mismatch (baseline={}, actual={}).",
-                baseline_values.len(),
-                actual_values.len()
+                baseline_value_count, actual_value_count
             ))
         } else {
             Some(format!(
@@ -357,8 +406,8 @@ impl Comparator {
             passed,
             reason,
             metrics: ArtifactComparisonMetrics::NumericTolerance(NumericToleranceMetrics {
-                baseline_value_count: baseline_values.len(),
-                actual_value_count: actual_values.len(),
+                baseline_value_count,
+                actual_value_count,
                 compared_values,
                 failing_values,
                 max_abs_diff,
@@ -368,8 +417,8 @@ impl Comparator {
         })
     }
 
-    fn parse_numeric_values(&self, input: &str) -> Result<Vec<f64>, NumericParseError> {
-        let mut values = Vec::new();
+    fn parse_numeric_rows(&self, input: &str) -> Result<Vec<Vec<f64>>, NumericParseError> {
+        let mut rows = Vec::new();
 
         for (line_index, raw_line) in input.lines().enumerate() {
             let mut line = if self.numeric_parsing.trim_whitespace {
@@ -390,6 +439,7 @@ impl Comparator {
                 line = line.split_whitespace().collect::<Vec<_>>().join(" ");
             }
 
+            let mut row = Vec::new();
             for (token_index, token) in line.split_whitespace().enumerate() {
                 let normalized =
                     normalize_numeric_token(token, &self.numeric_parsing.fortran_exponent_markers);
@@ -398,11 +448,14 @@ impl Comparator {
                     token_index: token_index + 1,
                     token: token.to_string(),
                 })?;
-                values.push(value);
+                row.push(value);
+            }
+            if !row.is_empty() {
+                rows.push(row);
             }
         }
 
-        Ok(values)
+        Ok(rows)
     }
 }
 
@@ -545,6 +598,8 @@ impl Error for NumericParseError {}
 struct RawPolicy {
     #[serde(rename = "defaultMode")]
     default_mode: ComparisonMode,
+    #[serde(rename = "matchStrategy", default)]
+    match_strategy: MatchStrategy,
     #[serde(rename = "numericParsing", default)]
     numeric_parsing: NumericParsingOptions,
     #[serde(default)]
@@ -662,7 +717,8 @@ fn read_artifact_utf8(path: &Path) -> Result<String, ComparatorError> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ArtifactComparisonMetrics, ArtifactPair, Comparator, ComparisonMode, NumericTolerance,
+        ArtifactComparisonMetrics, ArtifactPair, Comparator, ComparatorError, ComparisonMode,
+        NumericTolerance,
     };
     use std::fs;
     use std::path::PathBuf;
@@ -747,6 +803,20 @@ mod tests {
         let rule = comparator.resolve_rule_for_artifact("out/xmu.dat");
         assert_eq!(rule.mode, ComparisonMode::ExactText);
         assert_eq!(rule.category_id.as_deref(), Some("all_dat_as_exact"));
+    }
+
+    #[test]
+    fn rejects_unknown_match_strategy() {
+        let result = Comparator::from_policy_json(
+            r#"
+            {
+              "defaultMode": "exact_text",
+              "matchStrategy": "last_match"
+            }
+            "#,
+        );
+
+        assert!(matches!(result, Err(ComparatorError::ParsePolicy { .. })));
     }
 
     #[test]
@@ -890,6 +960,162 @@ mod tests {
                 assert_eq!(metrics.failing_values, 1);
                 assert!(metrics.max_abs_diff >= 0.01);
                 assert!(metrics.max_rel_diff >= 0.01);
+            }
+            _ => panic!("expected numeric-tolerance metrics"),
+        }
+    }
+
+    #[test]
+    fn numeric_tolerance_fails_on_non_finite_mismatch() {
+        let comparator = Comparator::from_policy_json(
+            r#"
+            {
+              "defaultMode": "exact_text",
+              "numericParsing": {
+                "failOnNaNOrInfMismatch": true
+              },
+              "categories": [
+                {
+                  "id": "spectra",
+                  "mode": "numeric_tolerance",
+                  "fileGlobs": ["**/xmu.dat"],
+                  "tolerance": {
+                    "absTol": 1e-8,
+                    "relTol": 1e-6,
+                    "relativeFloor": 1e-12
+                  }
+                }
+              ]
+            }
+            "#,
+        )
+        .expect("policy should parse");
+
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline = write_file(&temp, "baseline/xmu.dat", "NaN inf -inf\n");
+        let actual = write_file(&temp, "actual/xmu.dat", "NaN inf inf\n");
+
+        let result = comparator
+            .compare_artifact("xmu.dat", &baseline, &actual)
+            .expect("comparison should succeed");
+
+        assert!(!result.passed);
+        assert_eq!(result.matched_category.as_deref(), Some("spectra"));
+        assert!(
+            result
+                .reason
+                .as_deref()
+                .expect("failure should have reason")
+                .contains("non-finite mismatch")
+        );
+
+        match result.metrics {
+            ArtifactComparisonMetrics::NumericTolerance(metrics) => {
+                assert_eq!(metrics.compared_values, 3);
+                assert_eq!(metrics.failing_values, 1);
+            }
+            _ => panic!("expected numeric-tolerance metrics"),
+        }
+    }
+
+    #[test]
+    fn numeric_tolerance_uses_first_matching_category_tolerance() {
+        let comparator = Comparator::from_policy_json(
+            r#"
+            {
+              "defaultMode": "exact_text",
+              "categories": [
+                {
+                  "id": "strict_first",
+                  "mode": "numeric_tolerance",
+                  "fileGlobs": ["**/*.dat"],
+                  "tolerance": {
+                    "absTol": 1e-9,
+                    "relTol": 1e-9,
+                    "relativeFloor": 1e-12
+                  }
+                },
+                {
+                  "id": "loose_second",
+                  "mode": "numeric_tolerance",
+                  "fileGlobs": ["**/xmu.dat"],
+                  "tolerance": {
+                    "absTol": 1e-1,
+                    "relTol": 1e-1,
+                    "relativeFloor": 1e-12
+                  }
+                }
+              ]
+            }
+            "#,
+        )
+        .expect("policy should parse");
+
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline = write_file(&temp, "baseline/xmu.dat", "1.0\n");
+        let actual = write_file(&temp, "actual/xmu.dat", "1.01\n");
+
+        let result = comparator
+            .compare_artifact("xmu.dat", &baseline, &actual)
+            .expect("comparison should succeed");
+
+        assert!(!result.passed);
+        assert_eq!(result.matched_category.as_deref(), Some("strict_first"));
+
+        match result.metrics {
+            ArtifactComparisonMetrics::NumericTolerance(metrics) => {
+                assert_eq!(metrics.tolerance.abs_tol, 1e-9);
+                assert_eq!(metrics.tolerance.rel_tol, 1e-9);
+            }
+            _ => panic!("expected numeric-tolerance metrics"),
+        }
+    }
+
+    #[test]
+    fn numeric_tolerance_reports_line_count_mismatch() {
+        let comparator = Comparator::from_policy_json(
+            r#"
+            {
+              "defaultMode": "exact_text",
+              "categories": [
+                {
+                  "id": "spectra",
+                  "mode": "numeric_tolerance",
+                  "fileGlobs": ["**/xmu.dat"],
+                  "tolerance": {
+                    "absTol": 1e-8,
+                    "relTol": 1e-6,
+                    "relativeFloor": 1e-12
+                  }
+                }
+              ]
+            }
+            "#,
+        )
+        .expect("policy should parse");
+
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline = write_file(&temp, "baseline/xmu.dat", "1.0\n2.0\n3.0\n");
+        let actual = write_file(&temp, "actual/xmu.dat", "1.0 2.0\n3.0\n");
+
+        let result = comparator
+            .compare_artifact("xmu.dat", &baseline, &actual)
+            .expect("comparison should succeed");
+
+        assert!(!result.passed);
+        assert!(
+            result
+                .reason
+                .as_deref()
+                .expect("failure should have reason")
+                .contains("line count mismatch")
+        );
+
+        match result.metrics {
+            ArtifactComparisonMetrics::NumericTolerance(metrics) => {
+                assert_eq!(metrics.baseline_value_count, 3);
+                assert_eq!(metrics.actual_value_count, 3);
+                assert!(metrics.failing_values > 0);
             }
             _ => panic!("expected numeric-tolerance metrics"),
         }
