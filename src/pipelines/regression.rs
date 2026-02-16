@@ -1,5 +1,6 @@
 use super::PipelineExecutor;
 use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
+use super::pot::PotPipelineScaffold;
 use super::rdinp::RdinpPipelineScaffold;
 use crate::domain::{FeffError, PipelineModule, PipelineRequest, PipelineResult};
 use serde::{Deserialize, Serialize};
@@ -20,6 +21,7 @@ pub struct RegressionRunnerConfig {
     pub actual_subdir: String,
     pub report_path: PathBuf,
     pub run_rdinp: bool,
+    pub run_pot: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -33,6 +35,7 @@ impl Default for RegressionRunnerConfig {
             actual_subdir: "baseline".to_string(),
             report_path: PathBuf::from("artifacts/regression/report.json"),
             run_rdinp: false,
+            run_pot: false,
         }
     }
 }
@@ -103,6 +106,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
     let mut fixture_reports = Vec::with_capacity(manifest.fixtures.len());
     for fixture in &manifest.fixtures {
         run_rdinp_if_enabled(config, fixture)?;
+        run_pot_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
         let report = compare_fixture(config, fixture, threshold, &comparator)?;
         fixture_reports.push(report);
@@ -211,6 +215,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    PotPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     ReadDirectory {
         path: PathBuf,
         source: std::io::Error,
@@ -262,6 +270,11 @@ impl Display for RegressionRunnerError {
                 "RDINP scaffold execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::PotPipeline { fixture_id, source } => write!(
+                f,
+                "POT scaffold execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::ReadDirectory { path, source } => {
                 write!(
                     f,
@@ -297,6 +310,7 @@ impl Error for RegressionRunnerError {
             Self::InvalidFixtureConfig { .. } => None,
             Self::Comparator(source) => Some(source),
             Self::RdinpPipeline { source, .. } => Some(source),
+            Self::PotPipeline { source, .. } => Some(source),
             Self::ReadDirectory { source, .. } => Some(source),
             Self::ReportDirectory { source, .. } => Some(source),
             Self::SerializeReport { source, .. } => Some(source),
@@ -320,6 +334,7 @@ impl From<RegressionRunnerError> for FeffError {
             }
             RegressionRunnerError::Comparator(source) => source.into(),
             RegressionRunnerError::RdinpPipeline { source, .. } => source,
+            RegressionRunnerError::PotPipeline { source, .. } => source,
             RegressionRunnerError::ReadDirectory { .. }
             | RegressionRunnerError::ReportDirectory { .. }
             | RegressionRunnerError::WriteReport { .. } => {
@@ -436,6 +451,35 @@ fn run_rdinp_if_enabled(
             source,
         }
     })?;
+
+    Ok(())
+}
+
+fn run_pot_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_pot || !fixture.covers_module(PipelineModule::Pot) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::Pot,
+        output_dir.join("pot.inp"),
+        output_dir,
+    );
+
+    PotPipelineScaffold
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::PotPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        })?;
 
     Ok(())
 }
@@ -722,6 +766,7 @@ mod tests {
             actual_subdir: "actual".to_string(),
             report_path: report_path.clone(),
             run_rdinp: false,
+            run_pot: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -786,6 +831,7 @@ mod tests {
             actual_subdir: "actual".to_string(),
             report_path,
             run_rdinp: false,
+            run_pot: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -841,6 +887,7 @@ mod tests {
             actual_subdir: "actual".to_string(),
             report_path,
             run_rdinp: true,
+            run_pot: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -851,6 +898,63 @@ mod tests {
             .join("actual")
             .join("log.dat");
         assert!(generated.exists(), "RDINP output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_pot_path() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-POT-001",
+                  "modulesCovered": ["POT"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-POT-001").join("actual");
+        write_file(&staged_dir.join("pot.inp"), "POT INPUT\n");
+        write_file(&staged_dir.join("geom.dat"), "GEOM INPUT\n");
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let generated = actual_root
+            .join("FX-POT-001")
+            .join("actual")
+            .join("log1.dat");
+        assert!(generated.exists(), "POT output should exist");
     }
 
     fn write_fixture_file(

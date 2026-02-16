@@ -97,6 +97,10 @@ fn parse_regression_args(args: Vec<String>) -> Result<RegressionRunnerConfig, Cl
                 config.run_rdinp = true;
                 index += 1;
             }
+            "--run-pot" | "--run-pot-placeholder" => {
+                config.run_pot = true;
+                index += 1;
+            }
             _ => {
                 return Err(CliError::Usage(format!(
                     "Unknown option '{}'.\n{}",
@@ -131,7 +135,7 @@ fn usage_text() -> &'static str {
 }
 
 fn regression_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP pipeline before fixture comparisons"
+    "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP pipeline before fixture comparisons\n  --run-pot                Run POT pipeline before fixture comparisons"
 }
 
 #[derive(Debug)]
