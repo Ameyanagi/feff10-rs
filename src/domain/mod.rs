@@ -1,3 +1,10 @@
+pub mod errors;
+
+pub use errors::{
+    CompatibilityExitPlaceholder, FeffError, FeffErrorCategory, FeffResult, ParserResult,
+    PipelineResult,
+};
+
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 

@@ -1,3 +1,4 @@
+use crate::domain::FeffError;
 use crate::pipelines::regression::{RegressionRunnerConfig, render_human_summary, run_regression};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
@@ -7,8 +8,12 @@ pub fn run_from_env() -> i32 {
     match run(std::env::args().skip(1)) {
         Ok(code) => code,
         Err(error) => {
-            eprintln!("Error: {}", error);
-            2
+            let compatibility_error = error.as_feff_error();
+            eprintln!("{}", compatibility_error.diagnostic_line());
+            if let Some(summary_line) = compatibility_error.fatal_exit_line() {
+                eprintln!("{}", summary_line);
+            }
+            compatibility_error.exit_code()
         }
     }
 }
@@ -45,7 +50,7 @@ fn run_regression_command(args: Vec<String>) -> Result<i32, CliError> {
     }
 
     let config = parse_regression_args(args)?;
-    let report = run_regression(&config).map_err(CliError::Regression)?;
+    let report = run_regression(&config).map_err(CliError::Pipeline)?;
     println!("{}", render_human_summary(&report));
     println!("JSON report: {}", config.report_path.display());
 
@@ -128,14 +133,23 @@ fn regression_usage_text() -> &'static str {
 #[derive(Debug)]
 pub enum CliError {
     Usage(String),
-    Regression(crate::pipelines::regression::RegressionRunnerError),
+    Pipeline(FeffError),
+}
+
+impl CliError {
+    fn as_feff_error(&self) -> FeffError {
+        match self {
+            Self::Usage(message) => FeffError::input_validation("INPUT.CLI_USAGE", message.clone()),
+            Self::Pipeline(error) => error.clone(),
+        }
+    }
 }
 
 impl Display for CliError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Usage(message) => f.write_str(message),
-            Self::Regression(source) => write!(f, "{}", source),
+            Self::Pipeline(source) => write!(f, "{}", source),
         }
     }
 }
@@ -144,7 +158,7 @@ impl Error for CliError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Usage(_) => None,
-            Self::Regression(source) => Some(source),
+            Self::Pipeline(source) => Some(source),
         }
     }
 }

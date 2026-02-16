@@ -1,4 +1,5 @@
 use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
+use crate::domain::{FeffError, PipelineResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -90,12 +91,10 @@ pub struct ArtifactRegressionReport {
     pub comparison: Option<ArtifactComparisonResult>,
 }
 
-pub fn run_regression(
-    config: &RegressionRunnerConfig,
-) -> Result<RegressionRunReport, RegressionRunnerError> {
-    let manifest = load_manifest(&config.manifest_path)?;
+pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<RegressionRunReport> {
+    let manifest = load_manifest(&config.manifest_path).map_err(FeffError::from)?;
     let comparator = Comparator::from_policy_path(&config.policy_path)
-        .map_err(RegressionRunnerError::Comparator)?;
+        .map_err(|source| FeffError::from(RegressionRunnerError::Comparator(source)))?;
 
     let mut fixture_reports = Vec::with_capacity(manifest.fixtures.len());
     for fixture in &manifest.fixtures {
@@ -140,7 +139,7 @@ pub fn run_regression(
         fixtures: fixture_reports,
     };
 
-    write_report_file(&config.report_path, &report)?;
+    write_report_file(&config.report_path, &report).map_err(FeffError::from)?;
     Ok(report)
 }
 
@@ -274,6 +273,29 @@ impl Error for RegressionRunnerError {
             Self::ReportDirectory { source, .. } => Some(source),
             Self::SerializeReport { source, .. } => Some(source),
             Self::WriteReport { source, .. } => Some(source),
+        }
+    }
+}
+
+impl From<RegressionRunnerError> for FeffError {
+    fn from(error: RegressionRunnerError) -> Self {
+        let message = error.to_string();
+        match error {
+            RegressionRunnerError::ReadManifest { .. } => {
+                FeffError::io_system("IO.REGRESSION_MANIFEST", message)
+            }
+            RegressionRunnerError::ParseManifest { .. } => {
+                FeffError::input_validation("INPUT.REGRESSION_MANIFEST", message)
+            }
+            RegressionRunnerError::Comparator(source) => source.into(),
+            RegressionRunnerError::ReadDirectory { .. }
+            | RegressionRunnerError::ReportDirectory { .. }
+            | RegressionRunnerError::WriteReport { .. } => {
+                FeffError::io_system("IO.REGRESSION_FILESYSTEM", message)
+            }
+            RegressionRunnerError::SerializeReport { .. } => {
+                FeffError::internal("SYS.REGRESSION_REPORT", message)
+            }
         }
     }
 }

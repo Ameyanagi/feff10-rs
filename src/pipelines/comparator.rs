@@ -1,3 +1,4 @@
+use crate::domain::FeffError;
 use globset::{Glob, GlobMatcher};
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -503,6 +504,26 @@ impl Error for ComparatorError {
             Self::DecodeArtifact { source, .. } => Some(source),
             Self::NumericParse { source, .. } => Some(source),
             Self::InvalidPolicy(_) | Self::MissingTolerance { .. } => None,
+        }
+    }
+}
+
+impl From<ComparatorError> for FeffError {
+    fn from(error: ComparatorError) -> Self {
+        let message = error.to_string();
+        match error {
+            ComparatorError::ReadPolicy { .. } | ComparatorError::ReadArtifact { .. } => {
+                FeffError::io_system("IO.COMPARATOR_ACCESS", message)
+            }
+            ComparatorError::ParsePolicy { .. }
+            | ComparatorError::InvalidPolicy(_)
+            | ComparatorError::InvalidGlob { .. }
+            | ComparatorError::MissingTolerance { .. } => {
+                FeffError::input_validation("INPUT.COMPARATOR_POLICY", message)
+            }
+            ComparatorError::DecodeArtifact { .. } | ComparatorError::NumericParse { .. } => {
+                FeffError::computation("RUN.COMPARATOR", message)
+            }
         }
     }
 }

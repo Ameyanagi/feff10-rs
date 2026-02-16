@@ -14,6 +14,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
 - On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 - Keep `src/main.rs` as a thin process entrypoint and route command parsing through `src/cli`, with scientific and regression execution logic grouped under `src/pipelines` and shared contracts in `src/domain`.
+- Shared runtime failure handling lives in `src/domain/errors.rs`; parser and pipeline APIs should return `ParserResult`/`PipelineResult`, and CLI fatal output should emit both `ERROR: [TOKEN] ...` and `FATAL EXIT CODE: <n>` from one mapping point.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -135,4 +136,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Shared FEFF contracts should live in `src/domain`, and runtime orchestration code should remain isolated under `src/pipelines` so module ports can plug into stable interfaces.
   - Gotchas encountered: `cargo test` still requires the clang linker override on this macOS host; keep using the environment variable from `Codebase Patterns`.
   - Useful context: Existing regression behavior is now accessed through `crate::pipelines::regression`, so future pipeline stories can evolve module execution without changing CLI argument contracts.
+---
+## 2026-02-16 18:15:21 JST - US-012
+- Implemented shared error/result infrastructure in `src/domain/errors.rs`, including D-4-aligned category enum (`Success`, `InputValidationError`, `IoSystemError`, `ComputationError`, `InternalError`), shared result aliases, and compatibility placeholder mapping (`exit_code`, Rust category token, legacy class token).
+- Integrated shared error conventions across parser and pipeline surfaces by switching `parse_input_deck` to `ParserResult<InputDeck>`, updating `PipelineExecutor` to `PipelineResult`, and making `run_regression` return `PipelineResult<RegressionRunReport>`.
+- Added error-category bridging from comparator/regression internals to shared `FeffError`, and centralized CLI fatal diagnostics/exit behavior to emit `ERROR: [TOKEN] ...` plus `FATAL EXIT CODE: <n>` via shared mapping.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `src/domain/errors.rs`, `src/domain/mod.rs`, `src/parser/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/comparator.rs`, `src/pipelines/regression.rs`, `src/cli/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Shared parser/pipeline APIs should return `ParserResult`/`PipelineResult` aliases so compatibility exit mapping remains centralized in `FeffError`.
+  - Gotchas encountered: `run_regression` now returns shared `FeffError`; callers that previously expected `RegressionRunnerError` should handle categorized errors instead of internal variants.
+  - Useful context: CLI runtime errors now derive exit code from `FeffError::exit_code()` and print the D-4-compatible diagnostic pair, while parity mismatches still return `Ok(1)` without fatal-error formatting.
 ---
