@@ -46,6 +46,32 @@ This log records finalized migration governance decisions that unblock implement
 - PR-blocking CI for v1 excludes MPI runtime setup and validates only serial parity and quality gates.
 - MPI validation can run as non-blocking exploratory jobs once MPI implementation stories begin, and becomes release-blocking only after a separate approval.
 
+## D-3: Numeric Tolerance Policy for Regression Parity
+
+### Decision
+- Regression comparison must use category-based policies defined in `tasks/numeric-tolerance-policy.json`.
+- Comparator default mode is `exact_text` for any output artifact that does not match an explicit category rule.
+- Numeric comparison passes when either threshold is satisfied:
+  - `abs(actual - baseline) <= absTol`
+  - `abs(actual - baseline) <= relTol * max(abs(baseline), relativeFloor)`
+
+### Output category policy matrix
+
+| Category ID | Mode | Output patterns | Absolute tolerance | Relative tolerance |
+| --- | --- | --- | --- | --- |
+| `diagnostic_logs` | `exact_text` | `**/*.log`, `**/*.err`, `**/warnings*.txt` | N/A | N/A |
+| `columnar_spectra` | `numeric_tolerance` | `**/xmu.dat`, `**/chi.dat`, `**/danes.dat`, `**/eels.dat`, `**/compton.dat`, `**/rixs*.dat` | `1e-8` | `1e-6` |
+| `density_tables` | `numeric_tolerance` | `**/ldos*.dat`, `**/rho*.dat` | `5e-8` | `5e-6` |
+| `path_scattering_tables` | `numeric_tolerance` | `**/feff*.dat`, `**/paths.dat`, `**/path*.dat` | `1e-7` | `1e-5` |
+| `thermal_workflow_tables` | `numeric_tolerance` | `**/*.dmdw.out`, `**/debye*.dat`, `**/sig*.dat` | `1e-6` | `1e-4` |
+| `structured_reports` | `exact_text` | `**/*.json`, `**/*.toml` | N/A | N/A |
+
+### Comparator ingestion contract
+- Comparator must load `tasks/numeric-tolerance-policy.json` before evaluating fixtures.
+- Category resolution is first-match in file order; unmatched files use `defaultMode`.
+- Numeric tokenization must support Fortran exponent notation (`D`/`d` as `E`).
+- Mismatched line counts, token counts, or NaN/Inf mismatches are hard failures.
+
 ## Approval Record: D-1
 
 - Decision ID: `D-1`
@@ -65,3 +91,13 @@ This log records finalized migration governance decisions that unblock implement
 - Approved by: FEFF10 Rust migration lead
 - Scope: Applies to v1 architecture sequencing, CI planning, and release readiness criteria
 - Review trigger: Re-open when MPI parity implementation is prioritized for GA scope
+
+## Approval Record: D-3
+
+- Decision ID: `D-3`
+- Decision title: Define numeric tolerance policy
+- Status: `Approved`
+- Approved on: `2026-02-16`
+- Approved by: FEFF10 Rust migration lead
+- Scope: Applies to regression policy, fixture thresholds, and comparator implementation behavior
+- Review trigger: Re-open when a fixture category requires a tolerance change outside approved ranges

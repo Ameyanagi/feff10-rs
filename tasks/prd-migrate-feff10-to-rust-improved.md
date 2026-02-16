@@ -54,6 +54,7 @@ These are treated as mandatory deliverables, not optional open questions:
 Decision log reference:
 - D-1 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`.
 - D-2 status: Approved on 2026-02-16 as deferred-for-v1 in `tasks/migration-decision-log.md`.
+- D-3 status: Approved on 2026-02-16 in `tasks/migration-decision-log.md`; machine-readable policy source is `tasks/numeric-tolerance-policy.json`.
 
 ## 6. Story Execution Order
 
