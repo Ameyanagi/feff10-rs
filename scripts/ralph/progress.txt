@@ -10,6 +10,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Fixture manifests should be machine-readable JSON under `tasks/`, must reuse reserved `FX-*` IDs from the compatibility matrix, and must define `comparison.mode` plus `comparison.passFailThreshold` per fixture.
 - Baseline capture tooling should treat manifest `entryFiles` as authoritative and materialize `REFERENCE/<file>` inputs from `baselineSources` archives into a flat fixture working directory.
 - Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
+- On this macOS environment, run Rust tests with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `ld: library not found for -liconv` from the default linker.
 ---
 ## 2026-02-16 17:00:00 JST - US-001
 - Implemented the D-1 platform certification matrix with GA/non-GA OS+architecture targets, platform-specific compiler/runtime constraints, and an explicit approval record.
@@ -96,4 +97,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: Snapshot generation should copy seeded capture outputs first, then overlay `baselineSources` so archive/file references become the canonical baseline view per fixture.
   - Gotchas encountered: `FX-BAND-001` still lacks `REFERENCE/band.inp` in its source archive; this run records it under `missingEntryFiles` while retaining a checksumed baseline from available artifacts.
   - Useful context: `snapshot-index.json` now contains `checksummedFileCount` and `missingEntryFiles` for every fixture, which can be consumed by upcoming comparator/runner stories.
+---
+## 2026-02-16 17:55:42 JST - US-009
+- Implemented Rust comparator core in `src/comparator.rs`, including policy loading from JSON, ordered glob-based rule selection, and per-artifact exact-text or numeric-tolerance evaluation.
+- Added structured comparison outputs (`ArtifactComparisonResult` + metrics enums) and batch comparison support via `Comparator::compare_artifacts`.
+- Added unit tests for policy ingestion, first-match category behavior, exact-text mismatch reporting, numeric tolerance pass/fail behavior, Fortran `D` exponent parsing, and per-artifact result aggregation.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `Cargo.toml`, `Cargo.lock`, `src/lib.rs`, `src/comparator.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Comparator policy matching should preserve category order (`first_match`), so broad globs must be placed below specific globs.
+  - Gotchas encountered: On this machine, plain `cargo test` fails to link `-liconv`; use the clang linker override command from `Codebase Patterns`.
+  - Useful context: `Comparator::compare_artifacts` already yields structured per-artifact results, so `US-010` can consume it directly for summary/report generation.
 ---
