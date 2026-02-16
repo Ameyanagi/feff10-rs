@@ -48,3 +48,4 @@ cargo run -- regression \
 The command prints a human-readable pass/fail summary and exits with status `1` when any fixture fails.
 Use `--run-rdinp` when you want the Rust RDINP pipeline to materialize outputs into `--actual-root/<fixture>/<actual-subdir>` before comparisons.
 Use `--run-pot` to execute the Rust POT parity path before comparisons; it expects staged `pot.inp` and `geom.dat` in each fixture actual output directory and materializes approved POT artifacts (`pot.bin`, `log1.dat`) from canonical fixture baselines.
+Use `--run-path` to execute the Rust PATH scaffold before comparisons; it expects staged `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` in each fixture actual output directory and materializes placeholder PATH artifacts.

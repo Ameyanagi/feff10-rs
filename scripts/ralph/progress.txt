@@ -13,7 +13,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
 - Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
 - New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
-- Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
+- Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT` before `PATH`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
 - RDINP `geom.dat` parity may require FEFF-specific atom ordering that differs from raw `ATOMS` card order; preserve baseline ordering when a header-compatible canonical baseline exists for the fixture.
 - Numeric-tolerance policy globs must only target parseable numeric files; non-numeric headers in matched files (for example `paths.dat`) are reported as comparison failures.
@@ -259,4 +259,16 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: POT parity in this codebase is baseline-driven; keep output artifact selection aligned with files that actually exist in each fixture baseline snapshot.
   - Gotchas encountered: POT parity now intentionally rejects staged inputs that drift from approved baseline contracts (`RUN.POT_INPUT_MISMATCH`), so upstream RDINP changes must preserve POT input compatibility for approved fixtures.
   - Useful context: The POT regression suite can be made deterministic by comparing only the RDINP+POT artifact subset for fixtures whose manifest `modulesCovered` includes both modules.
+---
+## 2026-02-16 19:54:35 JST - US-022
+- Implemented PATH scaffold module `src/pipelines/path.rs` with compatibility-matrix interfaces (`paths.inp`, `geom.dat`, `global.inp`, `phase.bin`) and deterministic placeholder outputs (`paths.dat`, `paths.bin`, `crit.dat`, `log4.dat`).
+- Wired PATH into regression as an explicit opt-in pre-compare hook through `RegressionRunnerConfig.run_path`, executing from the fixture actual-output directory.
+- Added CLI support for `--run-path` (with backward-compatible alias `--run-path-placeholder`), updated regression usage docs, and added PATH scaffold regression coverage (`run_regression_can_execute_path_scaffold`).
+- Updated parity-suite config initializers to include the new `run_path` flag.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/path.rs`, `src/pipelines/regression.rs`, `tests/pot_parity.rs`, `tests/rdinp_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep new core-module hooks on the same fixture-local staged directory contract as RDINP/POT so chained pre-compare execution remains composable.
+  - Gotchas encountered: `phase.bin` is binary; PATH scaffolding should validate it via byte reads instead of UTF-8 text reads.
+  - Useful context: Regression CLI flags now follow `--run-<module>` with optional `--run-<module>-placeholder` alias for migration-safe flag transitions.
 ---

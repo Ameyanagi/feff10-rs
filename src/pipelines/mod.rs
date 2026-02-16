@@ -1,4 +1,5 @@
 pub mod comparator;
+pub mod path;
 pub mod pot;
 pub mod rdinp;
 pub mod regression;
