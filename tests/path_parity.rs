@@ -177,6 +177,7 @@ fn path_regression_suite_passes() {
         run_screen: false,
         run_self: false,
         run_eels: false,
+        run_full_spectrum: false,
     };
 
     let report = run_regression(&config).expect("PATH regression suite should run");

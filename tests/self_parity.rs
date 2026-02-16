@@ -145,6 +145,7 @@ fn self_regression_suite_passes() {
         run_screen: false,
         run_self: true,
         run_eels: false,
+        run_full_spectrum: false,
     };
 
     let report = run_regression(&config).expect("SELF regression suite should run");

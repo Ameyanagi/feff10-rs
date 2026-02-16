@@ -1,8 +1,7 @@
 use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
 use feff10_rs::pipelines::PipelineExecutor;
 use feff10_rs::pipelines::comparator::Comparator;
-use feff10_rs::pipelines::pot::PotPipelineScaffold;
-use feff10_rs::pipelines::rdinp::RdinpPipelineScaffold;
+use feff10_rs::pipelines::fullspectrum::FullSpectrumPipelineScaffold;
 use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
 use std::collections::BTreeSet;
@@ -15,69 +14,48 @@ struct FixtureCase {
     input_directory: &'static str,
 }
 
-const APPROVED_POT_FIXTURES: [FixtureCase; 2] = [
-    FixtureCase {
-        id: "FX-POT-001",
-        input_directory: "feff10/examples/EXAFS/Cu",
-    },
-    FixtureCase {
-        id: "FX-WORKFLOW-XAS-001",
-        input_directory: "feff10/examples/XANES/Cu",
-    },
-];
+const APPROVED_FULLSPECTRUM_FIXTURES: [FixtureCase; 1] = [FixtureCase {
+    id: "FX-FULLSPECTRUM-001",
+    input_directory: "feff10/examples/XES/Cu",
+}];
 
-const EXPECTED_RDINP_ARTIFACTS: [&str; 14] = [
-    "geom.dat",
-    "global.inp",
-    "reciprocal.inp",
-    "pot.inp",
-    "ldos.inp",
-    "xsph.inp",
-    "fms.inp",
-    "paths.inp",
-    "genfmt.inp",
-    "ff2x.inp",
-    "sfconv.inp",
-    "eels.inp",
-    "dmdw.inp",
-    "log.dat",
+const FULLSPECTRUM_OUTPUT_CANDIDATES: [&str; 9] = [
+    "xmu.dat",
+    "osc_str.dat",
+    "eps.dat",
+    "drude.dat",
+    "background.dat",
+    "fine_st.dat",
+    "logfullspectrum.dat",
+    "prexmu.dat",
+    "referencexmu.dat",
 ];
-
-const EXPECTED_POT_ARTIFACTS: [&str; 2] = ["pot.bin", "log1.dat"];
 
 #[test]
-fn approved_pot_fixtures_match_baseline_under_policy() {
+fn approved_fullspectrum_fixtures_match_baseline_under_policy() {
     let comparator = Comparator::from_policy_path("tasks/numeric-tolerance-policy.json")
         .expect("policy should load");
 
-    for fixture in &APPROVED_POT_FIXTURES {
+    for fixture in &APPROVED_FULLSPECTRUM_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = temp.path().join("actual");
 
-        let rdinp_request = PipelineRequest::new(
-            fixture.id,
-            PipelineModule::Rdinp,
-            Path::new(fixture.input_directory).join("feff.inp"),
-            &output_dir,
-        );
-        RdinpPipelineScaffold
-            .execute(&rdinp_request)
-            .expect("RDINP execution should succeed");
+        stage_fullspectrum_inputs(fixture.id, &output_dir);
 
-        let pot_request = PipelineRequest::new(
+        let fullspectrum_request = PipelineRequest::new(
             fixture.id,
-            PipelineModule::Pot,
-            output_dir.join("pot.inp"),
+            PipelineModule::FullSpectrum,
+            output_dir.join("fullspectrum.inp"),
             &output_dir,
         );
-        let artifacts = PotPipelineScaffold
-            .execute(&pot_request)
-            .expect("POT execution should succeed");
+        let artifacts = FullSpectrumPipelineScaffold
+            .execute(&fullspectrum_request)
+            .expect("FULLSPECTRUM execution should succeed");
 
         assert_eq!(
             artifact_set(&artifacts),
-            expected_artifact_set(&EXPECTED_POT_ARTIFACTS),
-            "artifact contract should match expected POT outputs"
+            expected_fullspectrum_artifact_set_for_fixture(fixture.id),
+            "artifact contract should match expected FULLSPECTRUM outputs"
         );
 
         for artifact in artifacts {
@@ -103,32 +81,35 @@ fn approved_pot_fixtures_match_baseline_under_policy() {
 }
 
 #[test]
-fn pot_regression_suite_passes() {
+fn fullspectrum_regression_suite_passes() {
     let temp = TempDir::new().expect("tempdir should be created");
     let baseline_root = temp.path().join("baseline-root");
     let actual_root = temp.path().join("actual-root");
     let report_path = temp.path().join("report/report.json");
-    let manifest_path = temp.path().join("pot-manifest.json");
+    let manifest_path = temp.path().join("fullspectrum-manifest.json");
 
-    for fixture in &APPROVED_POT_FIXTURES {
-        for artifact in EXPECTED_RDINP_ARTIFACTS
-            .iter()
-            .chain(EXPECTED_POT_ARTIFACTS.iter())
-        {
-            let baseline_source = baseline_artifact_path(fixture.id, Path::new(artifact));
+    for fixture in &APPROVED_FULLSPECTRUM_FIXTURES {
+        for artifact in expected_fullspectrum_artifacts_for_fixture(fixture.id) {
+            let baseline_source = baseline_artifact_path(fixture.id, Path::new(&artifact));
             let baseline_target = baseline_root
                 .join(fixture.id)
                 .join("baseline")
-                .join(artifact);
+                .join(&artifact);
             copy_file(&baseline_source, &baseline_target);
         }
+
+        let baseline_fixture_dir = baseline_root.join(fixture.id).join("baseline");
+        stage_fullspectrum_inputs(fixture.id, &baseline_fixture_dir);
+
+        let staged_dir = actual_root.join(fixture.id).join("actual");
+        stage_fullspectrum_inputs(fixture.id, &staged_dir);
     }
 
     let manifest = json!({
-      "fixtures": APPROVED_POT_FIXTURES.iter().map(|fixture| {
+      "fixtures": APPROVED_FULLSPECTRUM_FIXTURES.iter().map(|fixture| {
         json!({
           "id": fixture.id,
-          "modulesCovered": ["RDINP", "POT"],
+          "modulesCovered": ["FULLSPECTRUM"],
           "inputDirectory": fixture.input_directory,
           "entryFiles": ["feff.inp"]
         })
@@ -148,8 +129,8 @@ fn pot_regression_suite_passes() {
         baseline_subdir: "baseline".to_string(),
         actual_subdir: "actual".to_string(),
         report_path,
-        run_rdinp: true,
-        run_pot: true,
+        run_rdinp: false,
+        run_pot: false,
         run_xsph: false,
         run_path: false,
         run_fms: false,
@@ -163,12 +144,12 @@ fn pot_regression_suite_passes() {
         run_screen: false,
         run_self: false,
         run_eels: false,
-        run_full_spectrum: false,
+        run_full_spectrum: true,
     };
 
-    let report = run_regression(&config).expect("POT regression suite should run");
-    assert!(report.passed, "expected POT suite to pass");
-    assert_eq!(report.fixture_count, APPROVED_POT_FIXTURES.len());
+    let report = run_regression(&config).expect("FULLSPECTRUM regression suite should run");
+    assert!(report.passed, "expected FULLSPECTRUM suite to pass");
+    assert_eq!(report.fixture_count, APPROVED_FULLSPECTRUM_FIXTURES.len());
     assert_eq!(report.failed_fixture_count, 0);
 }
 
@@ -179,10 +160,24 @@ fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
         .join(relative_path)
 }
 
-fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {
-    artifacts
+fn expected_fullspectrum_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
+    let artifacts: BTreeSet<String> = FULLSPECTRUM_OUTPUT_CANDIDATES
         .iter()
+        .filter(|artifact| baseline_artifact_path(fixture_id, Path::new(artifact)).is_file())
         .map(|artifact| artifact.to_string())
+        .collect();
+
+    assert!(
+        !artifacts.is_empty(),
+        "fixture '{}' should provide at least one FULLSPECTRUM output artifact",
+        fixture_id
+    );
+    artifacts
+}
+
+fn expected_fullspectrum_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
+    expected_fullspectrum_artifact_set_for_fixture(fixture_id)
+        .into_iter()
         .collect()
 }
 
@@ -191,6 +186,24 @@ fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
         .iter()
         .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))
         .collect()
+}
+
+fn stage_fullspectrum_inputs(fixture_id: &str, destination_dir: &Path) {
+    copy_file(
+        &baseline_artifact_path(fixture_id, Path::new("fullspectrum.inp")),
+        &destination_dir.join("fullspectrum.inp"),
+    );
+    copy_file(
+        &baseline_artifact_path(fixture_id, Path::new("xmu.dat")),
+        &destination_dir.join("xmu.dat"),
+    );
+
+    for optional_artifact in ["prexmu.dat", "referencexmu.dat"] {
+        let optional_source = baseline_artifact_path(fixture_id, Path::new(optional_artifact));
+        if optional_source.is_file() {
+            copy_file(&optional_source, &destination_dir.join(optional_artifact));
+        }
+    }
 }
 
 fn copy_file(source: &Path, destination: &Path) {

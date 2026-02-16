@@ -153,6 +153,7 @@ fn screen_regression_suite_passes() {
         run_screen: true,
         run_self: false,
         run_eels: false,
+        run_full_spectrum: false,
     };
 
     let report = run_regression(&config).expect("SCREEN regression suite should run");

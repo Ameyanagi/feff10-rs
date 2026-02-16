@@ -7,6 +7,7 @@ use super::debye::DebyePipelineScaffold;
 use super::dmdw::DmdwPipelineScaffold;
 use super::eels::EelsPipelineScaffold;
 use super::fms::FmsPipelineScaffold;
+use super::fullspectrum::FullSpectrumPipelineScaffold;
 use super::ldos::LdosPipelineScaffold;
 use super::path::PathPipelineScaffold;
 use super::pot::PotPipelineScaffold;
@@ -48,6 +49,7 @@ pub struct RegressionRunnerConfig {
     pub run_screen: bool,
     pub run_self: bool,
     pub run_eels: bool,
+    pub run_full_spectrum: bool,
 }
 
 impl Default for RegressionRunnerConfig {
@@ -75,6 +77,7 @@ impl Default for RegressionRunnerConfig {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         }
     }
 }
@@ -159,6 +162,7 @@ pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<Regress
         run_dmdw_if_enabled(config, fixture)?;
         run_fms_if_enabled(config, fixture)?;
         run_compton_if_enabled(config, fixture)?;
+        run_full_spectrum_if_enabled(config, fixture)?;
         let threshold = threshold_for_fixture(&manifest.default_comparison, fixture);
         let report = compare_fixture(config, fixture, threshold, &comparator)?;
         fixture_reports.push(report);
@@ -307,6 +311,10 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    FullSpectrumPipeline {
+        fixture_id: String,
+        source: FeffError,
+    },
     DebyePipeline {
         fixture_id: String,
         source: FeffError,
@@ -424,6 +432,11 @@ impl Display for RegressionRunnerError {
                 "EELS parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
+            Self::FullSpectrumPipeline { fixture_id, source } => write!(
+                f,
+                "FULLSPECTRUM parity execution failed for fixture '{}': {}",
+                fixture_id, source
+            ),
             Self::DebyePipeline { fixture_id, source } => write!(
                 f,
                 "DEBYE parity execution failed for fixture '{}': {}",
@@ -489,6 +502,7 @@ impl Error for RegressionRunnerError {
             Self::ScreenPipeline { source, .. } => Some(source),
             Self::SelfPipeline { source, .. } => Some(source),
             Self::EelsPipeline { source, .. } => Some(source),
+            Self::FullSpectrumPipeline { source, .. } => Some(source),
             Self::DebyePipeline { source, .. } => Some(source),
             Self::DmdwPipeline { source, .. } => Some(source),
             Self::PathPipeline { source, .. } => Some(source),
@@ -526,6 +540,7 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::ScreenPipeline { source, .. } => source,
             RegressionRunnerError::SelfPipeline { source, .. } => source,
             RegressionRunnerError::EelsPipeline { source, .. } => source,
+            RegressionRunnerError::FullSpectrumPipeline { source, .. } => source,
             RegressionRunnerError::DebyePipeline { source, .. } => source,
             RegressionRunnerError::DmdwPipeline { source, .. } => source,
             RegressionRunnerError::PathPipeline { source, .. } => source,
@@ -936,6 +951,35 @@ fn run_eels_if_enabled(
             source,
         }
     })?;
+
+    Ok(())
+}
+
+fn run_full_spectrum_if_enabled(
+    config: &RegressionRunnerConfig,
+    fixture: &ManifestFixture,
+) -> Result<(), RegressionRunnerError> {
+    if !config.run_full_spectrum || !fixture.covers_module(PipelineModule::FullSpectrum) {
+        return Ok(());
+    }
+
+    let output_dir = config
+        .actual_root
+        .join(&fixture.id)
+        .join(&config.actual_subdir);
+    let request = PipelineRequest::new(
+        fixture.id.clone(),
+        PipelineModule::FullSpectrum,
+        output_dir.join("fullspectrum.inp"),
+        output_dir,
+    );
+
+    FullSpectrumPipelineScaffold
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::FullSpectrumPipeline {
+            fixture_id: fixture.id.clone(),
+            source,
+        })?;
 
     Ok(())
 }
@@ -1352,6 +1396,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should succeed");
@@ -1430,6 +1475,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1499,6 +1545,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1569,6 +1616,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1641,6 +1689,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1714,6 +1763,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1786,6 +1836,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1858,6 +1909,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -1934,6 +1986,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2007,6 +2060,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2089,6 +2143,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2158,6 +2213,7 @@ mod tests {
             run_screen: true,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2227,6 +2283,7 @@ mod tests {
             run_screen: false,
             run_self: true,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2306,6 +2363,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: true,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2316,6 +2374,86 @@ mod tests {
             .iter()
             .any(|artifact| output_dir.join(artifact).is_file());
         assert!(has_eels_output, "EELS output should exist");
+    }
+
+    #[test]
+    fn run_regression_can_execute_fullspectrum_scaffold() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let baseline_root = temp.path().join("baseline-root");
+        let actual_root = temp.path().join("actual-root");
+        let report_path = temp.path().join("reports/report.json");
+        let manifest_path = temp.path().join("manifest.json");
+        let policy_path = temp.path().join("policy.json");
+
+        write_file(
+            &manifest_path,
+            r#"
+            {
+              "fixtures": [
+                {
+                  "id": "FX-FULLSPECTRUM-001",
+                  "modulesCovered": ["FULLSPECTRUM"]
+                }
+              ]
+            }
+            "#,
+        );
+        write_file(
+            &policy_path,
+            r#"
+            {
+              "defaultMode": "exact_text"
+            }
+            "#,
+        );
+
+        let staged_dir = actual_root.join("FX-FULLSPECTRUM-001").join("actual");
+        stage_repo_fullspectrum_inputs("FX-FULLSPECTRUM-001", &staged_dir);
+
+        let config = RegressionRunnerConfig {
+            manifest_path,
+            policy_path,
+            baseline_root,
+            actual_root: actual_root.clone(),
+            baseline_subdir: "baseline".to_string(),
+            actual_subdir: "actual".to_string(),
+            report_path,
+            run_rdinp: false,
+            run_pot: false,
+            run_xsph: false,
+            run_path: false,
+            run_fms: false,
+            run_band: false,
+            run_ldos: false,
+            run_rixs: false,
+            run_crpa: false,
+            run_compton: false,
+            run_debye: false,
+            run_dmdw: false,
+            run_screen: false,
+            run_self: false,
+            run_eels: false,
+            run_full_spectrum: true,
+        };
+
+        let report = run_regression(&config).expect("runner should produce report");
+        assert!(!report.passed);
+
+        let output_dir = actual_root.join("FX-FULLSPECTRUM-001").join("actual");
+        let has_fullspectrum_output = [
+            "xmu.dat",
+            "osc_str.dat",
+            "eps.dat",
+            "drude.dat",
+            "background.dat",
+            "fine_st.dat",
+            "logfullspectrum.dat",
+            "prexmu.dat",
+            "referencexmu.dat",
+        ]
+        .iter()
+        .any(|artifact| output_dir.join(artifact).is_file());
+        assert!(has_fullspectrum_output, "FULLSPECTRUM output should exist");
     }
 
     #[test]
@@ -2375,6 +2513,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2444,6 +2583,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2521,6 +2661,7 @@ mod tests {
             run_screen: false,
             run_self: false,
             run_eels: false,
+            run_full_spectrum: false,
         };
 
         let report = run_regression(&config).expect("runner should produce report");
@@ -2706,6 +2847,33 @@ mod tests {
             "magic.inp",
             &destination_dir.join("magic.inp"),
             "magic input\n",
+        );
+    }
+
+    fn stage_repo_fullspectrum_inputs(fixture_id: &str, destination_dir: &Path) {
+        stage_repo_text_input(
+            fixture_id,
+            "fullspectrum.inp",
+            &destination_dir.join("fullspectrum.inp"),
+            "mFullSpectrum\n0\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "xmu.dat",
+            &destination_dir.join("xmu.dat"),
+            "0.0 0.0 0.0\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "prexmu.dat",
+            &destination_dir.join("prexmu.dat"),
+            "0.0 0.0 0.0\n",
+        );
+        stage_repo_text_input(
+            fixture_id,
+            "referencexmu.dat",
+            &destination_dir.join("referencexmu.dat"),
+            "0.0 0.0 0.0\n",
         );
     }
 

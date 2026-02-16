@@ -13,6 +13,7 @@ Started: Mon Feb 16 16:57:34 JST 2026
 - Baseline snapshot generation should run all fixtures via `scripts/fortran/generate-baseline-snapshots.sh` and emit per-fixture `checksums.sha256` plus `snapshot-metadata.json` under `artifacts/fortran-baselines/`.
 - Regression harness fixture layout is `<root>/<fixture-id>/<subdir>`; keep Rust output staging compatible with `--actual-root` plus `--actual-subdir` for `feff10-rs regression`.
 - New pipeline scaffolds should integrate into regression as explicit opt-in pre-compare hooks (for example `--run-rdinp`) and derive fixture input paths from manifest `modulesCovered` + `inputDirectory` metadata.
+- Adding a regression pre-compare hook requires touching four surfaces together: `RegressionRunnerConfig` defaults, CLI flag parsing/help text, regression error/hook wiring, and every explicit `RegressionRunnerConfig` test literal.
 - Core-module pre-compare hooks should run in dependency order (`RDINP` before `POT` before `PATH` before `FMS`) and use `<actual-root>/<fixture>/<actual-subdir>` as the staged handoff directory for upstream-generated inputs.
 - XSPH parity hooks should validate `xsph.inp`/`geom.dat`/`global.inp` text plus byte-exact `pot.bin` against fixture baselines, derive outputs from baseline-available XSPH artifacts, and only enforce `wscrn.dat` matching when that optional input is staged.
 - Baseline-driven parity hooks (for example POT) should derive expected output artifacts from available baseline files and validate staged upstream inputs (`pot.inp`, `geom.dat`) before materializing canonical outputs.
@@ -452,4 +453,15 @@ Started: Mon Feb 16 16:57:34 JST 2026
   - Patterns discovered: EELS parity should derive outputs from baseline-available canonical artifacts (`eels.dat`, `logeels.dat`, optional `magic.dat`) and include overlaid reference outputs (`reference_eels.dat`) when present.
   - Gotchas encountered: Adding a new regression pre-compare hook still requires updating every explicit `RegressionRunnerConfig` literal across module and integration tests.
   - Useful context: `--run-eels` uses `<actual-root>/<fixture>/<actual-subdir>/eels.inp` as the entry artifact and expects sibling `xmu.dat`, while `magic.inp` remains optional and baseline-gated.
+---
+## 2026-02-16 22:07:17 JST - US-038
+- Implemented baseline-driven FULLSPECTRUM parity in `src/pipelines/fullspectrum.rs`: validate staged `fullspectrum.inp` and `xmu.dat`, optionally baseline-validate `prexmu.dat` and `referencexmu.dat`, then materialize baseline-available FULLSPECTRUM artifacts.
+- Wired FULLSPECTRUM into regression and CLI surfaces by adding `RegressionRunnerConfig.run_full_spectrum`, `run_full_spectrum_if_enabled`, `RegressionRunnerError::FullSpectrumPipeline`, and CLI flags `--run-fullspectrum` / `--run-fullspectrum-placeholder`; documented usage in `README.md`.
+- Added FULLSPECTRUM parity coverage in `tests/fullspectrum_parity.rs`, regression-runner hook coverage in `src/pipelines/regression.rs`, and updated existing parity-suite `RegressionRunnerConfig` literals for the new `run_full_spectrum` field.
+- Quality checks: `cargo fmt --all`, `cargo check`, and `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test` passed.
+- Files changed: `README.md`, `src/cli/mod.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `src/pipelines/fullspectrum.rs`, `tests/fullspectrum_parity.rs`, parity test config files under `tests/*.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FULLSPECTRUM parity fits the baseline-driven hook model, but output candidates should include fixture-provided reference overlays (`prexmu.dat`, `referencexmu.dat`) when canonical FULLSPECTRUM outputs are absent.
+  - Gotchas encountered: Adding a new `run_<module>` flag still requires updating every explicit `RegressionRunnerConfig` literal across module and integration tests.
+  - Useful context: `FX-FULLSPECTRUM-001` currently validates `fullspectrum.inp` + `xmu.dat` inputs and materializes whichever FULLSPECTRUM outputs are present in `artifacts/fortran-baselines/FX-FULLSPECTRUM-001/baseline`.
 ---

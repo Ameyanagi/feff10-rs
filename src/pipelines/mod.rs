@@ -6,6 +6,7 @@ pub mod debye;
 pub mod dmdw;
 pub mod eels;
 pub mod fms;
+pub mod fullspectrum;
 pub mod ldos;
 pub mod path;
 pub mod pot;
