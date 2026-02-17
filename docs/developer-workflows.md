@@ -6,6 +6,7 @@ This document is the maintainer-facing workflow reference for building, validati
 
 - Rust stable toolchain (edition `2024`)
 - `bash`
+- `git`
 - `jq`
 - `unzip`
 - `sha256sum` or `shasum`
@@ -22,11 +23,16 @@ xcrun -f clang
 Use the same commands as CI:
 
 ```bash
+scripts/fortran/ensure-feff10-reference.sh
 cargo check --locked
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
+
+`feff10/` is a reference checkout (not committed in this repository). The helper script clones
+the upstream FEFF10 examples needed by fixture-based tests and validates that `feff10/LICENSE`
+is present.
 
 ## Runtime Execution Workflow (Production Path)
 
@@ -134,6 +140,7 @@ Use the `oracle` command when you need one flow that:
 2. runs Rust pre-compare hooks plus policy comparisons against those captures.
 
 ```bash
+scripts/fortran/ensure-feff10-reference.sh
 cargo run -- oracle \
   --manifest tasks/golden-fixture-manifest.json \
   --policy tasks/numeric-tolerance-policy.json \

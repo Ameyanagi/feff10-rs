@@ -11,6 +11,9 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Fetch FEFF10 reference fixtures
+        run: scripts/fortran/ensure-feff10-reference.sh
+
       - name: Install stable Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

@@ -6,6 +6,7 @@
 - Developer workflows: `docs/developer-workflows.md`
 - User and operator guide: `docs/operator-guide.md`
 - Troubleshooting: `docs/troubleshooting.md`
+- License: `LICENSE`
 - Cutover rehearsal checklist: `docs/cutover-rehearsal-checklist.md`
 - Rollback rehearsal checklist: `docs/rollback-rehearsal-checklist.md`
 - Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-17.md`
@@ -26,11 +27,16 @@ The current Rust migration scaffolding keeps module boundaries explicit in a sin
 Local commands matching CI checks:
 
 ```bash
+scripts/fortran/ensure-feff10-reference.sh
 cargo check --locked
 cargo test --locked
 cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
+
+`cargo test` and oracle parity flows read fixture inputs from `feff10/examples/...`.
+`feff10/` is intentionally not committed in this repository; it is a local checkout with its own
+license file (`feff10/LICENSE`) fetched by `scripts/fortran/ensure-feff10-reference.sh`.
 
 macOS targets are configured to use `clang` by default via `.cargo/config.toml`.
 If your local toolchain still cannot resolve `clang`, install Xcode Command Line Tools or run:
@@ -44,6 +50,7 @@ xcrun -f clang
 Local command flow matching `.github/workflows/rust-parity-gates.yml`:
 
 ```bash
+scripts/fortran/ensure-feff10-reference.sh
 mkdir -p artifacts/regression
 cargo run --locked -- oracle \
   --manifest tasks/golden-fixture-manifest.json \
