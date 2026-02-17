@@ -54,7 +54,7 @@ where
 pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
     matches!(
         module,
-        PipelineModule::Rdinp | PipelineModule::Pot | PipelineModule::Screen
+        PipelineModule::Rdinp | PipelineModule::Pot | PipelineModule::Screen | PipelineModule::Crpa
     )
 }
 
@@ -86,6 +86,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Rdinp => RuntimeRdinpExecutor.execute_runtime(request),
         PipelineModule::Pot => RuntimePotExecutor.execute_runtime(request),
         PipelineModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
+        PipelineModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -114,6 +115,15 @@ struct RuntimeScreenExecutor;
 impl RuntimePipelineExecutor for RuntimeScreenExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         screen::ScreenPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeCrpaExecutor;
+
+impl RuntimePipelineExecutor for RuntimeCrpaExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        crpa::CrpaPipelineScaffold.execute(request)
     }
 }
 
@@ -291,6 +301,7 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Rdinp));
         assert!(runtime_compute_engine_available(PipelineModule::Pot));
         assert!(runtime_compute_engine_available(PipelineModule::Screen));
+        assert!(runtime_compute_engine_available(PipelineModule::Crpa));
         assert!(!runtime_compute_engine_available(PipelineModule::Xsph));
     }
 
@@ -392,6 +403,40 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_crpa_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("crpa.inp"), CRPA_INPUT_FIXTURE)
+            .expect("crpa input should be written");
+        std::fs::write(input_dir.join("pot.inp"), POT_INPUT_FIXTURE)
+            .expect("pot input should be written");
+        std::fs::write(input_dir.join("geom.dat"), GEOM_INPUT_FIXTURE)
+            .expect("geom input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-CRPA-001",
+            PipelineModule::Crpa,
+            input_dir.join("crpa.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Crpa, &request)
+            .expect("CRPA runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("wscrn.dat")),
+            "CRPA runtime should emit wscrn.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logscrn.dat")),
+            "CRPA runtime should emit logscrn.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
         let error = runtime_engine_unavailable_error(PipelineModule::Path);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
@@ -434,5 +479,10 @@ rdirec, toler1, toler2
 nei          20
 maxl           4
 rfms   4.00000000000000
+";
+
+    const CRPA_INPUT_FIXTURE: &str = " do_CRPA           1
+ rcut   1.49000000000000
+ l_crpa           3
 ";
 }

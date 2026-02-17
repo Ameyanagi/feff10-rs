@@ -127,6 +127,29 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
 }
 
 #[test]
+fn crpa_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_baseline_artifact("FX-CRPA-001", "crpa.inp", temp.path().join("crpa.inp"));
+    stage_baseline_artifact("FX-CRPA-001", "pot.inp", temp.path().join("pot.inp"));
+    stage_baseline_artifact("FX-CRPA-001", "geom.dat", temp.path().join("geom.dat"));
+
+    let crpa = run_cli_command(temp.path(), &["crpa"]);
+    assert!(
+        crpa.status.success(),
+        "crpa should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&crpa.stderr)
+    );
+    assert!(
+        temp.path().join("wscrn.dat").is_file(),
+        "crpa should emit wscrn.dat"
+    );
+    assert!(
+        temp.path().join("logscrn.dat").is_file(),
+        "crpa should emit logscrn.dat"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
