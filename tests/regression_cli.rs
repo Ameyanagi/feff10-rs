@@ -2347,6 +2347,298 @@ fn oracle_command_runs_compton_parity_and_mixed_input_contract_coverage() {
 }
 
 #[test]
+fn oracle_command_runs_debye_parity_with_thermal_tolerance_and_optional_spring_outcomes() {
+    if !command_available("jq") {
+        eprintln!("Skipping DEBYE oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-DEBYE-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = temp.path().join("policy.json");
+    let fixture_input_dir = workspace_root.join("feff10/examples/DEBYE/RM/Cu");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["DEBYE"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+    write_file(
+        &policy_path,
+        r##"
+        {
+          "defaultMode": "exact_text",
+          "numericParsing": {
+            "commentPrefixes": ["#", "!", "DEBYE", "fixture", "Cu", "temperature", "-", "ipath"]
+          },
+          "categories": [
+            {
+              "id": "thermal_workflow_tables",
+              "mode": "numeric_tolerance",
+              "fileGlobs": [
+                "**/s2_*.dat",
+                "**/debye*.dat",
+                "**/sig*.dat"
+              ],
+              "tolerance": {
+                "absTol": 1e-6,
+                "relTol": 1e-4,
+                "relativeFloor": 1e-12
+              }
+            }
+          ]
+        }
+        "##,
+    );
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+
+    let with_spring_oracle_root = temp.path().join("oracle-root-with-spring");
+    let with_spring_actual_root = temp.path().join("actual-root-with-spring");
+    let with_spring_report_path = temp.path().join("report/oracle-debye-with-spring.json");
+    let with_spring_staged_output_dir = with_spring_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "ff2x.inp",
+        &with_spring_staged_output_dir.join("ff2x.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "paths.dat",
+        &with_spring_staged_output_dir.join("paths.dat"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "feff.inp",
+        &with_spring_staged_output_dir.join("feff.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "spring.inp",
+        &with_spring_staged_output_dir.join("spring.inp"),
+    );
+
+    let with_spring_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &with_spring_oracle_root,
+        &with_spring_actual_root,
+        &with_spring_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-debye",
+        ],
+    );
+
+    assert_eq!(
+        with_spring_output.status.code(),
+        Some(1),
+        "DEBYE oracle parity with spring.inp should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&with_spring_output.stderr)
+    );
+    let with_spring_stdout = String::from_utf8_lossy(&with_spring_output.stdout);
+    assert!(
+        with_spring_stdout.contains("Fixture FX-DEBYE-001 mismatches"),
+        "DEBYE oracle summary should include fixture mismatch details, stdout: {}",
+        with_spring_stdout
+    );
+    for artifact in [
+        "s2_em.dat",
+        "s2_rm1.dat",
+        "s2_rm2.dat",
+        "xmu.dat",
+        "chi.dat",
+        "log6.dat",
+        "spring.dat",
+    ] {
+        assert!(
+            with_spring_actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join(artifact)
+                .is_file(),
+            "run-debye should materialize '{}' for '{}'",
+            artifact,
+            fixture_id
+        );
+    }
+    assert!(
+        with_spring_report_path.is_file(),
+        "DEBYE oracle parity should emit a report for spring-override case"
+    );
+
+    let with_spring_report: Value = serde_json::from_str(
+        &fs::read_to_string(&with_spring_report_path).expect("report should be readable"),
+    )
+    .expect("report JSON should parse");
+    assert_eq!(with_spring_report["mismatch_fixture_count"], Value::from(1));
+
+    let with_spring_fixture_reports = with_spring_report["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let with_spring_fixture_report = with_spring_fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-DEBYE-001");
+    let with_spring_artifact_reports = with_spring_fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+    let s2_rm2_report = with_spring_artifact_reports
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("s2_rm2.dat"))
+        .expect("DEBYE fixture should include s2_rm2.dat comparison");
+    assert_eq!(
+        s2_rm2_report["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "s2_rm2.dat should be compared using thermal_workflow_tables numeric tolerances"
+    );
+    assert_eq!(
+        s2_rm2_report["comparison"]["matched_category"],
+        Value::from("thermal_workflow_tables"),
+        "s2_rm2.dat should resolve thermal_workflow_tables category"
+    );
+    assert_eq!(
+        s2_rm2_report["comparison"]["metrics"]["kind"],
+        Value::from("numeric_tolerance"),
+        "s2_rm2.dat comparison should emit numeric tolerance metrics"
+    );
+    assert!(
+        s2_rm2_report["comparison"]["metrics"]["compared_values"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "s2_rm2.dat tolerance metrics should include compared values"
+    );
+
+    let without_spring_oracle_root = temp.path().join("oracle-root-without-spring");
+    let without_spring_actual_root = temp.path().join("actual-root-without-spring");
+    let without_spring_report_path = temp.path().join("report/oracle-debye-without-spring.json");
+    let without_spring_staged_output_dir =
+        without_spring_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "ff2x.inp",
+        &without_spring_staged_output_dir.join("ff2x.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "paths.dat",
+        &without_spring_staged_output_dir.join("paths.dat"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "feff.inp",
+        &without_spring_staged_output_dir.join("feff.inp"),
+    );
+    assert!(
+        !without_spring_staged_output_dir.join("spring.inp").exists(),
+        "test setup should omit optional spring.inp to verify optional-input report outcomes"
+    );
+
+    let without_spring_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &without_spring_oracle_root,
+        &without_spring_actual_root,
+        &without_spring_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-debye",
+        ],
+    );
+
+    assert_eq!(
+        without_spring_output.status.code(),
+        Some(1),
+        "DEBYE oracle parity without spring.inp should still run and report mismatches, stderr: {}",
+        String::from_utf8_lossy(&without_spring_output.stderr)
+    );
+    let without_spring_stdout = String::from_utf8_lossy(&without_spring_output.stdout);
+    assert!(
+        without_spring_stdout.contains("Fixture FX-DEBYE-001 mismatches"),
+        "DEBYE oracle summary should include fixture mismatch details, stdout: {}",
+        without_spring_stdout
+    );
+    assert!(
+        without_spring_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("spring.dat")
+            .is_file(),
+        "run-debye should materialize spring.dat even when optional spring.inp is absent"
+    );
+    assert!(
+        without_spring_report_path.is_file(),
+        "DEBYE oracle parity should emit a report for missing-optional-input case"
+    );
+
+    let without_spring_report: Value = serde_json::from_str(
+        &fs::read_to_string(&without_spring_report_path).expect("report should be readable"),
+    )
+    .expect("report JSON should parse");
+    assert_eq!(
+        without_spring_report["mismatch_fixture_count"],
+        Value::from(1)
+    );
+
+    let without_spring_mismatch_fixtures = without_spring_report["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let without_spring_fixture = without_spring_mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("DEBYE mismatch report should include fixture");
+    let without_spring_mismatch_artifacts = without_spring_fixture["artifacts"]
+        .as_array()
+        .expect("fixture mismatch artifact list should be an array");
+    let missing_optional_spring_input = without_spring_mismatch_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("spring.inp"))
+        .expect("missing optional spring.inp should be reported deterministically");
+    assert_eq!(
+        missing_optional_spring_input["reason"],
+        Value::from("Missing actual artifact"),
+        "missing optional spring.inp should map to deterministic report reason"
+    );
+    let spring_artifact_outcome = without_spring_mismatch_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("spring.dat"))
+        .expect("spring.dat comparison outcome should be included in mismatch report");
+    assert!(
+        spring_artifact_outcome["reason"]
+            .as_str()
+            .is_some_and(|reason| !reason.is_empty()),
+        "spring.dat mismatch outcome should include a deterministic reason"
+    );
+}
+
+#[test]
 fn oracle_command_run_screen_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");

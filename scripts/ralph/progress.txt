@@ -27,6 +27,7 @@
 - RDINP-generated `ldos.inp` can omit the legacy `neldos` field in the `mldos` control row; parsers for downstream compute modules should accept both 5-field and 6-field forms and apply a deterministic fallback when `neldos` is absent.
 - If a fixture entry deck cannot satisfy RDINP parser contracts, module true-compute/parity tests should stage the module's declared input artifacts directly from fixture baselines instead of forcing RDINP pre-staging.
 - When asserting numeric-tolerance comparisons for artifacts with comment/header lines (for example `xsect.dat`), include `numericParsing.commentPrefixes` in the policy override so comparison results are emitted instead of parse-error `comparison: null` entries.
+- For DEBYE oracle parity artifacts with mixed text headers (`s2_*.dat`), use a test-local `numericParsing.commentPrefixes` override so `thermal_workflow_tables` comparisons emit numeric metrics instead of `comparison: null`.
 - For module control decks that include numeric literals in label text (for example `mband : ... if = 1`), parse by keyword marker plus the following value row instead of flattening all numeric tokens across the file.
 - For parity suites that call `run_regression` with module pre-compare hooks enabled, stage each module's required input artifacts into `actual-root/<fixture>/actual` even when baseline outputs are seeded from generated true-compute artifacts.
 - For true-compute module parity tests, seed temporary baselines from generated outputs and stage deterministic fallback bytes when a declared required binary input is missing from committed fixture baselines (for example `gg_slice.bin` for `FX-COMPTON-001`).
@@ -390,5 +391,17 @@ Started: Tue Feb 17 06:48:31 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: For optional-input compute stories, keep output artifact names fixed and assert optional-input behavior through deterministic content changes (for DEBYE, `spring.dat` metadata and thermal-table deltas).
   - Gotchas encountered: `paths.dat` fallback fixtures can miss explicit path rows, so DEBYE input parsing should tolerate sparse path files and synthesize deterministic fallback path summaries instead of failing fast.
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 11:27:58 JST] - US-032
+- Added DEBYE oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-DEBYE-001` by running `feff10-rs oracle` with `--run-debye` and CI capture-runner plumbing.
+- Added a story-local tolerance policy override that routes `s2_*.dat` into `thermal_workflow_tables` and uses `numericParsing.commentPrefixes` for mixed text headers, then asserted `s2_rm2.dat` reports `comparison.mode=numeric_tolerance`, `matched_category=thermal_workflow_tables`, and numeric metrics.
+- Exercised optional `spring.inp` behavior in two oracle runs (present vs omitted), asserting deterministic report outcomes for optional spring artifacts (`spring.inp` missing-actual reason and `spring.dat` mismatch reason) while verifying DEBYE outputs are still materialized.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-032` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Thermal-table parity assertions can use a test-local policy override with `numericParsing.commentPrefixes` to keep mixed header/data artifacts comparable under numeric tolerance policies.
+  - Gotchas encountered: Without header-prefix overrides, DEBYE thermal artifacts can parse-fail and produce `comparison: null`, preventing tolerance metadata assertions.
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---
