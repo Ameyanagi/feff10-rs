@@ -1,7 +1,7 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
 use super::xsph::XSPH_PHASE_BINARY_MAGIC;
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::f64::consts::PI;
 use std::fs;
 use std::path::Path;
@@ -11,13 +11,13 @@ const FMS_REQUIRED_OUTPUTS: [&str; 2] = ["gg.bin", "log3.dat"];
 pub const FMS_GG_BINARY_MAGIC: &[u8; 8] = b"FMSGBIN1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FmsPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct FmsContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct FmsPipelineScaffold;
+pub struct FmsModule;
 
 #[derive(Debug, Clone)]
 struct FmsModel {
@@ -95,21 +95,21 @@ struct FmsOutputConfig {
     phase_byte_scale: f64,
 }
 
-impl FmsPipelineScaffold {
+impl FmsModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<FmsPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<FmsContract> {
         validate_request_shape(request)?;
-        Ok(FmsPipelineInterface {
+        Ok(FmsContract {
             required_inputs: artifact_list(&FMS_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&FMS_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for FmsPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for FmsModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -177,7 +177,7 @@ impl FmsModel {
         geom_source: &str,
         global_source: &str,
         phase_bytes: &[u8],
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_fms_source(fixture_id, fms_source)?,
@@ -187,7 +187,7 @@ impl FmsModel {
         })
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         match artifact_name {
             "gg.bin" => {
                 write_binary_artifact(output_path, &self.render_gg_binary()).map_err(|source| {
@@ -408,11 +408,11 @@ damping: {} amplitude-scale: {}\n",
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Fms {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Fms {
         return Err(FeffError::input_validation(
             "INPUT.FMS_MODULE",
-            format!("FMS pipeline expects module FMS, got {}", request.module),
+            format!("FMS module expects FMS, got {}", request.module),
         ));
     }
 
@@ -424,7 +424,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.FMS_INPUT_ARTIFACT",
                 format!(
-                    "FMS pipeline expects input artifact '{}' at '{}'",
+                    "FMS module expects input artifact '{}' at '{}'",
                     FMS_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -435,7 +435,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.FMS_INPUT_ARTIFACT",
             format!(
-                "FMS pipeline requires input artifact '{}' but received '{}'",
+                "FMS module requires input artifact '{}' but received '{}'",
                 FMS_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -444,19 +444,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.FMS_INPUT_ARTIFACT",
             format!(
-                "FMS pipeline requires sibling inputs next to '{}'",
+                "FMS module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.FMS_INPUT_READ",
@@ -470,7 +470,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.FMS_INPUT_READ",
@@ -484,7 +484,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
     })
 }
 
-fn parse_fms_source(fixture_id: &str, source: &str) -> PipelineResult<FmsControlInput> {
+fn parse_fms_source(fixture_id: &str, source: &str) -> ComputeResult<FmsControlInput> {
     let numeric_rows = source
         .lines()
         .map(parse_numeric_tokens)
@@ -540,7 +540,7 @@ fn parse_fms_source(fixture_id: &str, source: &str) -> PipelineResult<FmsControl
     })
 }
 
-fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomFmsInput> {
+fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult<GeomFmsInput> {
     let numeric_rows = source
         .lines()
         .map(parse_numeric_tokens)
@@ -623,7 +623,7 @@ fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomFmsIn
     })
 }
 
-fn parse_global_source(fixture_id: &str, source: &str) -> PipelineResult<GlobalFmsInput> {
+fn parse_global_source(fixture_id: &str, source: &str) -> ComputeResult<GlobalFmsInput> {
     let values = source
         .lines()
         .flat_map(parse_numeric_tokens)
@@ -652,7 +652,7 @@ fn parse_global_source(fixture_id: &str, source: &str) -> PipelineResult<GlobalF
     })
 }
 
-fn parse_phase_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PhaseFmsInput> {
+fn parse_phase_source(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PhaseFmsInput> {
     if bytes.is_empty() {
         return Err(fms_parse_error(fixture_id, "phase.bin must be non-empty"));
     }
@@ -725,7 +725,7 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
     normalized.parse::<f64>().ok()
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(fms_parse_error(
             fixture_id,
@@ -748,7 +748,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(fms_parse_error(
@@ -798,15 +798,15 @@ fn push_f64(target: &mut Vec<u8>, value: f64) {
     target.extend_from_slice(&value.to_le_bytes());
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{FMS_GG_BINARY_MAGIC, FmsPipelineScaffold, XSPH_PHASE_BINARY_MAGIC};
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::{FMS_GG_BINARY_MAGIC, FmsModule, XSPH_PHASE_BINARY_MAGIC};
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::Path;
@@ -814,13 +814,13 @@ mod tests {
 
     #[test]
     fn contract_reports_required_true_compute_artifacts() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             "fms.inp",
             "actual-output",
         );
-        let contract = FmsPipelineScaffold
+        let contract = FmsModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -840,13 +840,13 @@ mod tests {
         let input_dir = temp.path().join("inputs");
         stage_inputs(&input_dir, &legacy_phase_bytes());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             input_dir.join("fms.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = FmsPipelineScaffold
+        let artifacts = FmsModule
             .execute(&request)
             .expect("FMS execution should succeed");
 
@@ -879,26 +879,26 @@ mod tests {
         let first_inputs = temp.path().join("first-inputs");
         stage_inputs(&first_inputs, &legacy_phase_bytes());
         let first_output = temp.path().join("first-output");
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             first_inputs.join("fms.inp"),
             &first_output,
         );
-        FmsPipelineScaffold
+        FmsModule
             .execute(&first_request)
             .expect("first FMS execution should succeed");
 
         let second_inputs = temp.path().join("second-inputs");
         stage_inputs(&second_inputs, &legacy_phase_bytes());
         let second_output = temp.path().join("second-output");
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             second_inputs.join("fms.inp"),
             &second_output,
         );
-        FmsPipelineScaffold
+        FmsModule
             .execute(&second_request)
             .expect("second FMS execution should succeed");
 
@@ -920,13 +920,13 @@ mod tests {
         let input_dir = temp.path().join("inputs");
         stage_inputs(&input_dir, &xsph_phase_bytes());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             input_dir.join("fms.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = FmsPipelineScaffold
+        let artifacts = FmsModule
             .execute(&request)
             .expect("FMS execution should accept true-compute XSPH phase.bin");
 
@@ -942,13 +942,13 @@ mod tests {
         let input_dir = temp.path().join("inputs");
         stage_inputs(&input_dir, &legacy_phase_bytes());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             input_dir.join("fms.inp"),
             temp.path(),
         );
-        let error = FmsPipelineScaffold
+        let error = FmsModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -968,13 +968,13 @@ mod tests {
         fs::write(input_dir.join("global.inp"), GLOBAL_INPUT_FIXTURE)
             .expect("global input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             input_dir.join("fms.inp"),
             temp.path(),
         );
-        let error = FmsPipelineScaffold
+        let error = FmsModule
             .execute(&request)
             .expect_err("missing phase input should fail");
 
@@ -995,13 +995,13 @@ mod tests {
         fs::write(input_dir.join("phase.bin"), legacy_phase_bytes())
             .expect("phase input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             input_dir.join("fms.inp"),
             temp.path().join("outputs"),
         );
-        let error = FmsPipelineScaffold
+        let error = FmsModule
             .execute(&request)
             .expect_err("invalid fms input should fail");
 
@@ -1043,7 +1043,7 @@ mod tests {
             .collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

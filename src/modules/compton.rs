@@ -1,7 +1,7 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::fms::FMS_GG_BINARY_MAGIC;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::f64::consts::PI;
 use std::fs;
 use std::path::Path;
@@ -14,13 +14,13 @@ const POT_CONTROL_I32_COUNT: usize = 16;
 const POT_CONTROL_F64_COUNT: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ComptonPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct ComptonContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ComptonPipelineScaffold;
+pub struct ComptonModule;
 
 #[derive(Debug, Clone)]
 struct ComptonModel {
@@ -125,21 +125,21 @@ struct ComptonOutputConfig {
     orientation: [f64; 3],
 }
 
-impl ComptonPipelineScaffold {
+impl ComptonModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<ComptonPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<ComptonContract> {
         validate_request_shape(request)?;
-        Ok(ComptonPipelineInterface {
+        Ok(ComptonContract {
             required_inputs: artifact_list(&COMPTON_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&COMPTON_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for ComptonPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for ComptonModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -201,7 +201,7 @@ impl ComptonModel {
         compton_source: &str,
         pot_bytes: &[u8],
         gg_slice_bytes: &[u8],
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_compton_source(fixture_id, compton_source)?,
@@ -310,7 +310,7 @@ impl ComptonModel {
         }
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         let contents = match artifact_name {
             "compton.dat" => self.render_compton(),
             "jzzp.dat" => self.render_jzzp(),
@@ -557,12 +557,12 @@ impl ComptonModel {
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Compton {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Compton {
         return Err(FeffError::input_validation(
             "INPUT.COMPTON_MODULE",
             format!(
-                "COMPTON pipeline expects module COMPTON, got {}",
+                "COMPTON module expects COMPTON, got {}",
                 request.module
             ),
         ));
@@ -576,7 +576,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.COMPTON_INPUT_ARTIFACT",
                 format!(
-                    "COMPTON pipeline expects input artifact '{}' at '{}'",
+                    "COMPTON module expects input artifact '{}' at '{}'",
                     COMPTON_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -587,7 +587,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.COMPTON_INPUT_ARTIFACT",
             format!(
-                "COMPTON pipeline requires input artifact '{}' but received '{}'",
+                "COMPTON module requires input artifact '{}' but received '{}'",
                 COMPTON_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -596,19 +596,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.COMPTON_INPUT_ARTIFACT",
             format!(
-                "COMPTON pipeline requires sibling inputs next to '{}'",
+                "COMPTON module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.COMPTON_INPUT_READ",
@@ -622,7 +622,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.COMPTON_INPUT_READ",
@@ -636,7 +636,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
     })
 }
 
-fn parse_compton_source(fixture_id: &str, source: &str) -> PipelineResult<ComptonControlInput> {
+fn parse_compton_source(fixture_id: &str, source: &str) -> ComputeResult<ComptonControlInput> {
     let lines = source.lines().collect::<Vec<_>>();
     let mut control = ComptonControlInput::default();
 
@@ -804,7 +804,7 @@ fn parse_compton_source(fixture_id: &str, source: &str) -> PipelineResult<Compto
     Ok(control)
 }
 
-fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotComptonInput> {
+fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PotComptonInput> {
     if bytes.is_empty() {
         return Err(compton_parse_error(fixture_id, "pot.bin is empty"));
     }
@@ -831,7 +831,7 @@ fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotCompton
 fn parse_true_compute_pot_binary(
     fixture_id: &str,
     bytes: &[u8],
-) -> PipelineResult<PotComptonInput> {
+) -> ComputeResult<PotComptonInput> {
     let mut offset = POT_BINARY_MAGIC.len();
 
     for _ in 0..POT_CONTROL_I32_COUNT {
@@ -902,7 +902,7 @@ fn parse_true_compute_pot_binary(
     })
 }
 
-fn parse_gg_slice_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<GgSliceInput> {
+fn parse_gg_slice_source(fixture_id: &str, bytes: &[u8]) -> ComputeResult<GgSliceInput> {
     if bytes.is_empty() {
         return Err(compton_parse_error(fixture_id, "gg_slice.bin is empty"));
     }
@@ -928,7 +928,7 @@ fn parse_gg_slice_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<GgSli
 fn parse_true_compute_gg_slice_binary(
     fixture_id: &str,
     bytes: &[u8],
-) -> PipelineResult<GgSliceInput> {
+) -> ComputeResult<GgSliceInput> {
     let mut offset = FMS_GG_BINARY_MAGIC.len();
 
     let _version = take_u32(bytes, &mut offset)
@@ -1063,7 +1063,7 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
     normalized.parse::<f64>().ok()
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(compton_parse_error(
             fixture_id,
@@ -1089,7 +1089,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(compton_parse_error(
@@ -1133,15 +1133,15 @@ fn take_f64(bytes: &[u8], offset: &mut usize) -> Option<f64> {
     Some(f64::from_le_bytes(buffer))
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ComptonPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::ComptonModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::Path;
@@ -1151,13 +1151,13 @@ mod tests {
 
     #[test]
     fn contract_lists_required_inputs_and_outputs() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Compton,
+            ComputeModule::Compton,
             "compton.inp",
             "actual-output",
         );
-        let scaffold = ComptonPipelineScaffold;
+        let scaffold = ComptonModule;
         let contract = scaffold
             .contract_for_request(&request)
             .expect("contract should build");
@@ -1180,13 +1180,13 @@ mod tests {
         let output_dir = temp.path().join("actual");
         stage_inputs(&output_dir);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Compton,
+            ComputeModule::Compton,
             output_dir.join("compton.inp"),
             &output_dir,
         );
-        let scaffold = ComptonPipelineScaffold;
+        let scaffold = ComptonModule;
         let artifacts = scaffold
             .execute(&request)
             .expect("COMPTON execution should succeed");
@@ -1214,20 +1214,20 @@ mod tests {
         stage_inputs(&first_dir);
         stage_inputs(&second_dir);
 
-        let request_one = PipelineRequest::new(
+        let request_one = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Compton,
+            ComputeModule::Compton,
             first_dir.join("compton.inp"),
             &first_dir,
         );
-        let request_two = PipelineRequest::new(
+        let request_two = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Compton,
+            ComputeModule::Compton,
             second_dir.join("compton.inp"),
             &second_dir,
         );
 
-        let scaffold = ComptonPipelineScaffold;
+        let scaffold = ComptonModule;
         let first_artifacts = scaffold
             .execute(&request_one)
             .expect("first run should succeed");
@@ -1263,13 +1263,13 @@ mod tests {
         fs::write(temp.path().join("gg_slice.bin"), [3_u8, 4_u8])
             .expect("gg slice should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             &input_path,
             temp.path(),
         );
-        let scaffold = ComptonPipelineScaffold;
+        let scaffold = ComptonModule;
         let error = scaffold
             .execute(&request)
             .expect_err("module mismatch should fail");
@@ -1285,13 +1285,13 @@ mod tests {
         fs::write(&input_path, COMPTON_INPUT_FIXTURE).expect("compton input should be written");
         fs::write(temp.path().join("pot.bin"), [0_u8, 1_u8, 2_u8]).expect("pot should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Compton,
+            ComputeModule::Compton,
             &input_path,
             temp.path(),
         );
-        let scaffold = ComptonPipelineScaffold;
+        let scaffold = ComptonModule;
         let error = scaffold
             .execute(&request)
             .expect_err("missing gg_slice input should fail");
@@ -1310,13 +1310,13 @@ mod tests {
         fs::write(temp.path().join("gg_slice.bin"), [3_u8, 4_u8, 5_u8])
             .expect("gg slice should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Compton,
+            ComputeModule::Compton,
             &input_path,
             temp.path(),
         );
-        let scaffold = ComptonPipelineScaffold;
+        let scaffold = ComptonModule;
         let error = scaffold
             .execute(&request)
             .expect_err("invalid input should fail");
@@ -1353,7 +1353,7 @@ mod tests {
             .collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

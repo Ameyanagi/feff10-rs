@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -9,14 +9,14 @@ const SCREEN_OPTIONAL_INPUTS: [&str; 1] = ["screen.inp"];
 const SCREEN_REQUIRED_OUTPUTS: [&str; 2] = ["wscrn.dat", "logscreen.dat"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ScreenPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub optional_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct ScreenContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub optional_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct ScreenPipelineScaffold;
+pub struct ScreenModule;
 
 #[derive(Debug, Clone)]
 struct ScreenModel {
@@ -107,13 +107,13 @@ struct ScreenOutputConfig {
     rfms: f64,
 }
 
-impl ScreenPipelineScaffold {
+impl ScreenModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<ScreenPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<ScreenContract> {
         validate_request_shape(request)?;
-        Ok(ScreenPipelineInterface {
+        Ok(ScreenContract {
             required_inputs: artifact_list(&SCREEN_REQUIRED_INPUTS),
             optional_inputs: artifact_list(&SCREEN_OPTIONAL_INPUTS),
             expected_outputs: artifact_list(&SCREEN_REQUIRED_OUTPUTS),
@@ -121,8 +121,8 @@ impl ScreenPipelineScaffold {
     }
 }
 
-impl PipelineExecutor for ScreenPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for ScreenModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -190,7 +190,7 @@ impl ScreenModel {
         geom_source: &str,
         ldos_source: &str,
         screen_source: Option<&str>,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         let pot = parse_pot_source(fixture_id, pot_source)?;
         let geom = parse_geom_source(fixture_id, geom_source)?;
         let ldos = parse_ldos_source(fixture_id, ldos_source)?;
@@ -208,7 +208,7 @@ impl ScreenModel {
         })
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         match artifact_name {
             "wscrn.dat" => {
                 write_text_artifact(output_path, &self.render_wscrn()).map_err(|source| {
@@ -397,12 +397,12 @@ nrptx0: {}\n\
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Screen {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Screen {
         return Err(FeffError::input_validation(
             "INPUT.SCREEN_MODULE",
             format!(
-                "SCREEN pipeline expects module SCREEN, got {}",
+                "SCREEN module expects SCREEN, got {}",
                 request.module
             ),
         ));
@@ -416,7 +416,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.SCREEN_INPUT_ARTIFACT",
                 format!(
-                    "SCREEN pipeline expects input artifact '{}' at '{}'",
+                    "SCREEN module expects input artifact '{}' at '{}'",
                     SCREEN_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -427,7 +427,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.SCREEN_INPUT_ARTIFACT",
             format!(
-                "SCREEN pipeline requires input artifact '{}' but received '{}'",
+                "SCREEN module requires input artifact '{}' but received '{}'",
                 SCREEN_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -436,19 +436,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.SCREEN_INPUT_ARTIFACT",
             format!(
-                "SCREEN pipeline requires sibling inputs next to '{}'",
+                "SCREEN module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.SCREEN_INPUT_READ",
@@ -465,7 +465,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
 fn maybe_read_optional_input_source(
     path: PathBuf,
     artifact_name: &str,
-) -> PipelineResult<Option<String>> {
+) -> ComputeResult<Option<String>> {
     if path.is_file() {
         return read_input_source(&path, artifact_name).map(Some);
     }
@@ -473,7 +473,7 @@ fn maybe_read_optional_input_source(
     Ok(None)
 }
 
-fn parse_pot_source(fixture_id: &str, source: &str) -> PipelineResult<PotScreenInput> {
+fn parse_pot_source(fixture_id: &str, source: &str) -> ComputeResult<PotScreenInput> {
     let lines: Vec<&str> = source.lines().collect();
     let title = lines
         .iter()
@@ -565,7 +565,7 @@ fn parse_pot_source(fixture_id: &str, source: &str) -> PipelineResult<PotScreenI
     })
 }
 
-fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomScreenInput> {
+fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult<GeomScreenInput> {
     let mut nat: Option<usize> = None;
     let mut nph: Option<usize> = None;
     let mut atoms = Vec::new();
@@ -631,7 +631,7 @@ fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomScree
     })
 }
 
-fn parse_ldos_source(fixture_id: &str, source: &str) -> PipelineResult<LdosScreenInput> {
+fn parse_ldos_source(fixture_id: &str, source: &str) -> ComputeResult<LdosScreenInput> {
     let lines: Vec<&str> = source.lines().collect();
 
     let mut neldos: Option<i32> = None;
@@ -757,7 +757,7 @@ fn parse_ldos_source(fixture_id: &str, source: &str) -> PipelineResult<LdosScree
 fn parse_screen_override_source(
     fixture_id: &str,
     source: &str,
-) -> PipelineResult<ScreenOverrideInput> {
+) -> ComputeResult<ScreenOverrideInput> {
     let mut parsed = ScreenOverrideInput::default();
 
     for line in source.lines() {
@@ -811,7 +811,7 @@ fn next_nonempty_line<'a>(lines: &'a [&'a str], start_index: usize) -> Option<(u
     None
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(screen_parse_error(
             fixture_id,
@@ -837,7 +837,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(screen_parse_error(
@@ -881,15 +881,15 @@ fn screen_parse_error(fixture_id: &str, message: impl Into<String>) -> FeffError
     )
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::ScreenPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::ScreenModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -943,13 +943,13 @@ nrptx0         251
 
     #[test]
     fn contract_exposes_true_compute_screen_artifact_contract() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             "pot.inp",
             "actual-output",
         );
-        let scaffold = ScreenPipelineScaffold;
+        let scaffold = ScreenModule;
         let contract = scaffold
             .contract_for_request(&request)
             .expect("contract should build");
@@ -974,13 +974,13 @@ nrptx0         251
         let output_dir = temp.path().join("actual");
         let input_path = stage_screen_inputs(temp.path(), Some(SCREEN_OVERRIDE_FIXTURE));
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &input_path,
             &output_dir,
         );
-        let artifacts = ScreenPipelineScaffold
+        let artifacts = ScreenModule
             .execute(&request)
             .expect("SCREEN execution should succeed");
 
@@ -1011,13 +1011,13 @@ nrptx0         251
         let output_dir = temp.path().join("actual");
         let input_path = stage_screen_inputs(temp.path(), None);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &input_path,
             &output_dir,
         );
-        let artifacts = ScreenPipelineScaffold
+        let artifacts = ScreenModule
             .execute(&request)
             .expect("SCREEN execution should succeed without screen.inp");
 
@@ -1038,23 +1038,23 @@ nrptx0         251
         let first_output = first_root.join("out");
         let second_output = second_root.join("out");
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &first_input,
             &first_output,
         );
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &second_input,
             &second_output,
         );
 
-        ScreenPipelineScaffold
+        ScreenModule
             .execute(&first_request)
             .expect("first run should succeed");
-        ScreenPipelineScaffold
+        ScreenModule
             .execute(&second_request)
             .expect("second run should succeed");
 
@@ -1084,23 +1084,23 @@ nrptx0         251
         let with_override_output = with_override_root.join("out");
         let without_override_output = without_override_root.join("out");
 
-        let with_override_request = PipelineRequest::new(
+        let with_override_request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &with_override_input,
             &with_override_output,
         );
-        let without_override_request = PipelineRequest::new(
+        let without_override_request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &without_override_input,
             &without_override_output,
         );
 
-        ScreenPipelineScaffold
+        ScreenModule
             .execute(&with_override_request)
             .expect("override run should succeed");
-        ScreenPipelineScaffold
+        ScreenModule
             .execute(&without_override_request)
             .expect("default run should succeed");
 
@@ -1119,13 +1119,13 @@ nrptx0         251
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = stage_screen_inputs(temp.path(), Some(SCREEN_OVERRIDE_FIXTURE));
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             &input_path,
             temp.path(),
         );
-        let error = ScreenPipelineScaffold
+        let error = ScreenModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1141,13 +1141,13 @@ nrptx0         251
         fs::write(temp.path().join("ldos.inp"), LDOS_INPUT_FIXTURE)
             .expect("ldos input should be staged");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &input_path,
             temp.path(),
         );
-        let error = ScreenPipelineScaffold
+        let error = ScreenModule
             .execute(&request)
             .expect_err("missing geom input should fail");
 
@@ -1165,13 +1165,13 @@ nrptx0         251
         fs::write(temp.path().join("ldos.inp"), "invalid ldos input\n")
             .expect("ldos input should be staged");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &input_path,
             temp.path(),
         );
-        let error = ScreenPipelineScaffold
+        let error = ScreenModule
             .execute(&request)
             .expect_err("invalid ldos should fail");
 
@@ -1197,7 +1197,7 @@ nrptx0         251
         entries.iter().map(|entry| entry.to_string()).collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

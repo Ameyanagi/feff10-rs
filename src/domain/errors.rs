@@ -3,7 +3,7 @@ use std::fmt::{Display, Formatter};
 
 pub type FeffResult<T> = Result<T, FeffError>;
 pub type ParserResult<T> = FeffResult<T>;
-pub type PipelineResult<T> = FeffResult<T>;
+pub type ComputeResult<T> = FeffResult<T>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum FeffErrorCategory {

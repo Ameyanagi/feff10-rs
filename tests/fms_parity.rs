@@ -1,10 +1,10 @@
-use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
-use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::fms::FmsPipelineScaffold;
-use feff10_rs::pipelines::pot::PotPipelineScaffold;
-use feff10_rs::pipelines::rdinp::RdinpPipelineScaffold;
-use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
-use feff10_rs::pipelines::xsph::XsphPipelineScaffold;
+use feff10_rs::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
+use feff10_rs::modules::ModuleExecutor;
+use feff10_rs::modules::fms::FmsModule;
+use feff10_rs::modules::pot::PotModule;
+use feff10_rs::modules::rdinp::RdinpModule;
+use feff10_rs::modules::regression::{RegressionRunnerConfig, run_regression};
+use feff10_rs::modules::xsph::XsphModule;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -153,13 +153,13 @@ fn run_rdinp_pot_xsph_and_fms_for_fixture(
 ) -> PathBuf {
     let output_dir = root.join(fixture.id).join(subdir);
 
-    let rdinp_request = PipelineRequest::new(
+    let rdinp_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Rdinp,
+        ComputeModule::Rdinp,
         Path::new(fixture.input_directory).join("feff.inp"),
         &output_dir,
     );
-    let rdinp_artifacts = RdinpPipelineScaffold
+    let rdinp_artifacts = RdinpModule
         .execute(&rdinp_request)
         .expect("RDINP execution should succeed");
 
@@ -183,13 +183,13 @@ fn run_rdinp_pot_xsph_and_fms_for_fixture(
         fixture.id
     );
 
-    let pot_request = PipelineRequest::new(
+    let pot_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Pot,
+        ComputeModule::Pot,
         output_dir.join("pot.inp"),
         &output_dir,
     );
-    let pot_artifacts = PotPipelineScaffold
+    let pot_artifacts = PotModule
         .execute(&pot_request)
         .expect("POT execution should succeed");
     assert_eq!(
@@ -199,13 +199,13 @@ fn run_rdinp_pot_xsph_and_fms_for_fixture(
         fixture.id
     );
 
-    let xsph_request = PipelineRequest::new(
+    let xsph_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Xsph,
+        ComputeModule::Xsph,
         output_dir.join("xsph.inp"),
         &output_dir,
     );
-    let xsph_artifacts = XsphPipelineScaffold
+    let xsph_artifacts = XsphModule
         .execute(&xsph_request)
         .expect("XSPH execution should succeed");
     assert_eq!(
@@ -215,13 +215,13 @@ fn run_rdinp_pot_xsph_and_fms_for_fixture(
         fixture.id
     );
 
-    let fms_request = PipelineRequest::new(
+    let fms_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Fms,
+        ComputeModule::Fms,
         output_dir.join("fms.inp"),
         &output_dir,
     );
-    let fms_artifacts = FmsPipelineScaffold
+    let fms_artifacts = FmsModule
         .execute(&fms_request)
         .expect("FMS execution should succeed");
     assert_eq!(
@@ -241,7 +241,7 @@ fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {
         .collect()
 }
 
-fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
     artifacts
         .iter()
         .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

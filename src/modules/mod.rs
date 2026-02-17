@@ -19,61 +19,61 @@ pub mod serialization;
 pub mod xsph;
 
 use crate::domain::{
-    FeffError, InputCard, InputDeck, PipelineArtifact, PipelineModule, PipelineRequest,
-    PipelineResult,
+    FeffError, InputCard, InputDeck, ComputeArtifact, ComputeModule, ComputeRequest,
+    ComputeResult,
 };
 use crate::numerics::{deterministic_argsort, distance3, stable_weighted_mean};
 
-pub trait PipelineExecutor {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>>;
+pub trait ModuleExecutor {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>>;
 }
 
-pub trait RuntimePipelineExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>>;
+pub trait RuntimeModuleExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>>;
 }
 
-pub trait ValidationPipelineExecutor {
+pub trait ValidationModuleExecutor {
     fn execute_validation(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<Vec<PipelineArtifact>>;
+        request: &ComputeRequest,
+    ) -> ComputeResult<Vec<ComputeArtifact>>;
 }
 
-impl<T> ValidationPipelineExecutor for T
+impl<T> ValidationModuleExecutor for T
 where
-    T: PipelineExecutor,
+    T: ModuleExecutor,
 {
     fn execute_validation(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<Vec<PipelineArtifact>> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<Vec<ComputeArtifact>> {
         self.execute(request)
     }
 }
 
-pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
+pub fn runtime_compute_engine_available(module: ComputeModule) -> bool {
     matches!(
         module,
-        PipelineModule::Rdinp
-            | PipelineModule::Pot
-            | PipelineModule::Screen
-            | PipelineModule::SelfEnergy
-            | PipelineModule::Eels
-            | PipelineModule::FullSpectrum
-            | PipelineModule::Crpa
-            | PipelineModule::Xsph
-            | PipelineModule::Path
-            | PipelineModule::Fms
-            | PipelineModule::Band
-            | PipelineModule::Ldos
-            | PipelineModule::Rixs
-            | PipelineModule::Compton
-            | PipelineModule::Debye
-            | PipelineModule::Dmdw
+        ComputeModule::Rdinp
+            | ComputeModule::Pot
+            | ComputeModule::Screen
+            | ComputeModule::SelfEnergy
+            | ComputeModule::Eels
+            | ComputeModule::FullSpectrum
+            | ComputeModule::Crpa
+            | ComputeModule::Xsph
+            | ComputeModule::Path
+            | ComputeModule::Fms
+            | ComputeModule::Band
+            | ComputeModule::Ldos
+            | ComputeModule::Rixs
+            | ComputeModule::Compton
+            | ComputeModule::Debye
+            | ComputeModule::Dmdw
     )
 }
 
-pub fn runtime_engine_unavailable_error(module: PipelineModule) -> FeffError {
+pub fn runtime_engine_unavailable_error(module: ComputeModule) -> FeffError {
     FeffError::computation(
         "RUN.RUNTIME_ENGINE_UNAVAILABLE",
         format!(
@@ -83,10 +83,10 @@ pub fn runtime_engine_unavailable_error(module: PipelineModule) -> FeffError {
     )
 }
 
-pub fn execute_runtime_pipeline(
-    module: PipelineModule,
-    request: &PipelineRequest,
-) -> PipelineResult<Vec<PipelineArtifact>> {
+pub fn execute_runtime_module(
+    module: ComputeModule,
+    request: &ComputeRequest,
+) -> ComputeResult<Vec<ComputeArtifact>> {
     if request.module != module {
         return Err(FeffError::input_validation(
             "INPUT.RUNTIME_MODULE_MISMATCH",
@@ -98,166 +98,166 @@ pub fn execute_runtime_pipeline(
     }
 
     match module {
-        PipelineModule::Rdinp => RuntimeRdinpExecutor.execute_runtime(request),
-        PipelineModule::Pot => RuntimePotExecutor.execute_runtime(request),
-        PipelineModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
-        PipelineModule::SelfEnergy => RuntimeSelfExecutor.execute_runtime(request),
-        PipelineModule::Eels => RuntimeEelsExecutor.execute_runtime(request),
-        PipelineModule::FullSpectrum => RuntimeFullSpectrumExecutor.execute_runtime(request),
-        PipelineModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
-        PipelineModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
-        PipelineModule::Path => RuntimePathExecutor.execute_runtime(request),
-        PipelineModule::Fms => RuntimeFmsExecutor.execute_runtime(request),
-        PipelineModule::Band => RuntimeBandExecutor.execute_runtime(request),
-        PipelineModule::Ldos => RuntimeLdosExecutor.execute_runtime(request),
-        PipelineModule::Rixs => RuntimeRixsExecutor.execute_runtime(request),
-        PipelineModule::Compton => RuntimeComptonExecutor.execute_runtime(request),
-        PipelineModule::Debye => RuntimeDebyeExecutor.execute_runtime(request),
-        PipelineModule::Dmdw => RuntimeDmdwExecutor.execute_runtime(request),
+        ComputeModule::Rdinp => RuntimeRdinpExecutor.execute_runtime(request),
+        ComputeModule::Pot => RuntimePotExecutor.execute_runtime(request),
+        ComputeModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
+        ComputeModule::SelfEnergy => RuntimeSelfExecutor.execute_runtime(request),
+        ComputeModule::Eels => RuntimeEelsExecutor.execute_runtime(request),
+        ComputeModule::FullSpectrum => RuntimeFullSpectrumExecutor.execute_runtime(request),
+        ComputeModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
+        ComputeModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
+        ComputeModule::Path => RuntimePathExecutor.execute_runtime(request),
+        ComputeModule::Fms => RuntimeFmsExecutor.execute_runtime(request),
+        ComputeModule::Band => RuntimeBandExecutor.execute_runtime(request),
+        ComputeModule::Ldos => RuntimeLdosExecutor.execute_runtime(request),
+        ComputeModule::Rixs => RuntimeRixsExecutor.execute_runtime(request),
+        ComputeModule::Compton => RuntimeComptonExecutor.execute_runtime(request),
+        ComputeModule::Debye => RuntimeDebyeExecutor.execute_runtime(request),
+        ComputeModule::Dmdw => RuntimeDmdwExecutor.execute_runtime(request),
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeRdinpExecutor;
 
-impl RuntimePipelineExecutor for RuntimeRdinpExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        rdinp::RdinpPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeRdinpExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        rdinp::RdinpModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimePotExecutor;
 
-impl RuntimePipelineExecutor for RuntimePotExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        pot::PotPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimePotExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        pot::PotModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeScreenExecutor;
 
-impl RuntimePipelineExecutor for RuntimeScreenExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        screen::ScreenPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeScreenExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        screen::ScreenModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeSelfExecutor;
 
-impl RuntimePipelineExecutor for RuntimeSelfExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        self_energy::SelfEnergyPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeSelfExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        self_energy::SelfEnergyModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeEelsExecutor;
 
-impl RuntimePipelineExecutor for RuntimeEelsExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        eels::EelsPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeEelsExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        eels::EelsModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeFullSpectrumExecutor;
 
-impl RuntimePipelineExecutor for RuntimeFullSpectrumExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        fullspectrum::FullSpectrumPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeFullSpectrumExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        fullspectrum::FullSpectrumModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeCrpaExecutor;
 
-impl RuntimePipelineExecutor for RuntimeCrpaExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        crpa::CrpaPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeCrpaExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        crpa::CrpaModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeXsphExecutor;
 
-impl RuntimePipelineExecutor for RuntimeXsphExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        xsph::XsphPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeXsphExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        xsph::XsphModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimePathExecutor;
 
-impl RuntimePipelineExecutor for RuntimePathExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        path::PathPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimePathExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        path::PathModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeFmsExecutor;
 
-impl RuntimePipelineExecutor for RuntimeFmsExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        fms::FmsPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeFmsExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        fms::FmsModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeBandExecutor;
 
-impl RuntimePipelineExecutor for RuntimeBandExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        band::BandPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeBandExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        band::BandModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeLdosExecutor;
 
-impl RuntimePipelineExecutor for RuntimeLdosExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        ldos::LdosPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeLdosExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        ldos::LdosModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeRixsExecutor;
 
-impl RuntimePipelineExecutor for RuntimeRixsExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        rixs::RixsPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeRixsExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        rixs::RixsModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeComptonExecutor;
 
-impl RuntimePipelineExecutor for RuntimeComptonExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        compton::ComptonPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeComptonExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        compton::ComptonModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeDebyeExecutor;
 
-impl RuntimePipelineExecutor for RuntimeDebyeExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        debye::DebyePipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeDebyeExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        debye::DebyeModule.execute(request)
     }
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct RuntimeDmdwExecutor;
 
-impl RuntimePipelineExecutor for RuntimeDmdwExecutor {
-    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
-        dmdw::DmdwPipelineScaffold.execute(request)
+impl RuntimeModuleExecutor for RuntimeDmdwExecutor {
+    fn execute_runtime(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
+        dmdw::DmdwModule.execute(request)
     }
 }
 
@@ -268,20 +268,20 @@ pub struct DistanceShell {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CorePipelineScaffold {
-    module: PipelineModule,
+pub struct CoreModuleHelper {
+    module: ComputeModule,
 }
 
-impl CorePipelineScaffold {
-    pub fn new(module: PipelineModule) -> Option<Self> {
-        if is_core_pipeline_module(module) {
+impl CoreModuleHelper {
+    pub fn new(module: ComputeModule) -> Option<Self> {
+        if is_core_module(module) {
             Some(Self { module })
         } else {
             None
         }
     }
 
-    pub fn module(&self) -> PipelineModule {
+    pub fn module(&self) -> ComputeModule {
         self.module
     }
 
@@ -313,20 +313,20 @@ impl CorePipelineScaffold {
     }
 }
 
-pub fn is_core_pipeline_module(module: PipelineModule) -> bool {
+pub fn is_core_module(module: ComputeModule) -> bool {
     matches!(
         module,
-        PipelineModule::Rdinp
-            | PipelineModule::Pot
-            | PipelineModule::Path
-            | PipelineModule::Fms
-            | PipelineModule::Xsph
+        ComputeModule::Rdinp
+            | ComputeModule::Pot
+            | ComputeModule::Path
+            | ComputeModule::Fms
+            | ComputeModule::Xsph
     )
 }
 
-pub fn cards_for_pipeline_request<'a>(
+pub fn cards_for_compute_request<'a>(
     deck: &'a InputDeck,
-    request: &PipelineRequest,
+    request: &ComputeRequest,
 ) -> Vec<&'a InputCard> {
     deck.cards_for_module(request.module)
 }
@@ -334,54 +334,54 @@ pub fn cards_for_pipeline_request<'a>(
 #[cfg(test)]
 mod tests {
     use super::{
-        CorePipelineScaffold, PipelineExecutor, ValidationPipelineExecutor,
-        cards_for_pipeline_request, execute_runtime_pipeline, runtime_compute_engine_available,
+        CoreModuleHelper, ModuleExecutor, ValidationModuleExecutor,
+        cards_for_compute_request, execute_runtime_module, runtime_compute_engine_available,
         runtime_engine_unavailable_error,
     };
     use crate::domain::{
-        FeffError, FeffErrorCategory, InputCard, InputCardKind, InputDeck, PipelineArtifact,
-        PipelineModule, PipelineRequest,
+        FeffError, FeffErrorCategory, InputCard, InputCardKind, InputDeck, ComputeArtifact,
+        ComputeModule, ComputeRequest,
     };
     use std::path::Path;
     use tempfile::TempDir;
 
     struct FailingExecutor;
 
-    impl PipelineExecutor for FailingExecutor {
+    impl ModuleExecutor for FailingExecutor {
         fn execute(
             &self,
-            _request: &PipelineRequest,
-        ) -> crate::domain::PipelineResult<Vec<PipelineArtifact>> {
+            _request: &ComputeRequest,
+        ) -> crate::domain::ComputeResult<Vec<ComputeArtifact>> {
             Err(FeffError::computation(
-                "RUN.PIPELINE",
+                "RUN.MODULE",
                 "module execution failed",
             ))
         }
     }
 
     #[test]
-    fn pipeline_executor_uses_shared_error_types() {
-        let request = PipelineRequest::new("FX-001", PipelineModule::Rdinp, "feff.inp", "out");
+    fn module_executor_uses_shared_error_types() {
+        let request = ComputeRequest::new("FX-001", ComputeModule::Rdinp, "feff.inp", "out");
         let error = FailingExecutor
             .execute(&request)
             .expect_err("executor should fail");
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.exit_code(), 4);
-        assert_eq!(error.placeholder(), "RUN.PIPELINE");
+        assert_eq!(error.placeholder(), "RUN.MODULE");
     }
 
     #[test]
-    fn validation_executor_trait_adapts_pipeline_executor_types() {
-        let request = PipelineRequest::new("FX-001", PipelineModule::Rdinp, "feff.inp", "out");
+    fn validation_executor_trait_adapts_module_executor_types() {
+        let request = ComputeRequest::new("FX-001", ComputeModule::Rdinp, "feff.inp", "out");
         let error = FailingExecutor
             .execute_validation(&request)
             .expect_err("validation adapter should preserve errors");
-        assert_eq!(error.placeholder(), "RUN.PIPELINE");
+        assert_eq!(error.placeholder(), "RUN.MODULE");
     }
 
     #[test]
-    fn pipeline_helpers_consume_typed_input_cards() {
-        let request = PipelineRequest::new("FX-001", PipelineModule::Compton, "feff.inp", "out");
+    fn module_helpers_consume_typed_input_cards() {
+        let request = ComputeRequest::new("FX-001", ComputeModule::Compton, "feff.inp", "out");
         let deck = InputDeck {
             cards: vec![
                 InputCard::new("TITLE", InputCardKind::Title, vec!["Cu".to_string()], 1),
@@ -390,21 +390,21 @@ mod tests {
             ],
         };
 
-        let cards = cards_for_pipeline_request(&deck, &request);
+        let cards = cards_for_compute_request(&deck, &request);
         assert_eq!(cards.len(), 2);
         assert_eq!(cards[0].kind, InputCardKind::Title);
         assert_eq!(cards[1].kind, InputCardKind::Compton);
     }
 
     #[test]
-    fn core_pipeline_scaffold_is_restricted_to_core_modules() {
-        assert!(CorePipelineScaffold::new(PipelineModule::Pot).is_some());
-        assert!(CorePipelineScaffold::new(PipelineModule::Compton).is_none());
+    fn core_module_helper_is_restricted_to_core_modules() {
+        assert!(CoreModuleHelper::new(ComputeModule::Pot).is_some());
+        assert!(CoreModuleHelper::new(ComputeModule::Compton).is_none());
     }
 
     #[test]
-    fn core_pipeline_scaffold_uses_numerics_for_deterministic_shell_order() {
-        let scaffold = CorePipelineScaffold::new(PipelineModule::Path).expect("core scaffold");
+    fn core_module_helper_uses_numerics_for_deterministic_shell_order() {
+        let scaffold = CoreModuleHelper::new(ComputeModule::Path).expect("core scaffold");
         let shells = scaffold.sorted_neighbor_shells(
             [0.0, 0.0, 0.0],
             &[[0.0, 0.0, 2.0], [0.0, 1.0, 0.0], [1.0, 0.0, 0.0]],
@@ -420,8 +420,8 @@ mod tests {
     }
 
     #[test]
-    fn core_pipeline_scaffold_uses_numerics_for_weighted_channel_average() {
-        let scaffold = CorePipelineScaffold::new(PipelineModule::Fms).expect("core scaffold");
+    fn core_module_helper_uses_numerics_for_weighted_channel_average() {
+        let scaffold = CoreModuleHelper::new(ComputeModule::Fms).expect("core scaffold");
         let average = scaffold
             .weighted_channel_average(&[2.0, 8.0], &[1.0, 3.0])
             .expect("weighted average");
@@ -432,24 +432,24 @@ mod tests {
 
     #[test]
     fn runtime_dispatch_reports_available_compute_modules() {
-        assert!(runtime_compute_engine_available(PipelineModule::Rdinp));
-        assert!(runtime_compute_engine_available(PipelineModule::Pot));
-        assert!(runtime_compute_engine_available(PipelineModule::Screen));
-        assert!(runtime_compute_engine_available(PipelineModule::SelfEnergy));
-        assert!(runtime_compute_engine_available(PipelineModule::Eels));
+        assert!(runtime_compute_engine_available(ComputeModule::Rdinp));
+        assert!(runtime_compute_engine_available(ComputeModule::Pot));
+        assert!(runtime_compute_engine_available(ComputeModule::Screen));
+        assert!(runtime_compute_engine_available(ComputeModule::SelfEnergy));
+        assert!(runtime_compute_engine_available(ComputeModule::Eels));
         assert!(runtime_compute_engine_available(
-            PipelineModule::FullSpectrum
+            ComputeModule::FullSpectrum
         ));
-        assert!(runtime_compute_engine_available(PipelineModule::Crpa));
-        assert!(runtime_compute_engine_available(PipelineModule::Xsph));
-        assert!(runtime_compute_engine_available(PipelineModule::Path));
-        assert!(runtime_compute_engine_available(PipelineModule::Fms));
-        assert!(runtime_compute_engine_available(PipelineModule::Band));
-        assert!(runtime_compute_engine_available(PipelineModule::Ldos));
-        assert!(runtime_compute_engine_available(PipelineModule::Rixs));
-        assert!(runtime_compute_engine_available(PipelineModule::Compton));
-        assert!(runtime_compute_engine_available(PipelineModule::Debye));
-        assert!(runtime_compute_engine_available(PipelineModule::Dmdw));
+        assert!(runtime_compute_engine_available(ComputeModule::Crpa));
+        assert!(runtime_compute_engine_available(ComputeModule::Xsph));
+        assert!(runtime_compute_engine_available(ComputeModule::Path));
+        assert!(runtime_compute_engine_available(ComputeModule::Fms));
+        assert!(runtime_compute_engine_available(ComputeModule::Band));
+        assert!(runtime_compute_engine_available(ComputeModule::Ldos));
+        assert!(runtime_compute_engine_available(ComputeModule::Rixs));
+        assert!(runtime_compute_engine_available(ComputeModule::Compton));
+        assert!(runtime_compute_engine_available(ComputeModule::Debye));
+        assert!(runtime_compute_engine_available(ComputeModule::Dmdw));
     }
 
     #[test]
@@ -488,13 +488,13 @@ mod tests {
         )
         .expect("xsect_2 input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             input_dir.join("rixs.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Rixs, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Rixs, &request)
             .expect("RIXS runtime execution should succeed");
         assert!(
             artifacts
@@ -542,8 +542,8 @@ mod tests {
 
     #[test]
     fn runtime_dispatch_rejects_module_mismatch_requests() {
-        let request = PipelineRequest::new("FX-001", PipelineModule::Rdinp, "feff.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Pot, &request)
+        let request = ComputeRequest::new("FX-001", ComputeModule::Rdinp, "feff.inp", "out");
+        let error = execute_runtime_module(ComputeModule::Pot, &request)
             .expect_err("module mismatch should fail before dispatch");
         assert_eq!(error.placeholder(), "INPUT.RUNTIME_MODULE_MISMATCH");
     }
@@ -551,13 +551,13 @@ mod tests {
     #[test]
     fn runtime_dispatch_executes_rdinp_compute_engine() {
         let temp = TempDir::new().expect("tempdir should be created");
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RDINP-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             "feff10/examples/EXAFS/Cu/feff.inp",
             temp.path(),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Rdinp, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Rdinp, &request)
             .expect("RDINP runtime execution should succeed");
         assert!(
             artifacts
@@ -577,13 +577,13 @@ mod tests {
         std::fs::write(input_dir.join("geom.dat"), GEOM_INPUT_FIXTURE)
             .expect("geom input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-POT-001",
-            PipelineModule::Pot,
+            ComputeModule::Pot,
             input_dir.join("pot.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Pot, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Pot, &request)
             .expect("POT runtime execution should succeed");
         assert!(
             artifacts
@@ -607,13 +607,13 @@ mod tests {
         std::fs::write(input_dir.join("screen.inp"), SCREEN_OVERRIDE_INPUT_FIXTURE)
             .expect("screen override should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SCREEN-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             input_dir.join("pot.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Screen, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Screen, &request)
             .expect("SCREEN runtime execution should succeed");
         assert!(
             artifacts
@@ -639,13 +639,13 @@ mod tests {
         std::fs::write(input_dir.join("xmu.dat"), SELF_SPECTRUM_INPUT_FIXTURE)
             .expect("spectrum input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SELF-001",
-            PipelineModule::SelfEnergy,
+            ComputeModule::SelfEnergy,
             input_dir.join("sfconv.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::SelfEnergy, &request)
+        let artifacts = execute_runtime_module(ComputeModule::SelfEnergy, &request)
             .expect("SELF runtime execution should succeed");
         assert!(
             artifacts
@@ -689,13 +689,13 @@ mod tests {
         std::fs::write(input_dir.join("xmu.dat"), EELS_XMU_INPUT_FIXTURE)
             .expect("xmu input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             input_dir.join("eels.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Eels, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Eels, &request)
             .expect("EELS runtime execution should succeed");
         assert!(
             artifacts
@@ -723,13 +723,13 @@ mod tests {
         std::fs::write(input_dir.join("geom.dat"), GEOM_INPUT_FIXTURE)
             .expect("geom input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             input_dir.join("crpa.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Crpa, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Crpa, &request)
             .expect("CRPA runtime execution should succeed");
         assert!(
             artifacts
@@ -749,31 +749,31 @@ mod tests {
     fn runtime_dispatch_executes_xsph_compute_engine() {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = temp.path().join("outputs");
-        let rdinp_request = PipelineRequest::new(
+        let rdinp_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             "feff10/examples/XANES/Cu/feff.inp",
             &output_dir,
         );
-        execute_runtime_pipeline(PipelineModule::Rdinp, &rdinp_request)
+        execute_runtime_module(ComputeModule::Rdinp, &rdinp_request)
             .expect("RDINP runtime execution should succeed");
 
-        let pot_request = PipelineRequest::new(
+        let pot_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Pot,
+            ComputeModule::Pot,
             output_dir.join("pot.inp"),
             &output_dir,
         );
-        execute_runtime_pipeline(PipelineModule::Pot, &pot_request)
+        execute_runtime_module(ComputeModule::Pot, &pot_request)
             .expect("POT runtime execution should succeed");
 
-        let xsph_request = PipelineRequest::new(
+        let xsph_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             output_dir.join("xsph.inp"),
             &output_dir,
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Xsph, &xsph_request)
+        let artifacts = execute_runtime_module(ComputeModule::Xsph, &xsph_request)
             .expect("XSPH runtime execution should succeed");
         assert!(
             artifacts
@@ -799,40 +799,40 @@ mod tests {
     fn runtime_dispatch_executes_path_compute_engine() {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = temp.path().join("outputs");
-        let rdinp_request = PipelineRequest::new(
+        let rdinp_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             "feff10/examples/XANES/Cu/feff.inp",
             &output_dir,
         );
-        execute_runtime_pipeline(PipelineModule::Rdinp, &rdinp_request)
+        execute_runtime_module(ComputeModule::Rdinp, &rdinp_request)
             .expect("RDINP runtime execution should succeed");
 
-        let pot_request = PipelineRequest::new(
+        let pot_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Pot,
+            ComputeModule::Pot,
             output_dir.join("pot.inp"),
             &output_dir,
         );
-        execute_runtime_pipeline(PipelineModule::Pot, &pot_request)
+        execute_runtime_module(ComputeModule::Pot, &pot_request)
             .expect("POT runtime execution should succeed");
 
-        let xsph_request = PipelineRequest::new(
+        let xsph_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             output_dir.join("xsph.inp"),
             &output_dir,
         );
-        execute_runtime_pipeline(PipelineModule::Xsph, &xsph_request)
+        execute_runtime_module(ComputeModule::Xsph, &xsph_request)
             .expect("XSPH runtime execution should succeed");
 
-        let path_request = PipelineRequest::new(
+        let path_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             output_dir.join("paths.inp"),
             &output_dir,
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Path, &path_request)
+        let artifacts = execute_runtime_module(ComputeModule::Path, &path_request)
             .expect("PATH runtime execution should succeed");
         assert!(
             artifacts
@@ -874,13 +874,13 @@ mod tests {
         std::fs::write(input_dir.join("phase.bin"), phase_fixture_bytes())
             .expect("phase input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FMS-001",
-            PipelineModule::Fms,
+            ComputeModule::Fms,
             input_dir.join("fms.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Fms, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Fms, &request)
             .expect("FMS runtime execution should succeed");
         assert!(
             artifacts
@@ -910,13 +910,13 @@ mod tests {
         std::fs::write(input_dir.join("phase.bin"), phase_fixture_bytes())
             .expect("phase input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             input_dir.join("band.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Band, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Band, &request)
             .expect("BAND runtime execution should succeed");
         assert!(
             artifacts
@@ -936,34 +936,34 @@ mod tests {
     fn runtime_dispatch_executes_ldos_compute_engine() {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = temp.path().join("outputs");
-        let rdinp_request = PipelineRequest::new(
+        let rdinp_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             "feff10/examples/XANES/Cu/feff.inp",
             &output_dir,
         );
-        execute_runtime_pipeline(PipelineModule::Rdinp, &rdinp_request)
+        execute_runtime_module(ComputeModule::Rdinp, &rdinp_request)
             .expect("RDINP runtime execution should succeed");
 
-        let pot_request = PipelineRequest::new(
+        let pot_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Pot,
+            ComputeModule::Pot,
             output_dir.join("pot.inp"),
             &output_dir,
         );
-        execute_runtime_pipeline(PipelineModule::Pot, &pot_request)
+        execute_runtime_module(ComputeModule::Pot, &pot_request)
             .expect("POT runtime execution should succeed");
 
         std::fs::write(output_dir.join("reciprocal.inp"), RECIPROCAL_INPUT_FIXTURE)
             .expect("reciprocal input should be written");
 
-        let ldos_request = PipelineRequest::new(
+        let ldos_request = ComputeRequest::new(
             "FX-WORKFLOW-XAS-001",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             output_dir.join("ldos.inp"),
             &output_dir,
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Ldos, &ldos_request)
+        let artifacts = execute_runtime_module(ComputeModule::Ldos, &ldos_request)
             .expect("LDOS runtime execution should succeed");
         assert!(
             artifacts.iter().any(|artifact| {
@@ -1001,13 +1001,13 @@ mod tests {
         )
         .expect("gg_slice input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-COMPTON-001",
-            PipelineModule::Compton,
+            ComputeModule::Compton,
             input_dir.join("compton.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Compton, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Compton, &request)
             .expect("COMPTON runtime execution should succeed");
         assert!(
             artifacts
@@ -1049,13 +1049,13 @@ mod tests {
         std::fs::write(input_dir.join("spring.inp"), SPRING_INPUT_FIXTURE)
             .expect("spring input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             input_dir.join("ff2x.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Debye, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Debye, &request)
             .expect("DEBYE runtime execution should succeed");
         assert!(
             artifacts
@@ -1114,13 +1114,13 @@ mod tests {
         )
         .expect("feff.dym input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DMDW-001",
-            PipelineModule::Dmdw,
+            ComputeModule::Dmdw,
             input_dir.join("dmdw.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::Dmdw, &request)
+        let artifacts = execute_runtime_module(ComputeModule::Dmdw, &request)
             .expect("DMDW runtime execution should succeed");
         assert!(
             artifacts
@@ -1143,13 +1143,13 @@ mod tests {
         std::fs::write(input_dir.join("xmu.dat"), FULLSPECTRUM_XMU_INPUT_FIXTURE)
             .expect("xmu input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             input_dir.join("fullspectrum.inp"),
             temp.path().join("outputs"),
         );
-        let artifacts = execute_runtime_pipeline(PipelineModule::FullSpectrum, &request)
+        let artifacts = execute_runtime_module(ComputeModule::FullSpectrum, &request)
             .expect("FULLSPECTRUM runtime execution should succeed");
         assert!(
             artifacts
@@ -1197,7 +1197,7 @@ mod tests {
 
     #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
-        let error = runtime_engine_unavailable_error(PipelineModule::Rixs);
+        let error = runtime_engine_unavailable_error(ComputeModule::Rixs);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }

@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::fs;
 use std::path::Path;
 
@@ -8,13 +8,13 @@ const CRPA_REQUIRED_INPUTS: [&str; 3] = ["crpa.inp", "pot.inp", "geom.dat"];
 const CRPA_REQUIRED_OUTPUTS: [&str; 2] = ["wscrn.dat", "logscrn.dat"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CrpaPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct CrpaContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct CrpaPipelineScaffold;
+pub struct CrpaModule;
 
 #[derive(Debug, Clone)]
 struct CrpaModel {
@@ -75,21 +75,21 @@ struct CrpaOutputConfig {
     decay_rate: f64,
 }
 
-impl CrpaPipelineScaffold {
+impl CrpaModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<CrpaPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<CrpaContract> {
         validate_request_shape(request)?;
-        Ok(CrpaPipelineInterface {
+        Ok(CrpaContract {
             required_inputs: artifact_list(&CRPA_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&CRPA_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for CrpaPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for CrpaModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -147,7 +147,7 @@ impl CrpaModel {
         crpa_source: &str,
         pot_source: &str,
         geom_source: &str,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_crpa_source(fixture_id, crpa_source)?,
@@ -156,7 +156,7 @@ impl CrpaModel {
         })
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         match artifact_name {
             "wscrn.dat" => {
                 write_text_artifact(output_path, &self.render_wscrn()).map_err(|source| {
@@ -288,11 +288,11 @@ rfms1: {}\n\
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Crpa {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Crpa {
         return Err(FeffError::input_validation(
             "INPUT.CRPA_MODULE",
-            format!("CRPA pipeline expects module CRPA, got {}", request.module),
+            format!("CRPA module expects CRPA, got {}", request.module),
         ));
     }
 
@@ -304,7 +304,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.CRPA_INPUT_ARTIFACT",
                 format!(
-                    "CRPA pipeline expects input artifact '{}' at '{}'",
+                    "CRPA module expects input artifact '{}' at '{}'",
                     CRPA_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -315,7 +315,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.CRPA_INPUT_ARTIFACT",
             format!(
-                "CRPA pipeline requires input artifact '{}' but received '{}'",
+                "CRPA module requires input artifact '{}' but received '{}'",
                 CRPA_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -324,19 +324,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.CRPA_INPUT_ARTIFACT",
             format!(
-                "CRPA pipeline requires sibling inputs next to '{}'",
+                "CRPA module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.CRPA_INPUT_READ",
@@ -350,7 +350,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn parse_crpa_source(fixture_id: &str, source: &str) -> PipelineResult<CrpaControlInput> {
+fn parse_crpa_source(fixture_id: &str, source: &str) -> ComputeResult<CrpaControlInput> {
     let lines: Vec<&str> = source.lines().collect();
     let mut do_crpa: Option<i32> = None;
     let mut rcut: Option<f64> = None;
@@ -409,7 +409,7 @@ fn parse_crpa_source(fixture_id: &str, source: &str) -> PipelineResult<CrpaContr
     })
 }
 
-fn parse_pot_source(fixture_id: &str, source: &str) -> PipelineResult<PotCrpaInput> {
+fn parse_pot_source(fixture_id: &str, source: &str) -> ComputeResult<PotCrpaInput> {
     let lines: Vec<&str> = source.lines().collect();
     let title = lines
         .iter()
@@ -501,7 +501,7 @@ fn parse_pot_source(fixture_id: &str, source: &str) -> PipelineResult<PotCrpaInp
     })
 }
 
-fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomCrpaInput> {
+fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult<GeomCrpaInput> {
     let mut nat: Option<usize> = None;
     let mut nph: Option<usize> = None;
     let mut atoms = Vec::new();
@@ -584,7 +584,7 @@ fn next_nonempty_line<'a>(lines: &'a [&'a str], start_index: usize) -> Option<(u
     None
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(crpa_parse_error(
             fixture_id,
@@ -610,7 +610,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(crpa_parse_error(
@@ -654,15 +654,15 @@ fn crpa_parse_error(fixture_id: &str, message: impl Into<String>) -> FeffError {
     )
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::CrpaPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::CrpaModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -697,13 +697,13 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
 
     #[test]
     fn contract_exposes_true_compute_crpa_artifact_contract() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             "crpa.inp",
             "actual-output",
         );
-        let scaffold = CrpaPipelineScaffold;
+        let scaffold = CrpaModule;
         let contract = scaffold
             .contract_for_request(&request)
             .expect("contract should build");
@@ -724,13 +724,13 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         let output_dir = temp.path().join("actual");
         let input_path = stage_crpa_inputs(temp.path(), CRPA_INPUT_FIXTURE);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             &input_path,
             &output_dir,
         );
-        let artifacts = CrpaPipelineScaffold
+        let artifacts = CrpaModule
             .execute(&request)
             .expect("CRPA execution should succeed");
 
@@ -765,23 +765,23 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         let first_output = first_root.join("out");
         let second_output = second_root.join("out");
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             &first_input,
             &first_output,
         );
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             &second_input,
             &second_output,
         );
 
-        CrpaPipelineScaffold
+        CrpaModule
             .execute(&first_request)
             .expect("first run should succeed");
-        CrpaPipelineScaffold
+        CrpaModule
             .execute(&second_request)
             .expect("second run should succeed");
 
@@ -802,13 +802,13 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = stage_crpa_inputs(temp.path(), CRPA_INPUT_FIXTURE);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &input_path,
             temp.path(),
         );
-        let error = CrpaPipelineScaffold
+        let error = CrpaModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -824,13 +824,13 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         fs::write(temp.path().join("geom.dat"), GEOM_INPUT_FIXTURE)
             .expect("geom input should be staged");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             &input_path,
             temp.path(),
         );
-        let error = CrpaPipelineScaffold
+        let error = CrpaModule
             .execute(&request)
             .expect_err("missing pot input should fail");
 
@@ -847,13 +847,13 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
 ";
         let input_path = stage_crpa_inputs(temp.path(), disabled_crpa_input);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-CRPA-001",
-            PipelineModule::Crpa,
+            ComputeModule::Crpa,
             &input_path,
             temp.path(),
         );
-        let error = CrpaPipelineScaffold
+        let error = CrpaModule
             .execute(&request)
             .expect_err("disabled CRPA flag should fail");
 
@@ -874,7 +874,7 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         entries.iter().map(|entry| entry.to_string()).collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

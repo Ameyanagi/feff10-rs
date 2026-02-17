@@ -1,7 +1,7 @@
-use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
-use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::ldos::LdosPipelineScaffold;
-use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
+use feff10_rs::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
+use feff10_rs::modules::ModuleExecutor;
+use feff10_rs::modules::ldos::LdosModule;
+use feff10_rs::modules::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -178,13 +178,13 @@ fn run_ldos_for_fixture(fixture: &FixtureCase, root: &Path, subdir: &str) -> Pat
         );
     }
 
-    let ldos_request = PipelineRequest::new(
+    let ldos_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Ldos,
+        ComputeModule::Ldos,
         output_dir.join("ldos.inp"),
         &output_dir,
     );
-    let artifacts = LdosPipelineScaffold
+    let artifacts = LdosModule
         .execute(&ldos_request)
         .expect("LDOS execution should succeed");
 
@@ -249,7 +249,7 @@ fn list_ldos_outputs(output_dir: &Path) -> Vec<String> {
     outputs
 }
 
-fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
     artifacts
         .iter()
         .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

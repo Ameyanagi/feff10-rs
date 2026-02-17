@@ -1,7 +1,7 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
 use super::xsph::XSPH_PHASE_BINARY_MAGIC;
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::f64::consts::PI;
 use std::fs;
 use std::path::Path;
@@ -10,13 +10,13 @@ const BAND_REQUIRED_INPUTS: [&str; 4] = ["band.inp", "geom.dat", "global.inp", "
 const BAND_REQUIRED_OUTPUTS: [&str; 2] = ["bandstructure.dat", "logband.dat"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct BandPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct BandContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct BandPipelineScaffold;
+pub struct BandModule;
 
 #[derive(Debug, Clone)]
 struct BandModel {
@@ -89,21 +89,21 @@ struct BandOutputConfig {
     global_bias: f64,
 }
 
-impl BandPipelineScaffold {
+impl BandModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<BandPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<BandContract> {
         validate_request_shape(request)?;
-        Ok(BandPipelineInterface {
+        Ok(BandContract {
             required_inputs: artifact_list(&BAND_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&BAND_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for BandPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for BandModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -171,7 +171,7 @@ impl BandModel {
         geom_source: &str,
         global_source: &str,
         phase_bytes: &[u8],
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_band_source(fixture_id, band_source)?,
@@ -248,7 +248,7 @@ impl BandModel {
         }
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         match artifact_name {
             "bandstructure.dat" => write_text_artifact(output_path, &self.render_bandstructure())
                 .map_err(|source| {
@@ -397,11 +397,11 @@ energy-origin: {} band-spacing: {} k-extent: {}\n",
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Band {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Band {
         return Err(FeffError::input_validation(
             "INPUT.BAND_MODULE",
-            format!("BAND pipeline expects module BAND, got {}", request.module),
+            format!("BAND module expects BAND, got {}", request.module),
         ));
     }
 
@@ -413,7 +413,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.BAND_INPUT_ARTIFACT",
                 format!(
-                    "BAND pipeline expects input artifact '{}' at '{}'",
+                    "BAND module expects input artifact '{}' at '{}'",
                     BAND_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -424,7 +424,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.BAND_INPUT_ARTIFACT",
             format!(
-                "BAND pipeline requires input artifact '{}' but received '{}'",
+                "BAND module requires input artifact '{}' but received '{}'",
                 BAND_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -433,19 +433,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.BAND_INPUT_ARTIFACT",
             format!(
-                "BAND pipeline requires sibling inputs next to '{}'",
+                "BAND module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.BAND_INPUT_READ",
@@ -459,7 +459,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.BAND_INPUT_READ",
@@ -473,7 +473,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
     })
 }
 
-fn parse_band_source(fixture_id: &str, source: &str) -> PipelineResult<BandControlInput> {
+fn parse_band_source(fixture_id: &str, source: &str) -> ComputeResult<BandControlInput> {
     let lines = source.lines().collect::<Vec<_>>();
 
     let mband_row = marker_following_numeric_row(&lines, "mband").ok_or_else(|| {
@@ -518,7 +518,7 @@ fn parse_band_source(fixture_id: &str, source: &str) -> PipelineResult<BandContr
     })
 }
 
-fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomBandInput> {
+fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult<GeomBandInput> {
     let numeric_rows = source
         .lines()
         .map(parse_numeric_tokens)
@@ -601,7 +601,7 @@ fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomBandI
     })
 }
 
-fn parse_global_source(fixture_id: &str, source: &str) -> PipelineResult<GlobalBandInput> {
+fn parse_global_source(fixture_id: &str, source: &str) -> ComputeResult<GlobalBandInput> {
     let values = source
         .lines()
         .flat_map(parse_numeric_tokens)
@@ -629,7 +629,7 @@ fn parse_global_source(fixture_id: &str, source: &str) -> PipelineResult<GlobalB
     })
 }
 
-fn parse_phase_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PhaseBandInput> {
+fn parse_phase_source(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PhaseBandInput> {
     if bytes.is_empty() {
         return Err(band_parse_error(fixture_id, "phase.bin must be non-empty"));
     }
@@ -755,7 +755,7 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
     normalized.parse::<f64>().ok()
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(band_parse_error(
             fixture_id,
@@ -778,7 +778,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(band_parse_error(
@@ -819,15 +819,15 @@ fn checksum_bytes(bytes: &[u8]) -> u64 {
     hash
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::BandPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::BandModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::Path;
@@ -837,13 +837,13 @@ mod tests {
 
     #[test]
     fn contract_matches_true_compute_band_outputs() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             "band.inp",
             "actual-output",
         );
-        let contract = BandPipelineScaffold
+        let contract = BandModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -864,13 +864,13 @@ mod tests {
         let output_dir = temp.path().join("outputs");
         stage_required_inputs(&input_dir, &legacy_phase_bytes());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-NONBASELINE-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             input_dir.join("band.inp"),
             &output_dir,
         );
-        let artifacts = BandPipelineScaffold
+        let artifacts = BandModule
             .execute(&request)
             .expect("BAND execution should succeed without fixture baseline lookup");
 
@@ -906,23 +906,23 @@ mod tests {
         stage_required_inputs(&first_input, &phase_bytes);
         stage_required_inputs(&second_input, &phase_bytes);
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             first_input.join("band.inp"),
             &first_output,
         );
-        BandPipelineScaffold
+        BandModule
             .execute(&first_request)
             .expect("first BAND execution should succeed");
 
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             second_input.join("band.inp"),
             &second_output,
         );
-        BandPipelineScaffold
+        BandModule
             .execute(&second_request)
             .expect("second BAND execution should succeed");
 
@@ -945,13 +945,13 @@ mod tests {
         let output_dir = temp.path().join("outputs");
         stage_required_inputs(&input_dir, &xsph_phase_fixture_bytes());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             input_dir.join("band.inp"),
             &output_dir,
         );
-        let artifacts = BandPipelineScaffold
+        let artifacts = BandModule
             .execute(&request)
             .expect("BAND execution should accept true-compute phase.bin");
 
@@ -967,13 +967,13 @@ mod tests {
         let input_dir = temp.path().join("inputs");
         stage_required_inputs(&input_dir, &legacy_phase_bytes());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             input_dir.join("band.inp"),
             temp.path(),
         );
-        let error = BandPipelineScaffold
+        let error = BandModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -993,13 +993,13 @@ mod tests {
         fs::write(input_dir.join("global.inp"), default_global_source())
             .expect("global input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             input_dir.join("band.inp"),
             temp.path().join("out"),
         );
-        let error = BandPipelineScaffold
+        let error = BandModule
             .execute(&request)
             .expect_err("missing phase input should fail");
 
@@ -1024,13 +1024,13 @@ mod tests {
         fs::write(input_dir.join("phase.bin"), legacy_phase_bytes())
             .expect("phase input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-BAND-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             input_dir.join("band.inp"),
             temp.path().join("out"),
         );
-        let error = BandPipelineScaffold
+        let error = BandModule
             .execute(&request)
             .expect_err("malformed input should fail");
 
@@ -1103,7 +1103,7 @@ evec xivec spvec\n\
             .collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

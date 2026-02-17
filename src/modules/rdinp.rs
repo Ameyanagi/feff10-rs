@@ -1,8 +1,8 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
 use crate::domain::{
-    FeffError, InputCard, InputDeck, PipelineArtifact, PipelineModule, PipelineRequest,
-    PipelineResult,
+    FeffError, InputCard, InputDeck, ComputeArtifact, ComputeModule, ComputeRequest,
+    ComputeResult,
 };
 use crate::parser::parse_input_deck;
 use std::fs;
@@ -147,13 +147,13 @@ const FULLSPECTRUM_INP_TEMPLATE: &str = " mFullSpectrum
 ";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RdinpPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct RdinpContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RdinpPipelineScaffold;
+pub struct RdinpModule;
 
 #[derive(Debug, Clone)]
 struct PotentialEntry {
@@ -198,24 +198,24 @@ struct RdinpModel {
     run_crpa: bool,
     run_full_spectrum: bool,
     rixs_edge_label: String,
-    expected_outputs: Vec<PipelineArtifact>,
+    expected_outputs: Vec<ComputeArtifact>,
 }
 
-impl RdinpPipelineScaffold {
+impl RdinpModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<RdinpPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<RdinpContract> {
         let model = model_for_request(request)?;
-        Ok(RdinpPipelineInterface {
+        Ok(RdinpContract {
             required_inputs: artifact_list(&RDINP_REQUIRED_INPUTS),
             expected_outputs: model.expected_outputs,
         })
     }
 }
 
-impl PipelineExecutor for RdinpPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for RdinpModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         let model = model_for_request(request)?;
         fs::create_dir_all(&request.output_dir).map_err(|source| {
             FeffError::io_system(
@@ -262,7 +262,7 @@ impl PipelineExecutor for RdinpPipelineScaffold {
 }
 
 impl RdinpModel {
-    fn from_deck(deck: &InputDeck) -> PipelineResult<Self> {
+    fn from_deck(deck: &InputDeck) -> ComputeResult<Self> {
         let potentials = parse_potentials(deck)?;
         let atoms = sort_atoms_by_distance(parse_atoms(deck)?);
         let has_xanes = has_card(deck, "XANES");
@@ -353,7 +353,7 @@ impl RdinpModel {
         })
     }
 
-    fn render_artifact(&self, artifact_path: &str) -> PipelineResult<String> {
+    fn render_artifact(&self, artifact_path: &str) -> ComputeResult<String> {
         match artifact_path {
             "geom.dat" => Ok(self.render_geom_dat()),
             "global.inp" => Ok(GLOBAL_INP_TEMPLATE.to_string()),
@@ -711,19 +711,19 @@ impl RdinpModel {
     }
 }
 
-fn model_for_request(request: &PipelineRequest) -> PipelineResult<RdinpModel> {
+fn model_for_request(request: &ComputeRequest) -> ComputeResult<RdinpModel> {
     validate_request_shape(request)?;
     let input_source = read_input_source(&request.input_path)?;
     let deck = parse_input_deck(&input_source)?;
     RdinpModel::from_deck(&deck)
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Rdinp {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Rdinp {
         return Err(FeffError::input_validation(
             "INPUT.RDINP_MODULE",
             format!(
-                "RDINP pipeline expects module RDINP, got {}",
+                "RDINP module expects RDINP, got {}",
                 request.module
             ),
         ));
@@ -737,7 +737,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.RDINP_INPUT_ARTIFACT",
                 format!(
-                    "RDINP pipeline expects input artifact '{}' at '{}'",
+                    "RDINP module expects input artifact '{}' at '{}'",
                     RDINP_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -747,7 +747,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.RDINP_INPUT_ARTIFACT",
             format!(
-                "RDINP pipeline requires input artifact '{}' but received '{}'",
+                "RDINP module requires input artifact '{}' but received '{}'",
                 RDINP_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -755,7 +755,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn read_input_source(input_path: &std::path::Path) -> PipelineResult<String> {
+fn read_input_source(input_path: &std::path::Path) -> ComputeResult<String> {
     fs::read_to_string(input_path).map_err(|source| {
         FeffError::io_system(
             "IO.RDINP_INPUT_READ",
@@ -768,7 +768,7 @@ fn read_input_source(input_path: &std::path::Path) -> PipelineResult<String> {
     })
 }
 
-fn parse_potentials(deck: &InputDeck) -> PipelineResult<Vec<PotentialEntry>> {
+fn parse_potentials(deck: &InputDeck) -> ComputeResult<Vec<PotentialEntry>> {
     let mut rows = Vec::new();
     for card in deck
         .cards
@@ -821,7 +821,7 @@ fn parse_potentials(deck: &InputDeck) -> PipelineResult<Vec<PotentialEntry>> {
     Ok(entries)
 }
 
-fn parse_atoms(deck: &InputDeck) -> PipelineResult<Vec<AtomSite>> {
+fn parse_atoms(deck: &InputDeck) -> ComputeResult<Vec<AtomSite>> {
     let mut rows = Vec::new();
     for card in deck.cards.iter().filter(|card| card.keyword == "ATOMS") {
         if !card.values.is_empty() {
@@ -899,7 +899,7 @@ fn sort_atoms_by_distance(mut atoms: Vec<AtomSite>) -> Vec<AtomSite> {
     atoms
 }
 
-fn card_value(deck: &InputDeck, keyword: &str, index: usize) -> PipelineResult<Option<f64>> {
+fn card_value(deck: &InputDeck, keyword: &str, index: usize) -> ComputeResult<Option<f64>> {
     let Some(card) = first_card(deck, keyword) else {
         return Ok(None);
     };
@@ -920,7 +920,7 @@ fn card_value(deck: &InputDeck, keyword: &str, index: usize) -> PipelineResult<O
     Ok(Some(value))
 }
 
-fn required_card_value(deck: &InputDeck, keyword: &str, index: usize) -> PipelineResult<f64> {
+fn required_card_value(deck: &InputDeck, keyword: &str, index: usize) -> ComputeResult<f64> {
     card_value(deck, keyword, index)?.ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.RDINP_CARD_VALUE",
@@ -929,7 +929,7 @@ fn required_card_value(deck: &InputDeck, keyword: &str, index: usize) -> Pipelin
     })
 }
 
-fn parse_f64_token(token: &str, field: &str, line: usize) -> PipelineResult<f64> {
+fn parse_f64_token(token: &str, field: &str, line: usize) -> ComputeResult<f64> {
     let normalized = token.replace('D', "E").replace('d', "e");
     normalized.parse::<f64>().map_err(|_| {
         FeffError::input_validation(
@@ -942,7 +942,7 @@ fn parse_f64_token(token: &str, field: &str, line: usize) -> PipelineResult<f64>
     })
 }
 
-fn parse_i32_token(token: &str, field: &str, line: usize) -> PipelineResult<i32> {
+fn parse_i32_token(token: &str, field: &str, line: usize) -> ComputeResult<i32> {
     if let Ok(value) = token.parse::<i32>() {
         return Ok(value);
     }
@@ -1012,33 +1012,33 @@ fn format_f64_13(value: f64) -> String {
     format_fixed_f64(value, 13, 5)
 }
 
-fn expected_outputs_for_screen_card(has_screen_card: bool) -> Vec<PipelineArtifact> {
+fn expected_outputs_for_screen_card(has_screen_card: bool) -> Vec<ComputeArtifact> {
     let mut outputs = RDINP_BASE_OUTPUTS_PREFIX
         .iter()
         .copied()
-        .map(PipelineArtifact::new)
+        .map(ComputeArtifact::new)
         .collect::<Vec<_>>();
     if has_screen_card {
-        outputs.push(PipelineArtifact::new(RDINP_OPTIONAL_SCREEN_OUTPUT));
+        outputs.push(ComputeArtifact::new(RDINP_OPTIONAL_SCREEN_OUTPUT));
     }
     outputs.extend(
         RDINP_BASE_OUTPUTS_SUFFIX
             .iter()
             .copied()
-            .map(PipelineArtifact::new),
+            .map(ComputeArtifact::new),
     );
     outputs
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{RdinpPipelineScaffold, expected_outputs_for_screen_card};
-    use crate::domain::{FeffErrorCategory, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::{RdinpModule, expected_outputs_for_screen_card};
+    use crate::domain::{FeffErrorCategory, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::fs;
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
@@ -1054,13 +1054,13 @@ mod tests {
         )
         .expect("input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RDINP-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             &input_path,
             &output_dir,
         );
-        let scaffold = RdinpPipelineScaffold;
+        let scaffold = RdinpModule;
         let contract = scaffold
             .contract_for_request(&request)
             .expect("contract should build");
@@ -1113,13 +1113,13 @@ mod tests {
         )
         .expect("input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RDINP-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             &input_path,
             &output_dir,
         );
-        let scaffold = RdinpPipelineScaffold;
+        let scaffold = RdinpModule;
         let artifacts = scaffold
             .execute(&request)
             .expect("RDINP execution should succeed");
@@ -1157,8 +1157,8 @@ mod tests {
         .expect("input should be written");
 
         let request =
-            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, temp.path());
-        let scaffold = RdinpPipelineScaffold;
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, &input_path, temp.path());
+        let scaffold = RdinpModule;
         let error = scaffold
             .execute(&request)
             .expect_err("module mismatch should fail");
@@ -1177,14 +1177,14 @@ mod tests {
             "TITLE Cu\nPOTENTIALS\n0 29 Cu\n1 29 Cu\nATOMS\n0.0 0.0 0.0 0 Cu\n1.0 0.0 0.0 1 Cu\n2.0 0.0 0.0 1 Cu\nEND\n",
         )
         .expect("input should be written");
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RDINP-ATOMCOUNT",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             &input_path,
             &output_dir,
         );
 
-        let scaffold = RdinpPipelineScaffold;
+        let scaffold = RdinpModule;
         scaffold
             .execute(&request)
             .expect("execution should succeed");

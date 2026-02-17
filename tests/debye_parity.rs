@@ -1,7 +1,7 @@
-use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
-use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::debye::DebyePipelineScaffold;
-use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
+use feff10_rs::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
+use feff10_rs::modules::ModuleExecutor;
+use feff10_rs::modules::debye::DebyeModule;
+use feff10_rs::modules::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -180,13 +180,13 @@ fn run_debye_for_fixture(
     let output_dir = root.join(fixture.id).join(subdir);
     stage_debye_inputs_for_fixture(fixture, &output_dir, include_spring);
 
-    let debye_request = PipelineRequest::new(
+    let debye_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Debye,
+        ComputeModule::Debye,
         output_dir.join("ff2x.inp"),
         &output_dir,
     );
-    let artifacts = DebyePipelineScaffold
+    let artifacts = DebyeModule
         .execute(&debye_request)
         .expect("DEBYE execution should succeed");
 
@@ -277,7 +277,7 @@ fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {
         .collect()
 }
 
-fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
     artifacts
         .iter()
         .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::f64::consts::PI;
 use std::fs;
 use std::path::Path;
@@ -12,13 +12,13 @@ const CHECKSUM_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
 const CHECKSUM_PRIME: u64 = 0x00000100000001B3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DmdwPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct DmdwContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DmdwPipelineScaffold;
+pub struct DmdwModule;
 
 #[derive(Debug, Clone)]
 struct DmdwModel {
@@ -62,21 +62,21 @@ struct DmdwPathRow {
     sigma2_ang2: f64,
 }
 
-impl DmdwPipelineScaffold {
+impl DmdwModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<DmdwPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<DmdwContract> {
         validate_request_shape(request)?;
-        Ok(DmdwPipelineInterface {
+        Ok(DmdwContract {
             required_inputs: artifact_list(&DMDW_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&DMDW_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for DmdwPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for DmdwModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -128,7 +128,7 @@ impl DmdwModel {
         fixture_id: &str,
         dmdw_source: &str,
         feff_dym_bytes: &[u8],
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_dmdw_source(fixture_id, dmdw_source)?,
@@ -136,7 +136,7 @@ impl DmdwModel {
         })
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         let contents = match artifact_name {
             "dmdw.out" => self.render_dmdw_out(),
             other => {
@@ -283,11 +283,11 @@ impl DmdwModel {
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Dmdw {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Dmdw {
         return Err(FeffError::input_validation(
             "INPUT.DMDW_MODULE",
-            format!("DMDW pipeline expects module DMDW, got {}", request.module),
+            format!("DMDW module expects DMDW, got {}", request.module),
         ));
     }
 
@@ -299,7 +299,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.DMDW_INPUT_ARTIFACT",
                 format!(
-                    "DMDW pipeline expects input artifact '{}' at '{}'",
+                    "DMDW module expects input artifact '{}' at '{}'",
                     DMDW_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -310,7 +310,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.DMDW_INPUT_ARTIFACT",
             format!(
-                "DMDW pipeline requires input artifact '{}' but received '{}'",
+                "DMDW module requires input artifact '{}' but received '{}'",
                 DMDW_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -319,19 +319,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.DMDW_INPUT_ARTIFACT",
             format!(
-                "DMDW pipeline requires sibling inputs next to '{}'",
+                "DMDW module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.DMDW_INPUT_READ",
@@ -345,7 +345,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.DMDW_INPUT_READ",
@@ -359,7 +359,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
     })
 }
 
-fn parse_dmdw_source(fixture_id: &str, source: &str) -> PipelineResult<DmdwControlInput> {
+fn parse_dmdw_source(fixture_id: &str, source: &str) -> ComputeResult<DmdwControlInput> {
     let lines: Vec<&str> = source
         .lines()
         .map(str::trim)
@@ -531,15 +531,15 @@ fn fnv1a64(bytes: &[u8]) -> u64 {
     hash
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DmdwPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::DmdwModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::Path;
@@ -550,13 +550,13 @@ mod tests {
 
     #[test]
     fn contract_declares_required_inputs_and_outputs() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DMDW-001",
-            PipelineModule::Dmdw,
+            ComputeModule::Dmdw,
             "dmdw.inp",
             "actual-output",
         );
-        let contract = DmdwPipelineScaffold
+        let contract = DmdwModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -581,13 +581,13 @@ mod tests {
             &[0_u8, 1_u8, 2_u8, 3_u8],
         );
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DMDW-001",
-            PipelineModule::Dmdw,
+            ComputeModule::Dmdw,
             &input_path,
             &output_dir,
         );
-        let artifacts = DmdwPipelineScaffold
+        let artifacts = DmdwModule
             .execute(&request)
             .expect("DMDW execution should succeed");
 
@@ -617,14 +617,14 @@ mod tests {
         let second = temp.path().join("second");
 
         let first_request =
-            PipelineRequest::new("FX-DMDW-001", PipelineModule::Dmdw, &input_path, &first);
-        DmdwPipelineScaffold
+            ComputeRequest::new("FX-DMDW-001", ComputeModule::Dmdw, &input_path, &first);
+        DmdwModule
             .execute(&first_request)
             .expect("first run should succeed");
 
         let second_request =
-            PipelineRequest::new("FX-DMDW-001", PipelineModule::Dmdw, &input_path, &second);
-        DmdwPipelineScaffold
+            ComputeRequest::new("FX-DMDW-001", ComputeModule::Dmdw, &input_path, &second);
+        DmdwModule
             .execute(&second_request)
             .expect("second run should succeed");
 
@@ -661,18 +661,18 @@ mod tests {
         let first_output = temp.path().join("first-output");
         let second_output = temp.path().join("second-output");
 
-        DmdwPipelineScaffold
-            .execute(&PipelineRequest::new(
+        DmdwModule
+            .execute(&ComputeRequest::new(
                 "FX-DMDW-001",
-                PipelineModule::Dmdw,
+                ComputeModule::Dmdw,
                 &first_input,
                 &first_output,
             ))
             .expect("first run should succeed");
-        DmdwPipelineScaffold
-            .execute(&PipelineRequest::new(
+        DmdwModule
+            .execute(&ComputeRequest::new(
                 "FX-DMDW-001",
-                PipelineModule::Dmdw,
+                ComputeModule::Dmdw,
                 &second_input,
                 &second_output,
             ))
@@ -697,13 +697,13 @@ mod tests {
             &[0_u8, 1_u8, 2_u8],
         );
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DMDW-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             &input_path,
             temp.path(),
         );
-        let error = DmdwPipelineScaffold
+        let error = DmdwModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -717,13 +717,13 @@ mod tests {
         let input_path = temp.path().join("dmdw.inp");
         fs::write(&input_path, DMDW_INPUT_FIXTURE).expect("dmdw input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DMDW-001",
-            PipelineModule::Dmdw,
+            ComputeModule::Dmdw,
             &input_path,
             temp.path(),
         );
-        let error = DmdwPipelineScaffold
+        let error = DmdwModule
             .execute(&request)
             .expect_err("missing feff.dym should fail");
 
@@ -739,13 +739,13 @@ mod tests {
         fs::write(temp.path().join("feff.dym"), [0_u8, 1_u8, 2_u8])
             .expect("feff.dym should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DMDW-001",
-            PipelineModule::Dmdw,
+            ComputeModule::Dmdw,
             &input_path,
             temp.path(),
         );
-        let error = DmdwPipelineScaffold
+        let error = DmdwModule
             .execute(&request)
             .expect_err("empty input should fail");
 
@@ -765,7 +765,7 @@ mod tests {
         fs::write(feff_dym, feff_dym_bytes).expect("feff.dym should be written");
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::fs;
 use std::path::Path;
 
@@ -11,13 +11,13 @@ const POT_CONTROL_I32_COUNT: usize = 16;
 const POT_CONTROL_F64_COUNT: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LdosPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct LdosContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct LdosPipelineScaffold;
+pub struct LdosModule;
 
 #[derive(Debug, Clone)]
 struct LdosModel {
@@ -92,11 +92,11 @@ struct LdosOutputConfig {
     cluster_atoms: usize,
 }
 
-impl LdosPipelineScaffold {
+impl LdosModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<LdosPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<LdosContract> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
         let ldos_source = read_input_source(&request.input_path, LDOS_REQUIRED_INPUTS[0])?;
@@ -120,15 +120,15 @@ impl LdosPipelineScaffold {
             &reciprocal_source,
         )?;
 
-        Ok(LdosPipelineInterface {
+        Ok(LdosContract {
             required_inputs: artifact_list(&LDOS_REQUIRED_INPUTS),
             expected_outputs: model.expected_outputs(),
         })
     }
 }
 
-impl PipelineExecutor for LdosPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for LdosModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -196,7 +196,7 @@ impl LdosModel {
         geom_source: &str,
         pot_bytes: &[u8],
         reciprocal_source: &str,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_ldos_source(fixture_id, ldos_source)?,
@@ -259,11 +259,11 @@ impl LdosModel {
         min_count.max(range_count).max(geom_hint).clamp(32, 2048)
     }
 
-    fn expected_outputs(&self) -> Vec<PipelineArtifact> {
+    fn expected_outputs(&self) -> Vec<ComputeArtifact> {
         expected_output_artifacts(self.output_channel_count())
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         if artifact_name.eq_ignore_ascii_case(LDOS_LOG_OUTPUT) {
             return write_text_artifact(output_path, &self.render_logdos()).map_err(|source| {
                 FeffError::io_system(
@@ -487,11 +487,11 @@ pot-checksum: {}\n",
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Ldos {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Ldos {
         return Err(FeffError::input_validation(
             "INPUT.LDOS_MODULE",
-            format!("LDOS pipeline expects module LDOS, got {}", request.module),
+            format!("LDOS module expects LDOS, got {}", request.module),
         ));
     }
 
@@ -503,7 +503,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.LDOS_INPUT_ARTIFACT",
                 format!(
-                    "LDOS pipeline expects input artifact '{}' at '{}'",
+                    "LDOS module expects input artifact '{}' at '{}'",
                     LDOS_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -514,7 +514,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.LDOS_INPUT_ARTIFACT",
             format!(
-                "LDOS pipeline requires input artifact '{}' but received '{}'",
+                "LDOS module requires input artifact '{}' but received '{}'",
                 LDOS_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -523,19 +523,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.LDOS_INPUT_ARTIFACT",
             format!(
-                "LDOS pipeline requires sibling inputs next to '{}'",
+                "LDOS module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.LDOS_INPUT_READ",
@@ -549,7 +549,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.LDOS_INPUT_READ",
@@ -563,7 +563,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
     })
 }
 
-fn parse_ldos_source(fixture_id: &str, source: &str) -> PipelineResult<LdosControlInput> {
+fn parse_ldos_source(fixture_id: &str, source: &str) -> ComputeResult<LdosControlInput> {
     let lines = source.lines().collect::<Vec<_>>();
     let mut mldos_enabled: Option<bool> = None;
     let mut neldos: Option<usize> = None;
@@ -688,7 +688,7 @@ fn parse_ldos_source(fixture_id: &str, source: &str) -> PipelineResult<LdosContr
     })
 }
 
-fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomLdosInput> {
+fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult<GeomLdosInput> {
     let numeric_rows = source
         .lines()
         .map(parse_numeric_tokens)
@@ -769,7 +769,7 @@ fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomLdosI
     })
 }
 
-fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotLdosInput> {
+fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PotLdosInput> {
     if bytes.is_empty() {
         return Err(ldos_parse_error(fixture_id, "pot.bin is empty"));
     }
@@ -799,7 +799,7 @@ fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotLdosInp
     })
 }
 
-fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotLdosInput> {
+fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PotLdosInput> {
     let mut offset = POT_BINARY_MAGIC.len();
 
     for _ in 0..POT_CONTROL_I32_COUNT {
@@ -873,7 +873,7 @@ fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> PipelineResu
     })
 }
 
-fn parse_reciprocal_source(fixture_id: &str, source: &str) -> PipelineResult<ReciprocalLdosInput> {
+fn parse_reciprocal_source(fixture_id: &str, source: &str) -> ComputeResult<ReciprocalLdosInput> {
     let values = source
         .lines()
         .flat_map(parse_numeric_tokens)
@@ -903,11 +903,11 @@ fn parse_ldos_channel_name(file_name: &str) -> Option<usize> {
     digits.parse::<usize>().ok()
 }
 
-fn expected_output_artifacts(channel_count: usize) -> Vec<PipelineArtifact> {
+fn expected_output_artifacts(channel_count: usize) -> Vec<ComputeArtifact> {
     let mut outputs = (0..channel_count)
-        .map(|channel| PipelineArtifact::new(format!("ldos{channel:02}.dat")))
+        .map(|channel| ComputeArtifact::new(format!("ldos{channel:02}.dat")))
         .collect::<Vec<_>>();
-    outputs.push(PipelineArtifact::new(LDOS_LOG_OUTPUT));
+    outputs.push(ComputeArtifact::new(LDOS_LOG_OUTPUT));
     outputs
 }
 
@@ -948,7 +948,7 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
     normalized.parse::<f64>().ok()
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(ldos_parse_error(
             fixture_id,
@@ -971,7 +971,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(ldos_parse_error(
@@ -1019,15 +1019,15 @@ fn distance(left: AtomSite, right: AtomSite) -> f64 {
     (dx * dx + dy * dy + dz * dz).sqrt()
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::LdosPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::LdosModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1045,13 +1045,13 @@ mod tests {
             &temp.path().join("reciprocal.inp"),
         );
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-LDOS-001",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             temp.path().join("ldos.inp"),
             temp.path().join("actual-output"),
         );
-        let scaffold = LdosPipelineScaffold;
+        let scaffold = LdosModule;
         let contract = scaffold
             .contract_for_request(&request)
             .expect("contract should build");
@@ -1093,13 +1093,13 @@ mod tests {
             &temp.path().join("reciprocal.inp"),
         );
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-LDOS-001",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             &input_path,
             &output_dir,
         );
-        let scaffold = LdosPipelineScaffold;
+        let scaffold = LdosModule;
         let artifacts = scaffold
             .execute(&request)
             .expect("LDOS execution should succeed");
@@ -1139,10 +1139,10 @@ mod tests {
             );
         }
 
-        let scaffold = LdosPipelineScaffold;
-        let first_request = PipelineRequest::new(
+        let scaffold = LdosModule;
+        let first_request = ComputeRequest::new(
             "FX-LDOS-001",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             first_input_dir.join("ldos.inp"),
             &first_output_dir,
         );
@@ -1150,9 +1150,9 @@ mod tests {
             .execute(&first_request)
             .expect("first LDOS execution should succeed");
 
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-LDOS-001",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             second_input_dir.join("ldos.inp"),
             &second_output_dir,
         );
@@ -1187,13 +1187,13 @@ mod tests {
         fs::write(temp.path().join("reciprocal.inp"), RECIPROCAL_INPUT_FIXTURE)
             .expect("reciprocal input should be staged");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RDINP-COMPAT",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             &input_path,
             &output_dir,
         );
-        let artifacts = LdosPipelineScaffold
+        let artifacts = LdosModule
             .execute(&request)
             .expect("LDOS should accept RDINP-style ldos.inp");
 
@@ -1218,13 +1218,13 @@ mod tests {
         fs::write(temp.path().join("reciprocal.inp"), "R 0.0 0.0 0.0\n")
             .expect("reciprocal should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-LDOS-001",
-            PipelineModule::Band,
+            ComputeModule::Band,
             &input_path,
             temp.path(),
         );
-        let scaffold = LdosPipelineScaffold;
+        let scaffold = LdosModule;
         let error = scaffold
             .execute(&request)
             .expect_err("module mismatch should fail");
@@ -1242,13 +1242,13 @@ mod tests {
         fs::write(temp.path().join("reciprocal.inp"), "R 0.0 0.0 0.0\n")
             .expect("reciprocal should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-LDOS-001",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             &input_path,
             temp.path(),
         );
-        let scaffold = LdosPipelineScaffold;
+        let scaffold = LdosModule;
         let error = scaffold
             .execute(&request)
             .expect_err("missing pot input should fail");
@@ -1278,7 +1278,7 @@ mod tests {
             .collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::f64::consts::PI;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,14 +21,14 @@ const CHECKSUM_OFFSET_BASIS: u64 = 0xcbf29ce484222325;
 const CHECKSUM_PRIME: u64 = 0x00000100000001B3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct DebyePipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub optional_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct DebyeContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub optional_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct DebyePipelineScaffold;
+pub struct DebyeModule;
 
 #[derive(Debug, Clone)]
 struct DebyeModel {
@@ -151,13 +151,13 @@ struct DebyeSpectrumPoint {
     phase: f64,
 }
 
-impl DebyePipelineScaffold {
+impl DebyeModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<DebyePipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<DebyeContract> {
         validate_request_shape(request)?;
-        Ok(DebyePipelineInterface {
+        Ok(DebyeContract {
             required_inputs: artifact_list(&DEBYE_REQUIRED_INPUTS),
             optional_inputs: artifact_list(&DEBYE_OPTIONAL_INPUTS),
             expected_outputs: artifact_list(&DEBYE_REQUIRED_OUTPUTS),
@@ -165,8 +165,8 @@ impl DebyePipelineScaffold {
     }
 }
 
-impl PipelineExecutor for DebyePipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for DebyeModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -234,7 +234,7 @@ impl DebyeModel {
         paths_source: &str,
         feff_source: &str,
         spring_source: Option<&str>,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_ff2x_source(fixture_id, ff2x_source)?,
@@ -449,7 +449,7 @@ impl DebyeModel {
         points
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         let contents = match artifact_name {
             "s2_em.dat" => self.render_s2_em(),
             "s2_rm1.dat" => self.render_s2_rm1(),
@@ -734,12 +734,12 @@ impl DebyeModel {
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Debye {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Debye {
         return Err(FeffError::input_validation(
             "INPUT.DEBYE_MODULE",
             format!(
-                "DEBYE pipeline expects module DEBYE, got {}",
+                "DEBYE module expects DEBYE, got {}",
                 request.module
             ),
         ));
@@ -753,7 +753,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.DEBYE_INPUT_ARTIFACT",
                 format!(
-                    "DEBYE pipeline expects input artifact '{}' at '{}'",
+                    "DEBYE module expects input artifact '{}' at '{}'",
                     DEBYE_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -764,7 +764,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.DEBYE_INPUT_ARTIFACT",
             format!(
-                "DEBYE pipeline requires input artifact '{}' but received '{}'",
+                "DEBYE module requires input artifact '{}' but received '{}'",
                 DEBYE_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -773,19 +773,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.DEBYE_INPUT_ARTIFACT",
             format!(
-                "DEBYE pipeline requires sibling inputs next to '{}'",
+                "DEBYE module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.DEBYE_INPUT_READ",
@@ -802,7 +802,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
 fn maybe_read_optional_input_source(
     path: PathBuf,
     artifact_name: &str,
-) -> PipelineResult<Option<String>> {
+) -> ComputeResult<Option<String>> {
     if path.is_file() {
         return read_input_source(&path, artifact_name).map(Some);
     }
@@ -810,7 +810,7 @@ fn maybe_read_optional_input_source(
     Ok(None)
 }
 
-fn parse_ff2x_source(fixture_id: &str, source: &str) -> PipelineResult<DebyeControlInput> {
+fn parse_ff2x_source(fixture_id: &str, source: &str) -> ComputeResult<DebyeControlInput> {
     let lines = source.lines().collect::<Vec<_>>();
     let mut control = DebyeControlInput::default();
 
@@ -925,7 +925,7 @@ fn parse_ff2x_source(fixture_id: &str, source: &str) -> PipelineResult<DebyeCont
     Ok(control)
 }
 
-fn parse_paths_source(fixture_id: &str, source: &str) -> PipelineResult<PathInputSummary> {
+fn parse_paths_source(fixture_id: &str, source: &str) -> ComputeResult<PathInputSummary> {
     let checksum = checksum_bytes(source.as_bytes());
     let mut entries = Vec::new();
 
@@ -1022,7 +1022,7 @@ fn parse_reff_from_path_line(line: &str) -> Option<f64> {
     None
 }
 
-fn parse_feff_source(fixture_id: &str, source: &str) -> PipelineResult<FeffInputSummary> {
+fn parse_feff_source(fixture_id: &str, source: &str) -> ComputeResult<FeffInputSummary> {
     let checksum = checksum_bytes(source.as_bytes());
     let mut title = String::from("DEBYE true-compute");
     let mut edge_label = String::from("K");
@@ -1261,7 +1261,7 @@ fn parse_usize_token(token: &str) -> Option<usize> {
     trimmed.parse::<usize>().ok()
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(debye_parse_error(
             fixture_id,
@@ -1307,15 +1307,15 @@ fn checksum_bytes(bytes: &[u8]) -> u64 {
     checksum
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::DebyePipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::DebyeModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::Path;
@@ -1323,13 +1323,13 @@ mod tests {
 
     #[test]
     fn contract_exposes_required_and_optional_artifacts() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             "ff2x.inp",
             "actual-output",
         );
-        let scaffold = DebyePipelineScaffold;
+        let scaffold = DebyeModule;
         let contract = scaffold
             .contract_for_request(&request)
             .expect("contract should build");
@@ -1363,13 +1363,13 @@ mod tests {
         let output_dir = temp.path().join("outputs");
         stage_debye_inputs(&input_dir, true);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             input_dir.join("ff2x.inp"),
             &output_dir,
         );
-        let artifacts = DebyePipelineScaffold
+        let artifacts = DebyeModule
             .execute(&request)
             .expect("DEBYE execution should succeed");
 
@@ -1408,23 +1408,23 @@ mod tests {
         let first_output = temp.path().join("first-output");
         let second_output = temp.path().join("second-output");
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             input_dir.join("ff2x.inp"),
             &first_output,
         );
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             input_dir.join("ff2x.inp"),
             &second_output,
         );
 
-        let first_artifacts = DebyePipelineScaffold
+        let first_artifacts = DebyeModule
             .execute(&first_request)
             .expect("first DEBYE run should succeed");
-        let second_artifacts = DebyePipelineScaffold
+        let second_artifacts = DebyeModule
             .execute(&second_request)
             .expect("second DEBYE run should succeed");
 
@@ -1454,13 +1454,13 @@ mod tests {
         let output_dir = temp.path().join("outputs");
         stage_debye_inputs(&input_dir, false);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             input_dir.join("ff2x.inp"),
             &output_dir,
         );
-        DebyePipelineScaffold
+        DebyeModule
             .execute(&request)
             .expect("DEBYE execution without spring input should succeed");
 
@@ -1478,13 +1478,13 @@ mod tests {
         let input_dir = temp.path().join("inputs");
         stage_debye_inputs(&input_dir, true);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Dmdw,
+            ComputeModule::Dmdw,
             input_dir.join("ff2x.inp"),
             temp.path().join("out"),
         );
-        let error = DebyePipelineScaffold
+        let error = DebyeModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1500,13 +1500,13 @@ mod tests {
         fs::write(input_dir.join("ff2x.inp"), FF2X_INPUT_FIXTURE).expect("ff2x should be staged");
         fs::write(input_dir.join("feff.inp"), FEFF_INPUT_FIXTURE).expect("feff should be staged");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-DEBYE-001",
-            PipelineModule::Debye,
+            ComputeModule::Debye,
             input_dir.join("ff2x.inp"),
             temp.path().join("out"),
         );
-        let error = DebyePipelineScaffold
+        let error = DebyeModule
             .execute(&request)
             .expect_err("missing paths.dat should fail");
 
@@ -1525,7 +1525,7 @@ mod tests {
         }
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

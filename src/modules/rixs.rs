@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::f64::consts::PI;
 use std::fs;
 use std::path::Path;
@@ -24,13 +24,13 @@ const RIXS_REQUIRED_OUTPUTS: [&str; 7] = [
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct RixsPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct RixsContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct RixsPipelineScaffold;
+pub struct RixsModule;
 
 #[derive(Debug, Clone)]
 struct RixsModel {
@@ -138,21 +138,21 @@ struct RixsEeSample {
     intensity: f64,
 }
 
-impl RixsPipelineScaffold {
+impl RixsModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<RixsPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<RixsContract> {
         validate_request_shape(request)?;
-        Ok(RixsPipelineInterface {
+        Ok(RixsContract {
             required_inputs: artifact_list(&RIXS_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&RIXS_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for RixsPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for RixsModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -232,7 +232,7 @@ impl RixsModel {
         wscrn_1_source: &str,
         wscrn_2_source: &str,
         xsect_2_source: &str,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_rixs_source(fixture_id, rixs_source)?,
@@ -244,7 +244,7 @@ impl RixsModel {
         })
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         let contents = match artifact_name {
             "rixs0.dat" => self.render_rixs0(),
             "rixs1.dat" => self.render_rixs1(),
@@ -627,11 +627,11 @@ Module RIXS true-compute execution finished.
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Rixs {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Rixs {
         return Err(FeffError::input_validation(
             "INPUT.RIXS_MODULE",
-            format!("RIXS pipeline expects module RIXS, got {}", request.module),
+            format!("RIXS module expects RIXS, got {}", request.module),
         ));
     }
 
@@ -643,7 +643,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.RIXS_INPUT_ARTIFACT",
                 format!(
-                    "RIXS pipeline expects input artifact '{}' at '{}'",
+                    "RIXS module expects input artifact '{}' at '{}'",
                     RIXS_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -654,7 +654,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.RIXS_INPUT_ARTIFACT",
             format!(
-                "RIXS pipeline requires input artifact '{}' but received '{}'",
+                "RIXS module requires input artifact '{}' but received '{}'",
                 RIXS_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -663,19 +663,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.RIXS_INPUT_ARTIFACT",
             format!(
-                "RIXS pipeline requires sibling inputs next to '{}'",
+                "RIXS module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.RIXS_INPUT_READ",
@@ -689,7 +689,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.RIXS_INPUT_READ",
@@ -703,7 +703,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
     })
 }
 
-fn parse_rixs_source(fixture_id: &str, source: &str) -> PipelineResult<RixsControlInput> {
+fn parse_rixs_source(fixture_id: &str, source: &str) -> ComputeResult<RixsControlInput> {
     let lines: Vec<&str> = source.lines().collect();
     if lines.iter().all(|line| line.trim().is_empty()) {
         return Err(rixs_parse_error(
@@ -844,7 +844,7 @@ fn parse_binary_source(
     fixture_id: &str,
     artifact_name: &str,
     bytes: &[u8],
-) -> PipelineResult<BinaryInputSummary> {
+) -> ComputeResult<BinaryInputSummary> {
     if bytes.is_empty() {
         return Err(rixs_parse_error(
             fixture_id,
@@ -873,7 +873,7 @@ fn parse_table_source(
     fixture_id: &str,
     artifact_name: &str,
     source: &str,
-) -> PipelineResult<TableInputSummary> {
+) -> ComputeResult<TableInputSummary> {
     let mut values = Vec::new();
 
     for line in source.lines() {
@@ -1108,7 +1108,7 @@ fn normalized_index(index: usize, count: usize) -> f64 {
     index as f64 / (count - 1) as f64
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     if !value.is_finite() {
         return Err(rixs_parse_error(
             fixture_id,
@@ -1151,15 +1151,15 @@ fn format_scientific_f64(value: f64) -> String {
     format!("{:>16.8E}", value)
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::RixsPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::RixsModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1226,13 +1226,13 @@ mod tests {
         let temp = TempDir::new().expect("tempdir should be created");
         stage_rixs_input_bundle(temp.path());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             temp.path().join("rixs.inp"),
             temp.path().join("out"),
         );
-        let contract = RixsPipelineScaffold
+        let contract = RixsModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -1255,13 +1255,13 @@ mod tests {
         let temp = TempDir::new().expect("tempdir should be created");
         stage_rixs_input_bundle(temp.path());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             temp.path().join("rixs.inp"),
             temp.path().join("out"),
         );
-        let artifacts = RixsPipelineScaffold
+        let artifacts = RixsModule
             .execute(&request)
             .expect("execution should succeed");
 
@@ -1288,23 +1288,23 @@ mod tests {
         let temp = TempDir::new().expect("tempdir should be created");
         stage_rixs_input_bundle(temp.path());
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             temp.path().join("rixs.inp"),
             temp.path().join("out-first"),
         );
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             temp.path().join("rixs.inp"),
             temp.path().join("out-second"),
         );
 
-        let first = RixsPipelineScaffold
+        let first = RixsModule
             .execute(&first_request)
             .expect("first execution should succeed");
-        let second = RixsPipelineScaffold
+        let second = RixsModule
             .execute(&second_request)
             .expect("second execution should succeed");
 
@@ -1340,23 +1340,23 @@ mod tests {
             "# altered edge 2 screening\n-5.0  0.40  2.10\n0.0  0.55  2.25\n5.0  0.70  2.40\n",
         );
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             first_root.join("rixs.inp"),
             first_root.join("out"),
         );
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             second_root.join("rixs.inp"),
             second_root.join("out"),
         );
 
-        let first_artifacts = RixsPipelineScaffold
+        let first_artifacts = RixsModule
             .execute(&first_request)
             .expect("first execution should succeed");
-        let second_artifacts = RixsPipelineScaffold
+        let second_artifacts = RixsModule
             .execute(&second_request)
             .expect("second execution should succeed");
 
@@ -1387,13 +1387,13 @@ mod tests {
         let temp = TempDir::new().expect("tempdir should be created");
         stage_rixs_input_bundle(temp.path());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             temp.path().join("rixs.inp"),
             temp.path().join("out"),
         );
-        let error = RixsPipelineScaffold
+        let error = RixsModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1407,13 +1407,13 @@ mod tests {
         stage_rixs_input_bundle(temp.path());
         fs::remove_file(temp.path().join("phase_2.bin")).expect("phase_2.bin should be removed");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RIXS-001",
-            PipelineModule::Rixs,
+            ComputeModule::Rixs,
             temp.path().join("rixs.inp"),
             temp.path().join("out"),
         );
-        let error = RixsPipelineScaffold
+        let error = RixsModule
             .execute(&request)
             .expect_err("missing phase_2 input should fail");
 
@@ -1428,15 +1428,15 @@ mod tests {
             .collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))
             .collect()
     }
 
-    fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-        paths.iter().copied().map(PipelineArtifact::new).collect()
+    fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+        paths.iter().copied().map(ComputeArtifact::new).collect()
     }
 
     fn stage_rixs_input_bundle(destination_dir: &Path) {

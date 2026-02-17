@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -10,14 +10,14 @@ const EELS_REQUIRED_OUTPUTS: [&str; 2] = ["eels.dat", "logeels.dat"];
 const EELS_OPTIONAL_OUTPUT: &str = "magic.dat";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct EelsPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub optional_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct EelsContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub optional_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct EelsPipelineScaffold;
+pub struct EelsModule;
 
 #[derive(Debug, Clone)]
 struct EelsModel {
@@ -92,11 +92,11 @@ struct MagicSample {
     weight: f64,
 }
 
-impl EelsPipelineScaffold {
+impl EelsModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<EelsPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<EelsContract> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -116,7 +116,7 @@ impl EelsPipelineScaffold {
             magic_source.as_deref(),
         )?;
 
-        Ok(EelsPipelineInterface {
+        Ok(EelsContract {
             required_inputs: artifact_list(&EELS_REQUIRED_INPUTS),
             optional_inputs: artifact_list(&EELS_OPTIONAL_INPUTS),
             expected_outputs: model.expected_outputs(),
@@ -124,8 +124,8 @@ impl EelsPipelineScaffold {
     }
 }
 
-impl PipelineExecutor for EelsPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for EelsModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -186,7 +186,7 @@ impl EelsModel {
         eels_source: &str,
         xmu_source: &str,
         magic_source: Option<&str>,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         let control = parse_eels_source(fixture_id, eels_source)?;
         let xmu_rows = parse_xmu_source(fixture_id, xmu_source)?;
         let xmu_summary = summarize_xmu_rows(&xmu_rows);
@@ -205,15 +205,15 @@ impl EelsModel {
         self.control.magic_flag || self.magic_input.is_some()
     }
 
-    fn expected_outputs(&self) -> Vec<PipelineArtifact> {
+    fn expected_outputs(&self) -> Vec<ComputeArtifact> {
         let mut outputs = artifact_list(&EELS_REQUIRED_OUTPUTS);
         if self.should_emit_magic() {
-            outputs.push(PipelineArtifact::new(EELS_OPTIONAL_OUTPUT));
+            outputs.push(ComputeArtifact::new(EELS_OPTIONAL_OUTPUT));
         }
         outputs
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         let contents = match artifact_name {
             "eels.dat" => self.render_eels_dat(),
             "logeels.dat" => self.render_logeels(),
@@ -462,11 +462,11 @@ Module 8 true-compute execution finished.
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Eels {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Eels {
         return Err(FeffError::input_validation(
             "INPUT.EELS_MODULE",
-            format!("EELS pipeline expects module EELS, got {}", request.module),
+            format!("EELS module expects EELS, got {}", request.module),
         ));
     }
 
@@ -478,7 +478,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.EELS_INPUT_ARTIFACT",
                 format!(
-                    "EELS pipeline expects input artifact '{}' at '{}'",
+                    "EELS module expects input artifact '{}' at '{}'",
                     EELS_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -489,7 +489,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.EELS_INPUT_ARTIFACT",
             format!(
-                "EELS pipeline requires input artifact '{}' but received '{}'",
+                "EELS module requires input artifact '{}' but received '{}'",
                 EELS_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -498,19 +498,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.EELS_INPUT_ARTIFACT",
             format!(
-                "EELS pipeline requires sibling inputs next to '{}'",
+                "EELS module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.EELS_INPUT_READ",
@@ -527,14 +527,14 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
 fn maybe_read_optional_input_source(
     path: PathBuf,
     artifact_name: &str,
-) -> PipelineResult<Option<String>> {
+) -> ComputeResult<Option<String>> {
     if path.is_file() {
         return read_input_source(&path, artifact_name).map(Some);
     }
     Ok(None)
 }
 
-fn parse_eels_source(fixture_id: &str, source: &str) -> PipelineResult<EelsControlInput> {
+fn parse_eels_source(fixture_id: &str, source: &str) -> ComputeResult<EelsControlInput> {
     let numeric_rows: Vec<Vec<f64>> = source
         .lines()
         .map(parse_numeric_tokens)
@@ -653,7 +653,7 @@ fn parse_eels_source(fixture_id: &str, source: &str) -> PipelineResult<EelsContr
     })
 }
 
-fn parse_xmu_source(fixture_id: &str, source: &str) -> PipelineResult<Vec<XmuRow>> {
+fn parse_xmu_source(fixture_id: &str, source: &str) -> ComputeResult<Vec<XmuRow>> {
     let mut rows = Vec::new();
 
     for line in source.lines() {
@@ -767,7 +767,7 @@ fn parse_optional_i32(
     default: i32,
     fixture_id: &str,
     field: &str,
-) -> PipelineResult<i32> {
+) -> ComputeResult<i32> {
     match value {
         Some(value) => f64_to_i32(value, fixture_id, field),
         None => Ok(default),
@@ -779,7 +779,7 @@ fn parse_optional_usize(
     default: usize,
     fixture_id: &str,
     field: &str,
-) -> PipelineResult<usize> {
+) -> ComputeResult<usize> {
     match value {
         Some(value) => f64_to_usize(value, fixture_id, field),
         None => Ok(default),
@@ -803,7 +803,7 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
         .filter(|value| value.is_finite())
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(eels_parse_error(
             fixture_id,
@@ -829,7 +829,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(eels_parse_error(
@@ -851,15 +851,15 @@ fn format_scientific_f64(value: f64) -> String {
     format!("{:>14.6E}", value)
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::EelsPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::EelsModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
@@ -932,13 +932,13 @@ angular tweak
         stage_text(temp.path().join("eels.inp"), EELS_INPUT_NO_MAGIC);
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("eels.inp"),
             temp.path().join("out"),
         );
-        let contract = EelsPipelineScaffold
+        let contract = EelsModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -959,13 +959,13 @@ angular tweak
         stage_text(temp.path().join("eels.inp"), EELS_INPUT_WITH_MAGIC_FLAG);
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("eels.inp"),
             temp.path().join("out"),
         );
-        let contract = EelsPipelineScaffold
+        let contract = EelsModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -978,13 +978,13 @@ angular tweak
         stage_text(temp.path().join("eels.inp"), EELS_INPUT_NO_MAGIC);
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("eels.inp"),
             temp.path().join("out"),
         );
-        let artifacts = EelsPipelineScaffold
+        let artifacts = EelsModule
             .execute(&request)
             .expect("execution should succeed");
 
@@ -1000,13 +1000,13 @@ angular tweak
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
         stage_text(temp.path().join("magic.inp"), MAGIC_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("eels.inp"),
             temp.path().join("out"),
         );
-        let artifacts = EelsPipelineScaffold
+        let artifacts = EelsModule
             .execute(&request)
             .expect("execution should succeed");
 
@@ -1026,23 +1026,23 @@ angular tweak
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
         stage_text(temp.path().join("magic.inp"), MAGIC_INPUT);
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("eels.inp"),
             temp.path().join("out-first"),
         );
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("eels.inp"),
             temp.path().join("out-second"),
         );
 
-        let first = EelsPipelineScaffold
+        let first = EelsModule
             .execute(&first_request)
             .expect("first execution should succeed");
-        let second = EelsPipelineScaffold
+        let second = EelsModule
             .execute(&second_request)
             .expect("second execution should succeed");
 
@@ -1067,13 +1067,13 @@ angular tweak
         stage_text(temp.path().join("eels.inp"), EELS_INPUT_NO_MAGIC);
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Ldos,
+            ComputeModule::Ldos,
             temp.path().join("eels.inp"),
             temp.path().join("out"),
         );
-        let error = EelsPipelineScaffold
+        let error = EelsModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1086,13 +1086,13 @@ angular tweak
         let temp = TempDir::new().expect("tempdir should be created");
         stage_text(temp.path().join("eels.inp"), EELS_INPUT_NO_MAGIC);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-EELS-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("eels.inp"),
             temp.path().join("out"),
         );
-        let error = EelsPipelineScaffold
+        let error = EelsModule
             .execute(&request)
             .expect_err("missing xmu should fail");
 
@@ -1100,8 +1100,8 @@ angular tweak
         assert_eq!(error.placeholder(), "IO.EELS_INPUT_READ");
     }
 
-    fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-        paths.iter().copied().map(PipelineArtifact::new).collect()
+    fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+        paths.iter().copied().map(ComputeArtifact::new).collect()
     }
 
     fn expected_set(include_magic: bool) -> BTreeSet<String> {
@@ -1112,7 +1112,7 @@ angular tweak
         outputs
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

@@ -1,7 +1,7 @@
-use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
-use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::crpa::CrpaPipelineScaffold;
-use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
+use feff10_rs::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
+use feff10_rs::modules::ModuleExecutor;
+use feff10_rs::modules::crpa::CrpaModule;
+use feff10_rs::modules::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -136,13 +136,13 @@ fn run_crpa_for_fixture(fixture: &FixtureCase, root: &Path, subdir: &str) -> Pat
     let output_dir = root.join(fixture.id).join(subdir);
     stage_required_crpa_inputs_for_fixture(fixture.id, &output_dir);
 
-    let crpa_request = PipelineRequest::new(
+    let crpa_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Crpa,
+        ComputeModule::Crpa,
         output_dir.join("crpa.inp"),
         &output_dir,
     );
-    let crpa_artifacts = CrpaPipelineScaffold
+    let crpa_artifacts = CrpaModule
         .execute(&crpa_request)
         .expect("CRPA execution should succeed");
     assert_eq!(
@@ -178,7 +178,7 @@ fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {
         .collect()
 }
 
-fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
     artifacts
         .iter()
         .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

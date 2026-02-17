@@ -2,7 +2,7 @@ pub mod errors;
 
 pub use errors::{
     CompatibilityExitPlaceholder, FeffError, FeffErrorCategory, FeffResult, ParserResult,
-    PipelineResult,
+    ComputeResult,
 };
 
 use std::fmt::{Display, Formatter};
@@ -15,7 +15,7 @@ pub enum ExecutionMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PipelineModule {
+pub enum ComputeModule {
     Rdinp,
     Pot,
     Path,
@@ -34,7 +34,7 @@ pub enum PipelineModule {
     FullSpectrum,
 }
 
-impl PipelineModule {
+impl ComputeModule {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Rdinp => "RDINP",
@@ -57,25 +57,25 @@ impl PipelineModule {
     }
 }
 
-impl Display for PipelineModule {
+impl Display for ComputeModule {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         f.write_str((*self).as_str())
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PipelineRequest {
+pub struct ComputeRequest {
     pub fixture_id: String,
-    pub module: PipelineModule,
+    pub module: ComputeModule,
     pub execution_mode: ExecutionMode,
     pub input_path: PathBuf,
     pub output_dir: PathBuf,
 }
 
-impl PipelineRequest {
+impl ComputeRequest {
     pub fn new(
         fixture_id: impl Into<String>,
-        module: PipelineModule,
+        module: ComputeModule,
         input_path: impl Into<PathBuf>,
         output_dir: impl Into<PathBuf>,
     ) -> Self {
@@ -90,11 +90,11 @@ impl PipelineRequest {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PipelineArtifact {
+pub struct ComputeArtifact {
     pub relative_path: PathBuf,
 }
 
-impl PipelineArtifact {
+impl ComputeArtifact {
     pub fn new(relative_path: impl Into<PathBuf>) -> Self {
         Self {
             relative_path: relative_path.into(),
@@ -108,7 +108,7 @@ pub struct InputDeck {
 }
 
 impl InputDeck {
-    pub fn cards_for_module(&self, module: PipelineModule) -> Vec<&InputCard> {
+    pub fn cards_for_module(&self, module: ComputeModule) -> Vec<&InputCard> {
         self.cards
             .iter()
             .filter(|card| card.kind.applies_to_module(module))
@@ -297,31 +297,31 @@ impl InputCardKind {
         }
     }
 
-    pub fn applies_to_module(&self, module: PipelineModule) -> bool {
+    pub fn applies_to_module(&self, module: ComputeModule) -> bool {
         match self {
             Self::Compton | Self::Cgrid | Self::Rhozzp => {
                 matches!(
                     module,
-                    PipelineModule::Compton | PipelineModule::FullSpectrum
+                    ComputeModule::Compton | ComputeModule::FullSpectrum
                 )
             }
-            Self::Crpa => matches!(module, PipelineModule::Crpa | PipelineModule::FullSpectrum),
+            Self::Crpa => matches!(module, ComputeModule::Crpa | ComputeModule::FullSpectrum),
             Self::Rixs | Self::Xes => {
-                matches!(module, PipelineModule::Rixs | PipelineModule::FullSpectrum)
+                matches!(module, ComputeModule::Rixs | ComputeModule::FullSpectrum)
             }
             Self::Elnes | Self::Exelfs => {
-                matches!(module, PipelineModule::Eels | PipelineModule::FullSpectrum)
+                matches!(module, ComputeModule::Eels | ComputeModule::FullSpectrum)
             }
             Self::Vdos | Self::Stretches => {
-                matches!(module, PipelineModule::Debye | PipelineModule::Dmdw)
+                matches!(module, ComputeModule::Debye | ComputeModule::Dmdw)
             }
             Self::Opcons => matches!(
                 module,
-                PipelineModule::Screen | PipelineModule::Xsph | PipelineModule::FullSpectrum
+                ComputeModule::Screen | ComputeModule::Xsph | ComputeModule::FullSpectrum
             ),
             Self::Mpse | Self::Sfconv => matches!(
                 module,
-                PipelineModule::SelfEnergy | PipelineModule::Xsph | PipelineModule::FullSpectrum
+                ComputeModule::SelfEnergy | ComputeModule::Xsph | ComputeModule::FullSpectrum
             ),
             Self::Screen
             | Self::Ner
@@ -337,16 +337,16 @@ impl InputCardKind {
             | Self::Rfms
             | Self::Nrptx0 => matches!(
                 module,
-                PipelineModule::Screen | PipelineModule::Xsph | PipelineModule::FullSpectrum
+                ComputeModule::Screen | ComputeModule::Xsph | ComputeModule::FullSpectrum
             ),
             Self::Msfconv | Self::Wsigk | Self::Ispec | Self::Cfname => matches!(
                 module,
-                PipelineModule::SelfEnergy | PipelineModule::Xsph | PipelineModule::FullSpectrum
+                ComputeModule::SelfEnergy | ComputeModule::Xsph | ComputeModule::FullSpectrum
             ),
             Self::Band | Self::Mband | Self::Nkp | Self::Ikpath | Self::Freeprop => {
-                module == PipelineModule::Band
+                module == ComputeModule::Band
             }
-            Self::FullSpectrum | Self::Mfullspectrum => module == PipelineModule::FullSpectrum,
+            Self::FullSpectrum | Self::Mfullspectrum => module == ComputeModule::FullSpectrum,
             _ => true,
         }
     }
@@ -355,12 +355,12 @@ impl InputCardKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        ExecutionMode, InputCard, InputCardKind, InputDeck, PipelineModule, PipelineRequest,
+        ExecutionMode, InputCard, InputCardKind, InputDeck, ComputeModule, ComputeRequest,
     };
 
     #[test]
-    fn pipeline_request_defaults_to_serial_mode() {
-        let request = PipelineRequest::new("FX-001", PipelineModule::Rdinp, "feff.inp", "out");
+    fn compute_request_defaults_to_serial_mode() {
+        let request = ComputeRequest::new("FX-001", ComputeModule::Rdinp, "feff.inp", "out");
         assert_eq!(request.execution_mode, ExecutionMode::Serial);
         assert_eq!(request.module.to_string(), "RDINP");
     }
@@ -383,12 +383,12 @@ mod tests {
             3,
         ));
 
-        let compton_cards = deck.cards_for_module(PipelineModule::Compton);
+        let compton_cards = deck.cards_for_module(ComputeModule::Compton);
         assert_eq!(compton_cards.len(), 2);
         assert_eq!(compton_cards[0].keyword, "COMPTON");
         assert_eq!(compton_cards[1].keyword, "TITLE");
 
-        let rixs_cards = deck.cards_for_module(PipelineModule::Rixs);
+        let rixs_cards = deck.cards_for_module(ComputeModule::Rixs);
         assert_eq!(rixs_cards.len(), 2);
         assert_eq!(rixs_cards[0].keyword, "RIXS");
         assert_eq!(rixs_cards[1].keyword, "TITLE");

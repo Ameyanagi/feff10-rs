@@ -1,7 +1,7 @@
-use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
-use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::dmdw::DmdwPipelineScaffold;
-use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
+use feff10_rs::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
+use feff10_rs::modules::ModuleExecutor;
+use feff10_rs::modules::dmdw::DmdwModule;
+use feff10_rs::modules::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -166,13 +166,13 @@ fn run_dmdw_for_fixture(
     let output_dir = root.join(fixture.id).join(subdir);
     stage_dmdw_inputs_for_fixture(fixture, &output_dir, feff_dym_override);
 
-    let dmdw_request = PipelineRequest::new(
+    let dmdw_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Dmdw,
+        ComputeModule::Dmdw,
         output_dir.join("dmdw.inp"),
         &output_dir,
     );
-    let artifacts = DmdwPipelineScaffold
+    let artifacts = DmdwModule
         .execute(&dmdw_request)
         .expect("DMDW execution should succeed");
 
@@ -264,7 +264,7 @@ fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {
         .collect()
 }
 
-fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
     artifacts
         .iter()
         .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

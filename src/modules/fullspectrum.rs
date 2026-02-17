@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -17,14 +17,14 @@ const FULLSPECTRUM_REQUIRED_OUTPUTS: [&str; 7] = [
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FullSpectrumPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub optional_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct FullSpectrumContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub optional_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct FullSpectrumPipelineScaffold;
+pub struct FullSpectrumModule;
 
 #[derive(Debug, Clone)]
 struct FullSpectrumModel {
@@ -84,11 +84,11 @@ struct FullSpectrumSample {
     drude: f64,
 }
 
-impl FullSpectrumPipelineScaffold {
+impl FullSpectrumModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<FullSpectrumPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<FullSpectrumContract> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -115,7 +115,7 @@ impl FullSpectrumPipelineScaffold {
             referencexmu_source.as_deref(),
         )?;
 
-        Ok(FullSpectrumPipelineInterface {
+        Ok(FullSpectrumContract {
             required_inputs: artifact_list(&FULLSPECTRUM_REQUIRED_INPUTS),
             optional_inputs: artifact_list(&FULLSPECTRUM_OPTIONAL_INPUTS),
             expected_outputs: artifact_list(&FULLSPECTRUM_REQUIRED_OUTPUTS),
@@ -123,8 +123,8 @@ impl FullSpectrumPipelineScaffold {
     }
 }
 
-impl PipelineExecutor for FullSpectrumPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for FullSpectrumModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -193,7 +193,7 @@ impl FullSpectrumModel {
         xmu_source: &str,
         prexmu_source: Option<&str>,
         referencexmu_source: Option<&str>,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         let control = parse_fullspectrum_source(fixture_id, fullspectrum_source)?;
         let xmu_rows = parse_xmu_source(fixture_id, xmu_source)?;
         let xmu_summary = summarize_xmu_rows(&xmu_rows);
@@ -211,7 +211,7 @@ impl FullSpectrumModel {
         })
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         let contents = match artifact_name {
             "xmu.dat" => self.render_xmu_dat(),
             "osc_str.dat" => self.render_osc_str_dat(),
@@ -505,12 +505,12 @@ Module 9 true-compute execution finished.\n",
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::FullSpectrum {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::FullSpectrum {
         return Err(FeffError::input_validation(
             "INPUT.FULLSPECTRUM_MODULE",
             format!(
-                "FULLSPECTRUM pipeline expects module FULLSPECTRUM, got {}",
+                "FULLSPECTRUM module expects FULLSPECTRUM, got {}",
                 request.module
             ),
         ));
@@ -524,7 +524,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.FULLSPECTRUM_INPUT_ARTIFACT",
                 format!(
-                    "FULLSPECTRUM pipeline expects input artifact '{}' at '{}'",
+                    "FULLSPECTRUM module expects input artifact '{}' at '{}'",
                     FULLSPECTRUM_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -535,7 +535,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.FULLSPECTRUM_INPUT_ARTIFACT",
             format!(
-                "FULLSPECTRUM pipeline requires input artifact '{}' but received '{}'",
+                "FULLSPECTRUM module requires input artifact '{}' but received '{}'",
                 FULLSPECTRUM_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -544,19 +544,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.FULLSPECTRUM_INPUT_ARTIFACT",
             format!(
-                "FULLSPECTRUM pipeline requires sibling inputs next to '{}'",
+                "FULLSPECTRUM module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.FULLSPECTRUM_INPUT_READ",
@@ -573,7 +573,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
 fn maybe_read_optional_input_source(
     path: PathBuf,
     artifact_name: &str,
-) -> PipelineResult<Option<String>> {
+) -> ComputeResult<Option<String>> {
     if path.is_file() {
         return read_input_source(&path, artifact_name).map(Some);
     }
@@ -584,7 +584,7 @@ fn maybe_read_optional_input_source(
 fn parse_fullspectrum_source(
     fixture_id: &str,
     source: &str,
-) -> PipelineResult<FullSpectrumControlInput> {
+) -> ComputeResult<FullSpectrumControlInput> {
     let numeric_rows: Vec<Vec<f64>> = source
         .lines()
         .map(parse_numeric_tokens)
@@ -629,7 +629,7 @@ fn parse_fullspectrum_source(
     })
 }
 
-fn parse_xmu_source(fixture_id: &str, source: &str) -> PipelineResult<Vec<XmuRow>> {
+fn parse_xmu_source(fixture_id: &str, source: &str) -> ComputeResult<Vec<XmuRow>> {
     let mut rows = Vec::new();
 
     for line in source.lines() {
@@ -777,7 +777,7 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
         .filter(|value| value.is_finite())
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(fullspectrum_parse_error(
             fixture_id,
@@ -814,15 +814,15 @@ fn format_scientific_f64(value: f64) -> String {
     format!("{:>14.6E}", value)
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::FullSpectrumPipelineScaffold;
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::FullSpectrumModule;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::PathBuf;
@@ -872,13 +872,13 @@ mod tests {
         );
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("fullspectrum.inp"),
             temp.path().join("out"),
         );
-        let contract = FullSpectrumPipelineScaffold
+        let contract = FullSpectrumModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -902,13 +902,13 @@ mod tests {
         );
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("fullspectrum.inp"),
             temp.path().join("out"),
         );
-        let artifacts = FullSpectrumPipelineScaffold
+        let artifacts = FullSpectrumModule
             .execute(&request)
             .expect("execution should succeed");
 
@@ -943,23 +943,23 @@ mod tests {
         );
         stage_text(temp.path().join("without-optional/xmu.dat"), XMU_INPUT);
 
-        let with_optional_request = PipelineRequest::new(
+        let with_optional_request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("with-optional/fullspectrum.inp"),
             temp.path().join("out-with"),
         );
-        let without_optional_request = PipelineRequest::new(
+        let without_optional_request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("without-optional/fullspectrum.inp"),
             temp.path().join("out-without"),
         );
 
-        let with_optional = FullSpectrumPipelineScaffold
+        let with_optional = FullSpectrumModule
             .execute(&with_optional_request)
             .expect("execution with optional inputs should succeed");
-        let without_optional = FullSpectrumPipelineScaffold
+        let without_optional = FullSpectrumModule
             .execute(&without_optional_request)
             .expect("execution without optional inputs should succeed");
 
@@ -991,23 +991,23 @@ mod tests {
             REFERENCE_XMU_INPUT,
         );
 
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("shared/fullspectrum.inp"),
             temp.path().join("out-first"),
         );
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("shared/fullspectrum.inp"),
             temp.path().join("out-second"),
         );
 
-        let first = FullSpectrumPipelineScaffold
+        let first = FullSpectrumModule
             .execute(&first_request)
             .expect("first execution should succeed");
-        let second = FullSpectrumPipelineScaffold
+        let second = FullSpectrumModule
             .execute(&second_request)
             .expect("second execution should succeed");
 
@@ -1035,13 +1035,13 @@ mod tests {
         );
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::Eels,
+            ComputeModule::Eels,
             temp.path().join("fullspectrum.inp"),
             temp.path().join("out"),
         );
-        let error = FullSpectrumPipelineScaffold
+        let error = FullSpectrumModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1057,13 +1057,13 @@ mod tests {
             FULLSPECTRUM_INPUT_DEFAULT,
         );
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("fullspectrum.inp"),
             temp.path().join("out"),
         );
-        let error = FullSpectrumPipelineScaffold
+        let error = FullSpectrumModule
             .execute(&request)
             .expect_err("missing xmu should fail");
 
@@ -1077,13 +1077,13 @@ mod tests {
         stage_text(temp.path().join("fullspectrum.inp"), "mFullSpectrum\n");
         stage_text(temp.path().join("xmu.dat"), XMU_INPUT);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-FULLSPECTRUM-001",
-            PipelineModule::FullSpectrum,
+            ComputeModule::FullSpectrum,
             temp.path().join("fullspectrum.inp"),
             temp.path().join("out"),
         );
-        let error = FullSpectrumPipelineScaffold
+        let error = FullSpectrumModule
             .execute(&request)
             .expect_err("invalid controls should fail");
 
@@ -1091,8 +1091,8 @@ mod tests {
         assert_eq!(error.placeholder(), "INPUT.FULLSPECTRUM_PARSE");
     }
 
-    fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-        paths.iter().copied().map(PipelineArtifact::new).collect()
+    fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+        paths.iter().copied().map(ComputeArtifact::new).collect()
     }
 
     fn expected_set() -> BTreeSet<String> {
@@ -1107,7 +1107,7 @@ mod tests {
         ])
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

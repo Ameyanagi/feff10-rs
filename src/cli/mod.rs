@@ -1,7 +1,7 @@
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
-use crate::pipelines::regression::{RegressionRunnerConfig, render_human_summary, run_regression};
-use crate::pipelines::{
-    execute_runtime_pipeline, runtime_compute_engine_available, runtime_engine_unavailable_error,
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
+use crate::modules::regression::{RegressionRunnerConfig, render_human_summary, run_regression};
+use crate::modules::{
+    execute_runtime_module, runtime_compute_engine_available, runtime_engine_unavailable_error,
 };
 use serde::Deserialize;
 use std::error::Error;
@@ -17,110 +17,110 @@ const MANIFEST_RELATIVE_PATH: &str = "tasks/golden-fixture-manifest.json";
 #[derive(Debug, Clone, Copy)]
 struct ModuleCommandSpec {
     command: &'static str,
-    module: PipelineModule,
+    module: ComputeModule,
     input_artifact: &'static str,
 }
 
 const MODULE_COMMANDS: [ModuleCommandSpec; 16] = [
     ModuleCommandSpec {
         command: "rdinp",
-        module: PipelineModule::Rdinp,
+        module: ComputeModule::Rdinp,
         input_artifact: "feff.inp",
     },
     ModuleCommandSpec {
         command: "pot",
-        module: PipelineModule::Pot,
+        module: ComputeModule::Pot,
         input_artifact: "pot.inp",
     },
     ModuleCommandSpec {
         command: "xsph",
-        module: PipelineModule::Xsph,
+        module: ComputeModule::Xsph,
         input_artifact: "xsph.inp",
     },
     ModuleCommandSpec {
         command: "path",
-        module: PipelineModule::Path,
+        module: ComputeModule::Path,
         input_artifact: "paths.inp",
     },
     ModuleCommandSpec {
         command: "fms",
-        module: PipelineModule::Fms,
+        module: ComputeModule::Fms,
         input_artifact: "fms.inp",
     },
     ModuleCommandSpec {
         command: "band",
-        module: PipelineModule::Band,
+        module: ComputeModule::Band,
         input_artifact: "band.inp",
     },
     ModuleCommandSpec {
         command: "ldos",
-        module: PipelineModule::Ldos,
+        module: ComputeModule::Ldos,
         input_artifact: "ldos.inp",
     },
     ModuleCommandSpec {
         command: "rixs",
-        module: PipelineModule::Rixs,
+        module: ComputeModule::Rixs,
         input_artifact: "rixs.inp",
     },
     ModuleCommandSpec {
         command: "crpa",
-        module: PipelineModule::Crpa,
+        module: ComputeModule::Crpa,
         input_artifact: "crpa.inp",
     },
     ModuleCommandSpec {
         command: "compton",
-        module: PipelineModule::Compton,
+        module: ComputeModule::Compton,
         input_artifact: "compton.inp",
     },
     ModuleCommandSpec {
         command: "ff2x",
-        module: PipelineModule::Debye,
+        module: ComputeModule::Debye,
         input_artifact: "ff2x.inp",
     },
     ModuleCommandSpec {
         command: "dmdw",
-        module: PipelineModule::Dmdw,
+        module: ComputeModule::Dmdw,
         input_artifact: "dmdw.inp",
     },
     ModuleCommandSpec {
         command: "screen",
-        module: PipelineModule::Screen,
+        module: ComputeModule::Screen,
         input_artifact: "pot.inp",
     },
     ModuleCommandSpec {
         command: "sfconv",
-        module: PipelineModule::SelfEnergy,
+        module: ComputeModule::SelfEnergy,
         input_artifact: "sfconv.inp",
     },
     ModuleCommandSpec {
         command: "eels",
-        module: PipelineModule::Eels,
+        module: ComputeModule::Eels,
         input_artifact: "eels.inp",
     },
     ModuleCommandSpec {
         command: "fullspectrum",
-        module: PipelineModule::FullSpectrum,
+        module: ComputeModule::FullSpectrum,
         input_artifact: "fullspectrum.inp",
     },
 ];
 
-const SERIAL_CHAIN_ORDER: [PipelineModule; 16] = [
-    PipelineModule::Rdinp,
-    PipelineModule::Pot,
-    PipelineModule::Screen,
-    PipelineModule::SelfEnergy,
-    PipelineModule::Eels,
-    PipelineModule::Xsph,
-    PipelineModule::Band,
-    PipelineModule::Ldos,
-    PipelineModule::Rixs,
-    PipelineModule::Crpa,
-    PipelineModule::Path,
-    PipelineModule::Debye,
-    PipelineModule::Dmdw,
-    PipelineModule::Fms,
-    PipelineModule::Compton,
-    PipelineModule::FullSpectrum,
+const SERIAL_CHAIN_ORDER: [ComputeModule; 16] = [
+    ComputeModule::Rdinp,
+    ComputeModule::Pot,
+    ComputeModule::Screen,
+    ComputeModule::SelfEnergy,
+    ComputeModule::Eels,
+    ComputeModule::Xsph,
+    ComputeModule::Band,
+    ComputeModule::Ldos,
+    ComputeModule::Rixs,
+    ComputeModule::Crpa,
+    ComputeModule::Path,
+    ComputeModule::Debye,
+    ComputeModule::Dmdw,
+    ComputeModule::Fms,
+    ComputeModule::Compton,
+    ComputeModule::FullSpectrum,
 ];
 
 #[derive(Debug, Deserialize, Clone)]
@@ -140,7 +140,7 @@ struct CliManifestFixture {
 }
 
 impl CliManifestFixture {
-    fn covers_module(&self, module: PipelineModule) -> bool {
+    fn covers_module(&self, module: ComputeModule) -> bool {
         self.modules_covered
             .iter()
             .any(|covered| covered.eq_ignore_ascii_case(module.as_str()))
@@ -242,7 +242,7 @@ fn run_regression_command(args: Vec<String>) -> Result<i32, CliError> {
     }
 
     let config = parse_regression_args(args)?;
-    let report = run_regression(&config).map_err(CliError::Pipeline)?;
+    let report = run_regression(&config).map_err(CliError::Compute)?;
     println!("{}", render_human_summary(&report));
     println!("JSON report: {}", config.report_path.display());
 
@@ -257,7 +257,7 @@ fn run_oracle_command(args: Vec<String>) -> Result<i32, CliError> {
 
     let mut config = parse_oracle_args(args)?;
     let working_dir = std::env::current_dir().map_err(|source| {
-        CliError::Pipeline(FeffError::io_system(
+        CliError::Compute(FeffError::io_system(
             "IO.CLI_CURRENT_DIR",
             format!("failed to read current working directory: {}", source),
         ))
@@ -265,7 +265,7 @@ fn run_oracle_command(args: Vec<String>) -> Result<i32, CliError> {
     config.regression = resolve_regression_paths(config.regression, &working_dir);
 
     let workspace_root = find_workspace_root(&working_dir).ok_or_else(|| {
-        CliError::Pipeline(FeffError::input_validation(
+        CliError::Compute(FeffError::input_validation(
             "INPUT.CLI_WORKSPACE",
             format!(
                 "failed to locate workspace root from '{}'; expected to find '{}'",
@@ -276,10 +276,10 @@ fn run_oracle_command(args: Vec<String>) -> Result<i32, CliError> {
     })?;
 
     println!("Running Fortran oracle capture...");
-    run_oracle_capture(&workspace_root, &config).map_err(CliError::Pipeline)?;
+    run_oracle_capture(&workspace_root, &config).map_err(CliError::Compute)?;
 
     println!("Running Rust-vs-Fortran regression comparison...");
-    let report = run_regression(&config.regression).map_err(CliError::Pipeline)?;
+    let report = run_regression(&config.regression).map_err(CliError::Compute)?;
     println!("{}", render_human_summary(&report));
     println!("JSON report: {}", config.regression.report_path.display());
 
@@ -299,10 +299,10 @@ fn run_feff_command(args: Vec<String>) -> Result<i32, CliError> {
     }
 
     let context = load_cli_context()?;
-    let fixture = select_serial_fixture(&context).map_err(CliError::Pipeline)?;
+    let fixture = select_serial_fixture(&context).map_err(CliError::Compute)?;
     let modules = modules_for_serial_fixture(&fixture);
     if modules.is_empty() {
-        return Err(CliError::Pipeline(FeffError::input_validation(
+        return Err(CliError::Compute(FeffError::input_validation(
             "INPUT.CLI_FIXTURE_MODULES",
             format!(
                 "fixture '{}' does not provide any serial modules for 'feff'",
@@ -316,14 +316,14 @@ fn run_feff_command(args: Vec<String>) -> Result<i32, CliError> {
         .copied()
         .find(|module| !runtime_compute_engine_available(*module))
     {
-        return Err(CliError::Pipeline(runtime_engine_unavailable_error(module)));
+        return Err(CliError::Compute(runtime_engine_unavailable_error(module)));
     }
 
     for module in modules {
         if let Some(spec) = module_command_for_module(module) {
             println!("Running {}...", spec.module);
             execute_module_with_fixture(&context.working_dir, spec, &fixture.id)
-                .map_err(CliError::Pipeline)?;
+                .map_err(CliError::Compute)?;
         }
     }
     println!("Completed serial workflow for fixture '{}'.", fixture.id);
@@ -380,20 +380,20 @@ fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> Result<i32,
         )));
     }
     if !runtime_compute_engine_available(spec.module) {
-        return Err(CliError::Pipeline(runtime_engine_unavailable_error(
+        return Err(CliError::Compute(runtime_engine_unavailable_error(
             spec.module,
         )));
     }
 
-    let working_dir = current_working_dir().map_err(CliError::Pipeline)?;
+    let working_dir = current_working_dir().map_err(CliError::Compute)?;
     let fixture_id = if let Some(context) = load_cli_context_if_available(&working_dir)? {
-        select_fixture_for_module(&context, spec, false).map_err(CliError::Pipeline)?
+        select_fixture_for_module(&context, spec, false).map_err(CliError::Compute)?
     } else {
         default_fixture_for_module(spec.module).to_string()
     };
     println!("Running {}...", spec.module);
     let artifacts =
-        execute_module_with_fixture(&working_dir, spec, &fixture_id).map_err(CliError::Pipeline)?;
+        execute_module_with_fixture(&working_dir, spec, &fixture_id).map_err(CliError::Compute)?;
     println!(
         "{} completed for fixture '{}' ({} artifacts).",
         spec.module,
@@ -404,9 +404,9 @@ fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> Result<i32,
 }
 
 fn load_cli_context() -> Result<CliContext, CliError> {
-    let working_dir = current_working_dir().map_err(CliError::Pipeline)?;
+    let working_dir = current_working_dir().map_err(CliError::Compute)?;
     let workspace_root = find_workspace_root(&working_dir).ok_or_else(|| {
-        CliError::Pipeline(FeffError::input_validation(
+        CliError::Compute(FeffError::input_validation(
             "INPUT.CLI_WORKSPACE",
             format!(
                 "failed to locate workspace root from '{}'; expected to find '{}'",
@@ -435,7 +435,7 @@ fn load_cli_context_if_available(working_dir: &Path) -> Result<Option<CliContext
     }))
 }
 
-fn current_working_dir() -> PipelineResult<PathBuf> {
+fn current_working_dir() -> ComputeResult<PathBuf> {
     std::env::current_dir().map_err(|source| {
         FeffError::io_system(
             "IO.CLI_CURRENT_DIR",
@@ -444,24 +444,24 @@ fn current_working_dir() -> PipelineResult<PathBuf> {
     })
 }
 
-fn default_fixture_for_module(module: PipelineModule) -> &'static str {
+fn default_fixture_for_module(module: ComputeModule) -> &'static str {
     match module {
-        PipelineModule::Rdinp => "FX-RDINP-001",
-        PipelineModule::Pot => "FX-POT-001",
-        PipelineModule::Xsph => "FX-XSPH-001",
-        PipelineModule::Path => "FX-PATH-001",
-        PipelineModule::Fms => "FX-FMS-001",
-        PipelineModule::Band => "FX-BAND-001",
-        PipelineModule::Ldos => "FX-LDOS-001",
-        PipelineModule::Rixs => "FX-RIXS-001",
-        PipelineModule::Crpa => "FX-CRPA-001",
-        PipelineModule::Compton => "FX-COMPTON-001",
-        PipelineModule::Debye => "FX-DEBYE-001",
-        PipelineModule::Dmdw => "FX-DMDW-001",
-        PipelineModule::Screen => "FX-SCREEN-001",
-        PipelineModule::SelfEnergy => "FX-SELF-001",
-        PipelineModule::Eels => "FX-EELS-001",
-        PipelineModule::FullSpectrum => "FX-FULLSPECTRUM-001",
+        ComputeModule::Rdinp => "FX-RDINP-001",
+        ComputeModule::Pot => "FX-POT-001",
+        ComputeModule::Xsph => "FX-XSPH-001",
+        ComputeModule::Path => "FX-PATH-001",
+        ComputeModule::Fms => "FX-FMS-001",
+        ComputeModule::Band => "FX-BAND-001",
+        ComputeModule::Ldos => "FX-LDOS-001",
+        ComputeModule::Rixs => "FX-RIXS-001",
+        ComputeModule::Crpa => "FX-CRPA-001",
+        ComputeModule::Compton => "FX-COMPTON-001",
+        ComputeModule::Debye => "FX-DEBYE-001",
+        ComputeModule::Dmdw => "FX-DMDW-001",
+        ComputeModule::Screen => "FX-SCREEN-001",
+        ComputeModule::SelfEnergy => "FX-SELF-001",
+        ComputeModule::Eels => "FX-EELS-001",
+        ComputeModule::FullSpectrum => "FX-FULLSPECTRUM-001",
     }
 }
 
@@ -478,7 +478,7 @@ fn find_workspace_root(start: &Path) -> Option<PathBuf> {
 fn load_cli_manifest(workspace_root: &Path) -> Result<CliManifest, CliError> {
     let path = workspace_root.join(MANIFEST_RELATIVE_PATH);
     let content = fs::read_to_string(&path).map_err(|source| {
-        CliError::Pipeline(FeffError::io_system(
+        CliError::Compute(FeffError::io_system(
             "IO.CLI_MANIFEST_READ",
             format!(
                 "failed to read CLI manifest '{}': {}",
@@ -488,7 +488,7 @@ fn load_cli_manifest(workspace_root: &Path) -> Result<CliManifest, CliError> {
         ))
     })?;
     serde_json::from_str::<CliManifest>(&content).map_err(|source| {
-        CliError::Pipeline(FeffError::input_validation(
+        CliError::Compute(FeffError::input_validation(
             "INPUT.CLI_MANIFEST_PARSE",
             format!(
                 "failed to parse CLI manifest '{}': {}",
@@ -499,8 +499,8 @@ fn load_cli_manifest(workspace_root: &Path) -> Result<CliManifest, CliError> {
     })
 }
 
-fn select_serial_fixture(context: &CliContext) -> PipelineResult<CliManifestFixture> {
-    let mut candidates = fixtures_covering_module(&context.manifest, PipelineModule::Rdinp)
+fn select_serial_fixture(context: &CliContext) -> ComputeResult<CliManifestFixture> {
+    let mut candidates = fixtures_covering_module(&context.manifest, ComputeModule::Rdinp)
         .into_iter()
         .filter(|fixture| fixture.is_workflow())
         .collect::<Vec<_>>();
@@ -520,11 +520,11 @@ fn select_serial_fixture(context: &CliContext) -> PipelineResult<CliManifestFixt
     Ok(candidates[0].clone())
 }
 
-fn modules_for_serial_fixture(fixture: &CliManifestFixture) -> Vec<PipelineModule> {
+fn modules_for_serial_fixture(fixture: &CliManifestFixture) -> Vec<ComputeModule> {
     let covered = fixture
         .modules_covered
         .iter()
-        .filter_map(|module| parse_pipeline_module(module))
+        .filter_map(|module| parse_compute_module(module))
         .collect::<Vec<_>>();
 
     SERIAL_CHAIN_ORDER
@@ -538,7 +538,7 @@ fn select_fixture_for_module(
     context: &CliContext,
     spec: ModuleCommandSpec,
     prefer_workflow: bool,
-) -> PipelineResult<String> {
+) -> ComputeResult<String> {
     let mut candidates = fixtures_covering_module(&context.manifest, spec.module);
     if candidates.is_empty() {
         return Err(FeffError::input_validation(
@@ -550,7 +550,7 @@ fn select_fixture_for_module(
         ));
     }
 
-    if spec.module == PipelineModule::Rdinp {
+    if spec.module == ComputeModule::Rdinp {
         if let Some(matched) = select_by_input_directory(context, &candidates) {
             return Ok(matched.id.clone());
         }
@@ -613,7 +613,7 @@ fn select_fixture_for_module(
 
 fn fixtures_covering_module(
     manifest: &CliManifest,
-    module: PipelineModule,
+    module: ComputeModule,
 ) -> Vec<&CliManifestFixture> {
     manifest
         .fixtures
@@ -671,22 +671,22 @@ fn probe_module_for_fixture(
     context: &CliContext,
     spec: ModuleCommandSpec,
     fixture_id: &str,
-) -> PipelineResult<()> {
+) -> ComputeResult<()> {
     let probe_output_dir = probe_directory_for(spec.module, fixture_id)?;
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture_id.to_string(),
         spec.module,
         context.working_dir.join(spec.input_artifact),
         &probe_output_dir,
     );
 
-    let result = execute_pipeline_for_spec(spec, &request).map(|_| ());
+    let result = execute_module_for_spec(spec, &request).map(|_| ());
 
     let _ = fs::remove_dir_all(&probe_output_dir);
     result
 }
 
-fn probe_directory_for(module: PipelineModule, fixture_id: &str) -> PipelineResult<PathBuf> {
+fn probe_directory_for(module: ComputeModule, fixture_id: &str) -> ComputeResult<PathBuf> {
     let mut path = std::env::temp_dir();
     let unix_nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -724,41 +724,41 @@ fn execute_module_with_fixture(
     working_dir: &Path,
     spec: ModuleCommandSpec,
     fixture_id: &str,
-) -> PipelineResult<Vec<PipelineArtifact>> {
-    let request = PipelineRequest::new(
+) -> ComputeResult<Vec<ComputeArtifact>> {
+    let request = ComputeRequest::new(
         fixture_id.to_string(),
         spec.module,
         working_dir.join(spec.input_artifact),
         working_dir,
     );
-    execute_pipeline_for_spec(spec, &request)
+    execute_module_for_spec(spec, &request)
 }
 
-fn execute_pipeline_for_spec(
+fn execute_module_for_spec(
     spec: ModuleCommandSpec,
-    request: &PipelineRequest,
-) -> PipelineResult<Vec<PipelineArtifact>> {
-    execute_runtime_pipeline(spec.module, request)
+    request: &ComputeRequest,
+) -> ComputeResult<Vec<ComputeArtifact>> {
+    execute_runtime_module(spec.module, request)
 }
 
-fn parse_pipeline_module(token: &str) -> Option<PipelineModule> {
+fn parse_compute_module(token: &str) -> Option<ComputeModule> {
     match token.to_ascii_uppercase().as_str() {
-        "RDINP" => Some(PipelineModule::Rdinp),
-        "POT" => Some(PipelineModule::Pot),
-        "PATH" => Some(PipelineModule::Path),
-        "FMS" => Some(PipelineModule::Fms),
-        "XSPH" => Some(PipelineModule::Xsph),
-        "BAND" => Some(PipelineModule::Band),
-        "LDOS" => Some(PipelineModule::Ldos),
-        "RIXS" => Some(PipelineModule::Rixs),
-        "CRPA" => Some(PipelineModule::Crpa),
-        "COMPTON" => Some(PipelineModule::Compton),
-        "DEBYE" => Some(PipelineModule::Debye),
-        "DMDW" => Some(PipelineModule::Dmdw),
-        "SCREEN" => Some(PipelineModule::Screen),
-        "SELF" => Some(PipelineModule::SelfEnergy),
-        "EELS" => Some(PipelineModule::Eels),
-        "FULLSPECTRUM" => Some(PipelineModule::FullSpectrum),
+        "RDINP" => Some(ComputeModule::Rdinp),
+        "POT" => Some(ComputeModule::Pot),
+        "PATH" => Some(ComputeModule::Path),
+        "FMS" => Some(ComputeModule::Fms),
+        "XSPH" => Some(ComputeModule::Xsph),
+        "BAND" => Some(ComputeModule::Band),
+        "LDOS" => Some(ComputeModule::Ldos),
+        "RIXS" => Some(ComputeModule::Rixs),
+        "CRPA" => Some(ComputeModule::Crpa),
+        "COMPTON" => Some(ComputeModule::Compton),
+        "DEBYE" => Some(ComputeModule::Debye),
+        "DMDW" => Some(ComputeModule::Dmdw),
+        "SCREEN" => Some(ComputeModule::Screen),
+        "SELF" => Some(ComputeModule::SelfEnergy),
+        "EELS" => Some(ComputeModule::Eels),
+        "FULLSPECTRUM" => Some(ComputeModule::FullSpectrum),
         _ => None,
     }
 }
@@ -770,7 +770,7 @@ fn module_command_spec(command: &str) -> Option<ModuleCommandSpec> {
         .find(|spec| spec.command == command)
 }
 
-fn module_command_for_module(module: PipelineModule) -> Option<ModuleCommandSpec> {
+fn module_command_for_module(module: ComputeModule) -> Option<ModuleCommandSpec> {
     MODULE_COMMANDS
         .iter()
         .copied()
@@ -1005,7 +1005,7 @@ fn resolve_cli_path(working_dir: &Path, path: &Path) -> PathBuf {
     }
 }
 
-fn run_oracle_capture(workspace_root: &Path, config: &OracleCommandConfig) -> PipelineResult<()> {
+fn run_oracle_capture(workspace_root: &Path, config: &OracleCommandConfig) -> ComputeResult<()> {
     let capture_script = workspace_root.join("scripts/fortran/capture-baselines.sh");
     if !capture_script.is_file() {
         return Err(FeffError::io_system(
@@ -1105,11 +1105,11 @@ fn usage_text() -> &'static str {
 }
 
 fn regression_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP pipeline before fixture comparisons\n  --run-pot                Run POT pipeline before fixture comparisons\n  --run-screen             Run SCREEN pipeline before fixture comparisons\n  --run-self               Run SELF pipeline before fixture comparisons\n  --run-eels               Run EELS pipeline before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM pipeline before fixture comparisons\n  --run-xsph               Run XSPH pipeline before fixture comparisons\n  --run-path               Run PATH pipeline before fixture comparisons\n  --run-fms                Run FMS pipeline before fixture comparisons\n  --run-band               Run BAND pipeline before fixture comparisons\n  --run-ldos               Run LDOS pipeline before fixture comparisons\n  --run-rixs               Run RIXS pipeline before fixture comparisons\n  --run-crpa               Run CRPA pipeline before fixture comparisons\n  --run-compton            Run COMPTON pipeline before fixture comparisons\n  --run-debye              Run DEBYE pipeline before fixture comparisons\n  --run-dmdw               Run DMDW pipeline before fixture comparisons"
+    "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP module before fixture comparisons\n  --run-pot                Run POT module before fixture comparisons\n  --run-screen             Run SCREEN module before fixture comparisons\n  --run-self               Run SELF module before fixture comparisons\n  --run-eels               Run EELS module before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM module before fixture comparisons\n  --run-xsph               Run XSPH module before fixture comparisons\n  --run-path               Run PATH module before fixture comparisons\n  --run-fms                Run FMS module before fixture comparisons\n  --run-band               Run BAND module before fixture comparisons\n  --run-ldos               Run LDOS module before fixture comparisons\n  --run-rixs               Run RIXS module before fixture comparisons\n  --run-crpa               Run CRPA module before fixture comparisons\n  --run-compton            Run COMPTON module before fixture comparisons\n  --run-debye              Run DEBYE module before fixture comparisons\n  --run-dmdw               Run DMDW module before fixture comparisons"
 }
 
 fn oracle_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs oracle [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path for capture and comparison (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --oracle-root <path>      Fortran capture output root used as regression baseline (default: artifacts/fortran-oracle-capture)\n  --oracle-subdir <name>    Oracle subdirectory per fixture (default: outputs)\n  --actual-root <path>      Rust actual output root (default: artifacts/oracle-actual)\n  --actual-subdir <name>    Rust actual subdirectory per fixture (default: actual)\n  --report <path>           JSON report output path (default: artifacts/regression/oracle-report.json)\n  --capture-runner <cmd>    Runner command passed to scripts/fortran/capture-baselines.sh\n  --capture-bin-dir <path>  Fortran module binary directory passed to scripts/fortran/capture-baselines.sh\n  --capture-allow-missing-entry-files\n                           Continue capture when manifest entry files are missing and record metadata\n  --run-rdinp              Run RDINP pipeline before fixture comparisons\n  --run-pot                Run POT pipeline before fixture comparisons\n  --run-screen             Run SCREEN pipeline before fixture comparisons\n  --run-self               Run SELF pipeline before fixture comparisons\n  --run-eels               Run EELS pipeline before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM pipeline before fixture comparisons\n  --run-xsph               Run XSPH pipeline before fixture comparisons\n  --run-path               Run PATH pipeline before fixture comparisons\n  --run-fms                Run FMS pipeline before fixture comparisons\n  --run-band               Run BAND pipeline before fixture comparisons\n  --run-ldos               Run LDOS pipeline before fixture comparisons\n  --run-rixs               Run RIXS pipeline before fixture comparisons\n  --run-crpa               Run CRPA pipeline before fixture comparisons\n  --run-compton            Run COMPTON pipeline before fixture comparisons\n  --run-debye              Run DEBYE pipeline before fixture comparisons\n  --run-dmdw               Run DMDW pipeline before fixture comparisons\n\nThe oracle command is validation-only and must not be used as a production runtime path."
+    "Usage:\n  feff10-rs oracle [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path for capture and comparison (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --oracle-root <path>      Fortran capture output root used as regression baseline (default: artifacts/fortran-oracle-capture)\n  --oracle-subdir <name>    Oracle subdirectory per fixture (default: outputs)\n  --actual-root <path>      Rust actual output root (default: artifacts/oracle-actual)\n  --actual-subdir <name>    Rust actual subdirectory per fixture (default: actual)\n  --report <path>           JSON report output path (default: artifacts/regression/oracle-report.json)\n  --capture-runner <cmd>    Runner command passed to scripts/fortran/capture-baselines.sh\n  --capture-bin-dir <path>  Fortran module binary directory passed to scripts/fortran/capture-baselines.sh\n  --capture-allow-missing-entry-files\n                           Continue capture when manifest entry files are missing and record metadata\n  --run-rdinp              Run RDINP module before fixture comparisons\n  --run-pot                Run POT module before fixture comparisons\n  --run-screen             Run SCREEN module before fixture comparisons\n  --run-self               Run SELF module before fixture comparisons\n  --run-eels               Run EELS module before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM module before fixture comparisons\n  --run-xsph               Run XSPH module before fixture comparisons\n  --run-path               Run PATH module before fixture comparisons\n  --run-fms                Run FMS module before fixture comparisons\n  --run-band               Run BAND module before fixture comparisons\n  --run-ldos               Run LDOS module before fixture comparisons\n  --run-rixs               Run RIXS module before fixture comparisons\n  --run-crpa               Run CRPA module before fixture comparisons\n  --run-compton            Run COMPTON module before fixture comparisons\n  --run-debye              Run DEBYE module before fixture comparisons\n  --run-dmdw               Run DMDW module before fixture comparisons\n\nThe oracle command is validation-only and must not be used as a production runtime path."
 }
 
 fn feff_usage_text() -> &'static str {
@@ -1130,14 +1130,14 @@ fn module_usage_text(spec: ModuleCommandSpec) -> String {
 #[derive(Debug)]
 pub enum CliError {
     Usage(String),
-    Pipeline(FeffError),
+    Compute(FeffError),
 }
 
 impl CliError {
     fn as_feff_error(&self) -> FeffError {
         match self {
             Self::Usage(message) => FeffError::input_validation("INPUT.CLI_USAGE", message.clone()),
-            Self::Pipeline(error) => error.clone(),
+            Self::Compute(error) => error.clone(),
         }
     }
 }
@@ -1146,7 +1146,7 @@ impl Display for CliError {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Usage(message) => f.write_str(message),
-            Self::Pipeline(source) => write!(f, "{}", source),
+            Self::Compute(source) => write!(f, "{}", source),
         }
     }
 }
@@ -1155,7 +1155,7 @@ impl Error for CliError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             Self::Usage(_) => None,
-            Self::Pipeline(source) => Some(source),
+            Self::Compute(source) => Some(source),
         }
     }
 }

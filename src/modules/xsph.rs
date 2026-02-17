@@ -1,7 +1,7 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::pot::POT_BINARY_MAGIC;
 use super::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -15,15 +15,15 @@ const POT_CONTROL_I32_COUNT: usize = 16;
 const POT_CONTROL_F64_COUNT: usize = 6;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct XsphPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub optional_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
-    pub optional_outputs: Vec<PipelineArtifact>,
+pub struct XsphContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub optional_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
+    pub optional_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct XsphPipelineScaffold;
+pub struct XsphModule;
 
 #[derive(Debug, Clone)]
 struct XsphModel {
@@ -100,13 +100,13 @@ struct XsphOutputConfig {
     xsnorm: f64,
 }
 
-impl XsphPipelineScaffold {
+impl XsphModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<XsphPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<XsphContract> {
         validate_request_shape(request)?;
-        Ok(XsphPipelineInterface {
+        Ok(XsphContract {
             required_inputs: artifact_list(&XSPH_REQUIRED_INPUTS),
             optional_inputs: artifact_list(&XSPH_OPTIONAL_INPUTS),
             expected_outputs: artifact_list(&XSPH_REQUIRED_OUTPUTS),
@@ -115,8 +115,8 @@ impl XsphPipelineScaffold {
     }
 }
 
-impl PipelineExecutor for XsphPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for XsphModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -190,7 +190,7 @@ impl XsphModel {
         global_source: &str,
         pot_bytes: &[u8],
         wscrn_source: Option<&str>,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_xsph_source(fixture_id, xsph_source)?,
@@ -268,7 +268,7 @@ impl XsphModel {
         }
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         match artifact_name {
             "phase.bin" => {
                 write_binary_artifact(output_path, &self.render_phase_binary()).map_err(|source| {
@@ -445,11 +445,11 @@ xsnorm-base: {}\n\
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Xsph {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Xsph {
         return Err(FeffError::input_validation(
             "INPUT.XSPH_MODULE",
-            format!("XSPH pipeline expects module XSPH, got {}", request.module),
+            format!("XSPH module expects XSPH, got {}", request.module),
         ));
     }
 
@@ -461,7 +461,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.XSPH_INPUT_ARTIFACT",
                 format!(
-                    "XSPH pipeline expects input artifact '{}' at '{}'",
+                    "XSPH module expects input artifact '{}' at '{}'",
                     XSPH_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -472,7 +472,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.XSPH_INPUT_ARTIFACT",
             format!(
-                "XSPH pipeline requires input artifact '{}' but received '{}'",
+                "XSPH module requires input artifact '{}' but received '{}'",
                 XSPH_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -481,19 +481,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.XSPH_INPUT_ARTIFACT",
             format!(
-                "XSPH pipeline requires sibling inputs next to '{}'",
+                "XSPH module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.XSPH_INPUT_READ",
@@ -507,7 +507,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.XSPH_INPUT_READ",
@@ -524,7 +524,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
 fn maybe_read_optional_input_source(
     path: PathBuf,
     artifact_name: &str,
-) -> PipelineResult<Option<String>> {
+) -> ComputeResult<Option<String>> {
     if path.is_file() {
         return read_input_source(&path, artifact_name).map(Some);
     }
@@ -532,7 +532,7 @@ fn maybe_read_optional_input_source(
     Ok(None)
 }
 
-fn parse_xsph_source(fixture_id: &str, source: &str) -> PipelineResult<XsphControlInput> {
+fn parse_xsph_source(fixture_id: &str, source: &str) -> ComputeResult<XsphControlInput> {
     let lines: Vec<&str> = source.lines().collect();
 
     let mut control_row: Option<Vec<f64>> = None;
@@ -602,7 +602,7 @@ fn parse_xsph_source(fixture_id: &str, source: &str) -> PipelineResult<XsphContr
     })
 }
 
-fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomXsphInput> {
+fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult<GeomXsphInput> {
     let mut nat: Option<usize> = None;
     let mut nph: Option<usize> = None;
 
@@ -666,7 +666,7 @@ fn parse_geom_source(fixture_id: &str, source: &str) -> PipelineResult<GeomXsphI
     })
 }
 
-fn parse_global_source(fixture_id: &str, source: &str) -> PipelineResult<GlobalXsphInput> {
+fn parse_global_source(fixture_id: &str, source: &str) -> ComputeResult<GlobalXsphInput> {
     let mut values = Vec::new();
     for line in source.lines() {
         values.extend(parse_numeric_tokens(line));
@@ -695,7 +695,7 @@ fn parse_global_source(fixture_id: &str, source: &str) -> PipelineResult<GlobalX
     })
 }
 
-fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotXsphInput> {
+fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PotXsphInput> {
     if bytes.is_empty() {
         return Err(xsph_parse_error(fixture_id, "pot.bin is empty"));
     }
@@ -727,7 +727,7 @@ fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotXsphInp
     })
 }
 
-fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PotXsphInput> {
+fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PotXsphInput> {
     let mut offset = POT_BINARY_MAGIC.len();
 
     for _ in 0..POT_CONTROL_I32_COUNT {
@@ -801,7 +801,7 @@ fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> PipelineResu
     })
 }
 
-fn parse_wscrn_source(fixture_id: &str, source: &str) -> PipelineResult<WscrnXsphInput> {
+fn parse_wscrn_source(fixture_id: &str, source: &str) -> ComputeResult<WscrnXsphInput> {
     let mut radial_points = 0_usize;
     let mut screen_sum = 0.0_f64;
     let mut charge_sum = 0.0_f64;
@@ -865,7 +865,7 @@ fn next_nonempty_line<'a>(lines: &'a [&'a str], start_index: usize) -> Option<(u
     None
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(xsph_parse_error(
             fixture_id,
@@ -891,7 +891,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(xsph_parse_error(
@@ -947,15 +947,15 @@ fn push_f64(target: &mut Vec<u8>, value: f64) {
     target.extend_from_slice(&value.to_le_bytes());
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{XSPH_PHASE_BINARY_MAGIC, XsphPipelineScaffold};
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::{XSPH_PHASE_BINARY_MAGIC, XsphModule};
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -993,8 +993,8 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
 
     #[test]
     fn contract_exposes_true_compute_xsph_artifact_contract() {
-        let request = PipelineRequest::new("FX-XSPH-001", PipelineModule::Xsph, "xsph.inp", "out");
-        let contract = XsphPipelineScaffold
+        let request = ComputeRequest::new("FX-XSPH-001", ComputeModule::Xsph, "xsph.inp", "out");
+        let contract = XsphModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -1021,13 +1021,13 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         let temp = TempDir::new().expect("tempdir should be created");
         let (input_path, output_dir) = stage_xsph_inputs(temp.path(), true);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-XSPH-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             &input_path,
             &output_dir,
         );
-        let artifacts = XsphPipelineScaffold
+        let artifacts = XsphModule
             .execute(&request)
             .expect("XSPH execution should succeed");
 
@@ -1060,13 +1060,13 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         let temp = TempDir::new().expect("tempdir should be created");
         let (input_path, output_dir) = stage_xsph_inputs(temp.path(), false);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-XSPH-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             &input_path,
             &output_dir,
         );
-        let artifacts = XsphPipelineScaffold
+        let artifacts = XsphModule
             .execute(&request)
             .expect("XSPH execution should succeed without wscrn.dat");
 
@@ -1081,25 +1081,25 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         let temp = TempDir::new().expect("tempdir should be created");
 
         let (with_input_path, with_output_dir) = stage_xsph_inputs(temp.path().join("with"), true);
-        let with_request = PipelineRequest::new(
+        let with_request = ComputeRequest::new(
             "FX-XSPH-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             &with_input_path,
             &with_output_dir,
         );
-        XsphPipelineScaffold
+        XsphModule
             .execute(&with_request)
             .expect("XSPH execution with wscrn should succeed");
 
         let (without_input_path, without_output_dir) =
             stage_xsph_inputs(temp.path().join("without"), false);
-        let without_request = PipelineRequest::new(
+        let without_request = ComputeRequest::new(
             "FX-XSPH-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             &without_input_path,
             &without_output_dir,
         );
-        XsphPipelineScaffold
+        XsphModule
             .execute(&without_request)
             .expect("XSPH execution without wscrn should succeed");
 
@@ -1123,13 +1123,13 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         let temp = TempDir::new().expect("tempdir should be created");
         let (input_path, output_dir) = stage_xsph_inputs(temp.path(), false);
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-XSPH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             &input_path,
             &output_dir,
         );
-        let error = XsphPipelineScaffold
+        let error = XsphModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1150,13 +1150,13 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         fs::write(temp.path().join("global.inp"), GLOBAL_INPUT_FIXTURE)
             .expect("global input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-XSPH-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             &input_path,
             &output_dir,
         );
-        let error = XsphPipelineScaffold
+        let error = XsphModule
             .execute(&request)
             .expect_err("missing pot.bin should fail");
 
@@ -1178,13 +1178,13 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
             .expect("global input should be written");
         write_true_compute_pot_fixture(&temp.path().join("pot.bin"));
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-XSPH-001",
-            PipelineModule::Xsph,
+            ComputeModule::Xsph,
             &input_path,
             &output_dir,
         );
-        let error = XsphPipelineScaffold
+        let error = XsphModule
             .execute(&request)
             .expect_err("invalid xsph input should fail");
 
@@ -1258,7 +1258,7 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         fs::write(path, bytes).expect("pot fixture should be written");
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

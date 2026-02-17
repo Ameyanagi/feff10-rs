@@ -1,23 +1,23 @@
-use super::PipelineExecutor;
-use super::band::BandPipelineScaffold;
+use super::ModuleExecutor;
+use super::band::BandModule;
 use super::comparator::{ArtifactComparisonResult, Comparator, ComparatorError};
-use super::compton::ComptonPipelineScaffold;
-use super::crpa::CrpaPipelineScaffold;
-use super::debye::DebyePipelineScaffold;
-use super::dmdw::DmdwPipelineScaffold;
-use super::eels::EelsPipelineScaffold;
-use super::fms::FmsPipelineScaffold;
-use super::fullspectrum::FullSpectrumPipelineScaffold;
-use super::ldos::LdosPipelineScaffold;
-use super::path::PathPipelineScaffold;
-use super::pot::PotPipelineScaffold;
-use super::rdinp::RdinpPipelineScaffold;
-use super::rixs::RixsPipelineScaffold;
-use super::screen::ScreenPipelineScaffold;
-use super::self_energy::SelfEnergyPipelineScaffold;
+use super::compton::ComptonModule;
+use super::crpa::CrpaModule;
+use super::debye::DebyeModule;
+use super::dmdw::DmdwModule;
+use super::eels::EelsModule;
+use super::fms::FmsModule;
+use super::fullspectrum::FullSpectrumModule;
+use super::ldos::LdosModule;
+use super::path::PathModule;
+use super::pot::PotModule;
+use super::rdinp::RdinpModule;
+use super::rixs::RixsModule;
+use super::screen::ScreenModule;
+use super::self_energy::SelfEnergyModule;
 use super::serialization::write_text_artifact;
-use super::xsph::XsphPipelineScaffold;
-use crate::domain::{FeffError, PipelineModule, PipelineRequest, PipelineResult};
+use super::xsph::XsphModule;
+use crate::domain::{FeffError, ComputeModule, ComputeRequest, ComputeResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -159,7 +159,7 @@ pub struct ArtifactMismatchReport {
     pub reason: String,
 }
 
-pub fn run_regression(config: &RegressionRunnerConfig) -> PipelineResult<RegressionRunReport> {
+pub fn run_regression(config: &RegressionRunnerConfig) -> ComputeResult<RegressionRunReport> {
     let manifest = load_manifest(&config.manifest_path).map_err(FeffError::from)?;
     let comparator = Comparator::from_policy_path(&config.policy_path)
         .map_err(|source| FeffError::from(RegressionRunnerError::Comparator(source)))?;
@@ -336,67 +336,67 @@ pub enum RegressionRunnerError {
         message: String,
     },
     Comparator(ComparatorError),
-    RdinpPipeline {
+    Rdinp {
         fixture_id: String,
         source: FeffError,
     },
-    PotPipeline {
+    Pot {
         fixture_id: String,
         source: FeffError,
     },
-    XsphPipeline {
+    Xsph {
         fixture_id: String,
         source: FeffError,
     },
-    BandPipeline {
+    Band {
         fixture_id: String,
         source: FeffError,
     },
-    LdosPipeline {
+    Ldos {
         fixture_id: String,
         source: FeffError,
     },
-    RixsPipeline {
+    Rixs {
         fixture_id: String,
         source: FeffError,
     },
-    CrpaPipeline {
+    Crpa {
         fixture_id: String,
         source: FeffError,
     },
-    ComptonPipeline {
+    Compton {
         fixture_id: String,
         source: FeffError,
     },
-    ScreenPipeline {
+    Screen {
         fixture_id: String,
         source: FeffError,
     },
-    SelfPipeline {
+    SelfEnergy {
         fixture_id: String,
         source: FeffError,
     },
-    EelsPipeline {
+    Eels {
         fixture_id: String,
         source: FeffError,
     },
-    FullSpectrumPipeline {
+    FullSpectrum {
         fixture_id: String,
         source: FeffError,
     },
-    DebyePipeline {
+    Debye {
         fixture_id: String,
         source: FeffError,
     },
-    DmdwPipeline {
+    Dmdw {
         fixture_id: String,
         source: FeffError,
     },
-    PathPipeline {
+    Path {
         fixture_id: String,
         source: FeffError,
     },
-    FmsPipeline {
+    Fms {
         fixture_id: String,
         source: FeffError,
     },
@@ -446,82 +446,82 @@ impl Display for RegressionRunnerError {
                 fixture_id, message
             ),
             Self::Comparator(source) => write!(f, "comparator setup failed: {}", source),
-            Self::RdinpPipeline { fixture_id, source } => write!(
+            Self::Rdinp { fixture_id, source } => write!(
                 f,
                 "RDINP scaffold execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::PotPipeline { fixture_id, source } => write!(
+            Self::Pot { fixture_id, source } => write!(
                 f,
                 "POT scaffold execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::XsphPipeline { fixture_id, source } => write!(
+            Self::Xsph { fixture_id, source } => write!(
                 f,
                 "XSPH parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::BandPipeline { fixture_id, source } => write!(
+            Self::Band { fixture_id, source } => write!(
                 f,
                 "BAND parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::LdosPipeline { fixture_id, source } => write!(
+            Self::Ldos { fixture_id, source } => write!(
                 f,
                 "LDOS parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::RixsPipeline { fixture_id, source } => write!(
+            Self::Rixs { fixture_id, source } => write!(
                 f,
                 "RIXS parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::CrpaPipeline { fixture_id, source } => write!(
+            Self::Crpa { fixture_id, source } => write!(
                 f,
                 "CRPA parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::ComptonPipeline { fixture_id, source } => write!(
+            Self::Compton { fixture_id, source } => write!(
                 f,
                 "COMPTON parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::ScreenPipeline { fixture_id, source } => write!(
+            Self::Screen { fixture_id, source } => write!(
                 f,
                 "SCREEN parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::SelfPipeline { fixture_id, source } => write!(
+            Self::SelfEnergy { fixture_id, source } => write!(
                 f,
                 "SELF parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::EelsPipeline { fixture_id, source } => write!(
+            Self::Eels { fixture_id, source } => write!(
                 f,
                 "EELS parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::FullSpectrumPipeline { fixture_id, source } => write!(
+            Self::FullSpectrum { fixture_id, source } => write!(
                 f,
                 "FULLSPECTRUM parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::DebyePipeline { fixture_id, source } => write!(
+            Self::Debye { fixture_id, source } => write!(
                 f,
                 "DEBYE parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::DmdwPipeline { fixture_id, source } => write!(
+            Self::Dmdw { fixture_id, source } => write!(
                 f,
                 "DMDW parity execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::PathPipeline { fixture_id, source } => write!(
+            Self::Path { fixture_id, source } => write!(
                 f,
                 "PATH scaffold execution failed for fixture '{}': {}",
                 fixture_id, source
             ),
-            Self::FmsPipeline { fixture_id, source } => write!(
+            Self::Fms { fixture_id, source } => write!(
                 f,
                 "FMS scaffold execution failed for fixture '{}': {}",
                 fixture_id, source
@@ -560,22 +560,22 @@ impl Error for RegressionRunnerError {
             Self::ParseManifest { source, .. } => Some(source),
             Self::InvalidFixtureConfig { .. } => None,
             Self::Comparator(source) => Some(source),
-            Self::RdinpPipeline { source, .. } => Some(source),
-            Self::PotPipeline { source, .. } => Some(source),
-            Self::XsphPipeline { source, .. } => Some(source),
-            Self::BandPipeline { source, .. } => Some(source),
-            Self::LdosPipeline { source, .. } => Some(source),
-            Self::RixsPipeline { source, .. } => Some(source),
-            Self::CrpaPipeline { source, .. } => Some(source),
-            Self::ComptonPipeline { source, .. } => Some(source),
-            Self::ScreenPipeline { source, .. } => Some(source),
-            Self::SelfPipeline { source, .. } => Some(source),
-            Self::EelsPipeline { source, .. } => Some(source),
-            Self::FullSpectrumPipeline { source, .. } => Some(source),
-            Self::DebyePipeline { source, .. } => Some(source),
-            Self::DmdwPipeline { source, .. } => Some(source),
-            Self::PathPipeline { source, .. } => Some(source),
-            Self::FmsPipeline { source, .. } => Some(source),
+            Self::Rdinp { source, .. } => Some(source),
+            Self::Pot { source, .. } => Some(source),
+            Self::Xsph { source, .. } => Some(source),
+            Self::Band { source, .. } => Some(source),
+            Self::Ldos { source, .. } => Some(source),
+            Self::Rixs { source, .. } => Some(source),
+            Self::Crpa { source, .. } => Some(source),
+            Self::Compton { source, .. } => Some(source),
+            Self::Screen { source, .. } => Some(source),
+            Self::SelfEnergy { source, .. } => Some(source),
+            Self::Eels { source, .. } => Some(source),
+            Self::FullSpectrum { source, .. } => Some(source),
+            Self::Debye { source, .. } => Some(source),
+            Self::Dmdw { source, .. } => Some(source),
+            Self::Path { source, .. } => Some(source),
+            Self::Fms { source, .. } => Some(source),
             Self::ReadDirectory { source, .. } => Some(source),
             Self::ReportDirectory { source, .. } => Some(source),
             Self::SerializeReport { source, .. } => Some(source),
@@ -598,22 +598,22 @@ impl From<RegressionRunnerError> for FeffError {
                 FeffError::input_validation("INPUT.REGRESSION_MANIFEST", message)
             }
             RegressionRunnerError::Comparator(source) => source.into(),
-            RegressionRunnerError::RdinpPipeline { source, .. } => source,
-            RegressionRunnerError::PotPipeline { source, .. } => source,
-            RegressionRunnerError::XsphPipeline { source, .. } => source,
-            RegressionRunnerError::BandPipeline { source, .. } => source,
-            RegressionRunnerError::LdosPipeline { source, .. } => source,
-            RegressionRunnerError::RixsPipeline { source, .. } => source,
-            RegressionRunnerError::CrpaPipeline { source, .. } => source,
-            RegressionRunnerError::ComptonPipeline { source, .. } => source,
-            RegressionRunnerError::ScreenPipeline { source, .. } => source,
-            RegressionRunnerError::SelfPipeline { source, .. } => source,
-            RegressionRunnerError::EelsPipeline { source, .. } => source,
-            RegressionRunnerError::FullSpectrumPipeline { source, .. } => source,
-            RegressionRunnerError::DebyePipeline { source, .. } => source,
-            RegressionRunnerError::DmdwPipeline { source, .. } => source,
-            RegressionRunnerError::PathPipeline { source, .. } => source,
-            RegressionRunnerError::FmsPipeline { source, .. } => source,
+            RegressionRunnerError::Rdinp { source, .. } => source,
+            RegressionRunnerError::Pot { source, .. } => source,
+            RegressionRunnerError::Xsph { source, .. } => source,
+            RegressionRunnerError::Band { source, .. } => source,
+            RegressionRunnerError::Ldos { source, .. } => source,
+            RegressionRunnerError::Rixs { source, .. } => source,
+            RegressionRunnerError::Crpa { source, .. } => source,
+            RegressionRunnerError::Compton { source, .. } => source,
+            RegressionRunnerError::Screen { source, .. } => source,
+            RegressionRunnerError::SelfEnergy { source, .. } => source,
+            RegressionRunnerError::Eels { source, .. } => source,
+            RegressionRunnerError::FullSpectrum { source, .. } => source,
+            RegressionRunnerError::Debye { source, .. } => source,
+            RegressionRunnerError::Dmdw { source, .. } => source,
+            RegressionRunnerError::Path { source, .. } => source,
+            RegressionRunnerError::Fms { source, .. } => source,
             RegressionRunnerError::ReadDirectory { .. }
             | RegressionRunnerError::ReportDirectory { .. }
             | RegressionRunnerError::WriteReport { .. } => {
@@ -654,7 +654,7 @@ struct ManifestFixture {
 }
 
 impl ManifestFixture {
-    fn covers_module(&self, module: PipelineModule) -> bool {
+    fn covers_module(&self, module: ComputeModule) -> bool {
         self.modules_covered
             .iter()
             .any(|covered| covered.eq_ignore_ascii_case(module.as_str()))
@@ -708,7 +708,7 @@ fn run_rdinp_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_rdinp || !fixture.covers_module(PipelineModule::Rdinp) {
+    if !config.run_rdinp || !fixture.covers_module(ComputeModule::Rdinp) {
         return Ok(());
     }
 
@@ -717,15 +717,15 @@ fn run_rdinp_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Rdinp,
+        ComputeModule::Rdinp,
         input_path,
         output_dir,
     );
 
-    RdinpPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::RdinpPipeline {
+    RdinpModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Rdinp {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -738,7 +738,7 @@ fn run_pot_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_pot || !fixture.covers_module(PipelineModule::Pot) {
+    if !config.run_pot || !fixture.covers_module(ComputeModule::Pot) {
         return Ok(());
     }
 
@@ -746,16 +746,16 @@ fn run_pot_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Pot,
+        ComputeModule::Pot,
         output_dir.join("pot.inp"),
         output_dir,
     );
 
-    PotPipelineScaffold
+    PotModule
         .execute(&request)
-        .map_err(|source| RegressionRunnerError::PotPipeline {
+        .map_err(|source| RegressionRunnerError::Pot {
             fixture_id: fixture.id.clone(),
             source,
         })?;
@@ -767,7 +767,7 @@ fn run_xsph_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_xsph || !fixture.covers_module(PipelineModule::Xsph) {
+    if !config.run_xsph || !fixture.covers_module(ComputeModule::Xsph) {
         return Ok(());
     }
 
@@ -775,15 +775,15 @@ fn run_xsph_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Xsph,
+        ComputeModule::Xsph,
         output_dir.join("xsph.inp"),
         output_dir,
     );
 
-    XsphPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::XsphPipeline {
+    XsphModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Xsph {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -796,7 +796,7 @@ fn run_band_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_band || !fixture.covers_module(PipelineModule::Band) {
+    if !config.run_band || !fixture.covers_module(ComputeModule::Band) {
         return Ok(());
     }
 
@@ -804,15 +804,15 @@ fn run_band_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Band,
+        ComputeModule::Band,
         output_dir.join("band.inp"),
         output_dir,
     );
 
-    BandPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::BandPipeline {
+    BandModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Band {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -825,7 +825,7 @@ fn run_ldos_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_ldos || !fixture.covers_module(PipelineModule::Ldos) {
+    if !config.run_ldos || !fixture.covers_module(ComputeModule::Ldos) {
         return Ok(());
     }
 
@@ -833,15 +833,15 @@ fn run_ldos_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Ldos,
+        ComputeModule::Ldos,
         output_dir.join("ldos.inp"),
         output_dir,
     );
 
-    LdosPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::LdosPipeline {
+    LdosModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Ldos {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -854,7 +854,7 @@ fn run_rixs_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_rixs || !fixture.covers_module(PipelineModule::Rixs) {
+    if !config.run_rixs || !fixture.covers_module(ComputeModule::Rixs) {
         return Ok(());
     }
 
@@ -862,15 +862,15 @@ fn run_rixs_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Rixs,
+        ComputeModule::Rixs,
         output_dir.join("rixs.inp"),
         output_dir,
     );
 
-    RixsPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::RixsPipeline {
+    RixsModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Rixs {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -883,7 +883,7 @@ fn run_crpa_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_crpa || !fixture.covers_module(PipelineModule::Crpa) {
+    if !config.run_crpa || !fixture.covers_module(ComputeModule::Crpa) {
         return Ok(());
     }
 
@@ -891,15 +891,15 @@ fn run_crpa_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Crpa,
+        ComputeModule::Crpa,
         output_dir.join("crpa.inp"),
         output_dir,
     );
 
-    CrpaPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::CrpaPipeline {
+    CrpaModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Crpa {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -912,7 +912,7 @@ fn run_compton_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_compton || !fixture.covers_module(PipelineModule::Compton) {
+    if !config.run_compton || !fixture.covers_module(ComputeModule::Compton) {
         return Ok(());
     }
 
@@ -920,16 +920,16 @@ fn run_compton_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Compton,
+        ComputeModule::Compton,
         output_dir.join("compton.inp"),
         output_dir,
     );
 
-    ComptonPipelineScaffold
+    ComptonModule
         .execute(&request)
-        .map_err(|source| RegressionRunnerError::ComptonPipeline {
+        .map_err(|source| RegressionRunnerError::Compton {
             fixture_id: fixture.id.clone(),
             source,
         })?;
@@ -941,7 +941,7 @@ fn run_screen_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_screen || !fixture.covers_module(PipelineModule::Screen) {
+    if !config.run_screen || !fixture.covers_module(ComputeModule::Screen) {
         return Ok(());
     }
 
@@ -949,15 +949,15 @@ fn run_screen_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Screen,
+        ComputeModule::Screen,
         output_dir.join("pot.inp"),
         output_dir,
     );
 
-    ScreenPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::ScreenPipeline {
+    ScreenModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Screen {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -970,7 +970,7 @@ fn run_self_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_self || !fixture.covers_module(PipelineModule::SelfEnergy) {
+    if !config.run_self || !fixture.covers_module(ComputeModule::SelfEnergy) {
         return Ok(());
     }
 
@@ -978,16 +978,16 @@ fn run_self_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::SelfEnergy,
+        ComputeModule::SelfEnergy,
         output_dir.join("sfconv.inp"),
         output_dir,
     );
 
-    SelfEnergyPipelineScaffold
+    SelfEnergyModule
         .execute(&request)
-        .map_err(|source| RegressionRunnerError::SelfPipeline {
+        .map_err(|source| RegressionRunnerError::SelfEnergy {
             fixture_id: fixture.id.clone(),
             source,
         })?;
@@ -999,7 +999,7 @@ fn run_eels_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_eels || !fixture.covers_module(PipelineModule::Eels) {
+    if !config.run_eels || !fixture.covers_module(ComputeModule::Eels) {
         return Ok(());
     }
 
@@ -1007,15 +1007,15 @@ fn run_eels_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Eels,
+        ComputeModule::Eels,
         output_dir.join("eels.inp"),
         output_dir,
     );
 
-    EelsPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::EelsPipeline {
+    EelsModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Eels {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -1028,7 +1028,7 @@ fn run_full_spectrum_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_full_spectrum || !fixture.covers_module(PipelineModule::FullSpectrum) {
+    if !config.run_full_spectrum || !fixture.covers_module(ComputeModule::FullSpectrum) {
         return Ok(());
     }
 
@@ -1036,16 +1036,16 @@ fn run_full_spectrum_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::FullSpectrum,
+        ComputeModule::FullSpectrum,
         output_dir.join("fullspectrum.inp"),
         output_dir,
     );
 
-    FullSpectrumPipelineScaffold
+    FullSpectrumModule
         .execute(&request)
-        .map_err(|source| RegressionRunnerError::FullSpectrumPipeline {
+        .map_err(|source| RegressionRunnerError::FullSpectrum {
             fixture_id: fixture.id.clone(),
             source,
         })?;
@@ -1057,7 +1057,7 @@ fn run_debye_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_debye || !fixture.covers_module(PipelineModule::Debye) {
+    if !config.run_debye || !fixture.covers_module(ComputeModule::Debye) {
         return Ok(());
     }
 
@@ -1065,15 +1065,15 @@ fn run_debye_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Debye,
+        ComputeModule::Debye,
         output_dir.join("ff2x.inp"),
         output_dir,
     );
 
-    DebyePipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::DebyePipeline {
+    DebyeModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Debye {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -1086,7 +1086,7 @@ fn run_dmdw_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_dmdw || !fixture.covers_module(PipelineModule::Dmdw) {
+    if !config.run_dmdw || !fixture.covers_module(ComputeModule::Dmdw) {
         return Ok(());
     }
 
@@ -1094,15 +1094,15 @@ fn run_dmdw_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Dmdw,
+        ComputeModule::Dmdw,
         output_dir.join("dmdw.inp"),
         output_dir,
     );
 
-    DmdwPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::DmdwPipeline {
+    DmdwModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Dmdw {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -1115,7 +1115,7 @@ fn run_path_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_path || !fixture.covers_module(PipelineModule::Path) {
+    if !config.run_path || !fixture.covers_module(ComputeModule::Path) {
         return Ok(());
     }
 
@@ -1123,15 +1123,15 @@ fn run_path_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Path,
+        ComputeModule::Path,
         output_dir.join("paths.inp"),
         output_dir,
     );
 
-    PathPipelineScaffold.execute(&request).map_err(|source| {
-        RegressionRunnerError::PathPipeline {
+    PathModule.execute(&request).map_err(|source| {
+        RegressionRunnerError::Path {
             fixture_id: fixture.id.clone(),
             source,
         }
@@ -1144,7 +1144,7 @@ fn run_fms_if_enabled(
     config: &RegressionRunnerConfig,
     fixture: &ManifestFixture,
 ) -> Result<(), RegressionRunnerError> {
-    if !config.run_fms || !fixture.covers_module(PipelineModule::Fms) {
+    if !config.run_fms || !fixture.covers_module(ComputeModule::Fms) {
         return Ok(());
     }
 
@@ -1152,16 +1152,16 @@ fn run_fms_if_enabled(
         .actual_root
         .join(&fixture.id)
         .join(&config.actual_subdir);
-    let request = PipelineRequest::new(
+    let request = ComputeRequest::new(
         fixture.id.clone(),
-        PipelineModule::Fms,
+        ComputeModule::Fms,
         output_dir.join("fms.inp"),
         output_dir,
     );
 
-    FmsPipelineScaffold
+    FmsModule
         .execute(&request)
-        .map_err(|source| RegressionRunnerError::FmsPipeline {
+        .map_err(|source| RegressionRunnerError::Fms {
             fixture_id: fixture.id.clone(),
             source,
         })?;

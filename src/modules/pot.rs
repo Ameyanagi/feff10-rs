@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -15,13 +15,13 @@ const POT_REQUIRED_OUTPUTS: [&str; 5] = [
 pub const POT_BINARY_MAGIC: &[u8; 8] = b"POTBIN10";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PotPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct PotContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct PotPipelineScaffold;
+pub struct PotModule;
 
 #[derive(Debug, Clone)]
 struct PotModel {
@@ -82,21 +82,21 @@ struct AtomSite {
     ipot: i32,
 }
 
-impl PotPipelineScaffold {
+impl PotModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<PotPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<PotContract> {
         validate_request_shape(request)?;
-        Ok(PotPipelineInterface {
+        Ok(PotContract {
             required_inputs: artifact_list(&POT_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&POT_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for PotPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for PotModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
 
         let pot_inp_source = read_input_source(&request.input_path, POT_REQUIRED_INPUTS[0])?;
@@ -140,7 +140,7 @@ impl PipelineExecutor for PotPipelineScaffold {
 }
 
 impl PotModel {
-    fn from_sources(fixture_id: &str, pot_source: &str, geom_source: &str) -> PipelineResult<Self> {
+    fn from_sources(fixture_id: &str, pot_source: &str, geom_source: &str) -> ComputeResult<Self> {
         let (title, control, potentials) = parse_pot_input(fixture_id, pot_source)?;
         let geometry = parse_geom_input(fixture_id, geom_source)?;
         Ok(Self {
@@ -152,7 +152,7 @@ impl PotModel {
         })
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         match artifact_name {
             "pot.bin" => {
                 write_binary_artifact(output_path, &self.render_pot_binary()).map_err(|source| {
@@ -443,11 +443,11 @@ impl PotModel {
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Pot {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Pot {
         return Err(FeffError::input_validation(
             "INPUT.POT_MODULE",
-            format!("POT pipeline expects module POT, got {}", request.module),
+            format!("POT module expects POT, got {}", request.module),
         ));
     }
 
@@ -459,7 +459,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.POT_INPUT_ARTIFACT",
                 format!(
-                    "POT pipeline expects input artifact '{}' at '{}'",
+                    "POT module expects input artifact '{}' at '{}'",
                     POT_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -470,7 +470,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.POT_INPUT_ARTIFACT",
             format!(
-                "POT pipeline requires input artifact '{}' but received '{}'",
+                "POT module requires input artifact '{}' but received '{}'",
                 POT_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -479,7 +479,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn geom_input_path(request: &PipelineRequest) -> PipelineResult<PathBuf> {
+fn geom_input_path(request: &ComputeRequest) -> ComputeResult<PathBuf> {
     request
         .input_path
         .parent()
@@ -488,7 +488,7 @@ fn geom_input_path(request: &PipelineRequest) -> PipelineResult<PathBuf> {
             FeffError::input_validation(
                 "INPUT.POT_INPUT_ARTIFACT",
                 format!(
-                    "POT pipeline requires sibling '{}' for input '{}'",
+                    "POT module requires sibling '{}' for input '{}'",
                     POT_REQUIRED_INPUTS[1],
                     request.input_path.display()
                 ),
@@ -496,7 +496,7 @@ fn geom_input_path(request: &PipelineRequest) -> PipelineResult<PathBuf> {
         })
 }
 
-fn read_input_source(input_path: &Path, label: &str) -> PipelineResult<String> {
+fn read_input_source(input_path: &Path, label: &str) -> ComputeResult<String> {
     fs::read_to_string(input_path).map_err(|source| {
         FeffError::io_system(
             "IO.POT_INPUT_READ",
@@ -513,7 +513,7 @@ fn read_input_source(input_path: &Path, label: &str) -> PipelineResult<String> {
 fn parse_pot_input(
     fixture_id: &str,
     source: &str,
-) -> PipelineResult<(String, PotControl, Vec<PotentialEntry>)> {
+) -> ComputeResult<(String, PotControl, Vec<PotentialEntry>)> {
     let lines = source
         .lines()
         .map(str::trim)
@@ -608,7 +608,7 @@ fn parse_pot_input(
     Ok((title, control, potentials))
 }
 
-fn parse_geom_input(fixture_id: &str, source: &str) -> PipelineResult<GeomModel> {
+fn parse_geom_input(fixture_id: &str, source: &str) -> ComputeResult<GeomModel> {
     let mut lines = source.lines();
     let header_line = lines
         .next()
@@ -755,15 +755,15 @@ fn push_f64(target: &mut Vec<u8>, value: f64) {
     target.extend_from_slice(&value.to_le_bytes());
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{POT_BINARY_MAGIC, PotPipelineScaffold};
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use super::{POT_BINARY_MAGIC, PotModule};
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -771,13 +771,13 @@ mod tests {
 
     #[test]
     fn contract_exposes_required_inputs_and_outputs() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-POT-001",
-            PipelineModule::Pot,
+            ComputeModule::Pot,
             "pot.inp",
             "actual-output",
         );
-        let scaffold = PotPipelineScaffold;
+        let scaffold = PotModule;
         let contract = scaffold
             .contract_for_request(&request)
             .expect("contract should build");
@@ -805,8 +805,8 @@ mod tests {
         stage_pot_inputs(&input_path, &temp.path().join("geom.dat"));
 
         let request =
-            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, &output_dir);
-        let scaffold = PotPipelineScaffold;
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, &input_path, &output_dir);
+        let scaffold = PotModule;
         let artifacts = scaffold
             .execute(&request)
             .expect("POT execution should succeed");
@@ -839,14 +839,14 @@ mod tests {
         stage_pot_inputs(&input_path, &geom_path);
 
         let request_a =
-            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, &output_a);
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, &input_path, &output_a);
         let request_b =
-            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, &output_b);
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, &input_path, &output_b);
 
-        PotPipelineScaffold
+        PotModule
             .execute(&request_a)
             .expect("first execution should succeed");
-        PotPipelineScaffold
+        PotModule
             .execute(&request_b)
             .expect("second execution should succeed");
 
@@ -874,13 +874,13 @@ mod tests {
         let input_path = temp.path().join("pot.inp");
         stage_pot_inputs(&input_path, &temp.path().join("geom.dat"));
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-RDINP-001",
-            PipelineModule::Rdinp,
+            ComputeModule::Rdinp,
             &input_path,
             temp.path(),
         );
-        let scaffold = PotPipelineScaffold;
+        let scaffold = PotModule;
         let error = scaffold
             .execute(&request)
             .expect_err("module mismatch should fail");
@@ -896,8 +896,8 @@ mod tests {
         fs::write(&input_path, pot_input_fixture()).expect("input should be written");
 
         let request =
-            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, temp.path());
-        let scaffold = PotPipelineScaffold;
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, &input_path, temp.path());
+        let scaffold = PotModule;
         let error = scaffold
             .execute(&request)
             .expect_err("missing geom input should fail");
@@ -919,8 +919,8 @@ mod tests {
         .expect("geom input should be written");
 
         let request =
-            PipelineRequest::new("FX-POT-001", PipelineModule::Pot, &input_path, &output_dir);
-        let scaffold = PotPipelineScaffold;
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, &input_path, &output_dir);
+        let scaffold = PotModule;
         let error = scaffold
             .execute(&request)
             .expect_err("invalid POT input should fail");
@@ -934,7 +934,7 @@ mod tests {
         fs::write(geom_path, geom_input_fixture()).expect("geom input should be written");
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

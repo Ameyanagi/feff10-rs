@@ -1,7 +1,7 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
 use super::xsph::XSPH_PHASE_BINARY_MAGIC;
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::collections::BTreeMap;
 use std::f64::consts::PI;
 use std::fs;
@@ -12,13 +12,13 @@ const PATH_REQUIRED_OUTPUTS: [&str; 4] = ["paths.dat", "paths.bin", "crit.dat", 
 pub const PATH_BINARY_MAGIC: &[u8; 8] = b"PATHBIN1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PathPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct PathContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct PathPipelineScaffold;
+pub struct PathModule;
 
 #[derive(Debug, Clone)]
 struct PathModel {
@@ -101,21 +101,21 @@ struct PathEntry {
     eta_deg: f64,
 }
 
-impl PathPipelineScaffold {
+impl PathModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<PathPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<PathContract> {
         validate_request_shape(request)?;
-        Ok(PathPipelineInterface {
+        Ok(PathContract {
             required_inputs: artifact_list(&PATH_REQUIRED_INPUTS),
             expected_outputs: artifact_list(&PATH_REQUIRED_OUTPUTS),
         })
     }
 }
 
-impl PipelineExecutor for PathPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for PathModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -184,7 +184,7 @@ impl PathModel {
         geom_source: &str,
         global_source: &str,
         phase_bytes: &[u8],
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control: parse_paths_input(fixture_id, path_source)?,
@@ -411,7 +411,7 @@ impl PathModel {
         artifact_name: &str,
         output_path: &Path,
         paths: &[PathEntry],
-    ) -> PipelineResult<()> {
+    ) -> ComputeResult<()> {
         match artifact_name {
             "paths.dat" => {
                 write_text_artifact(output_path, &self.render_paths_dat(paths)).map_err(|source| {
@@ -764,11 +764,11 @@ impl AtomSite {
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::Path {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::Path {
         return Err(FeffError::input_validation(
             "INPUT.PATH_MODULE",
-            format!("PATH pipeline expects module PATH, got {}", request.module),
+            format!("PATH module expects PATH, got {}", request.module),
         ));
     }
 
@@ -780,7 +780,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.PATH_INPUT_ARTIFACT",
                 format!(
-                    "PATH pipeline expects input artifact '{}' at '{}'",
+                    "PATH module expects input artifact '{}' at '{}'",
                     PATH_REQUIRED_INPUTS[0],
                     request.input_path.display()
                 ),
@@ -791,7 +791,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.PATH_INPUT_ARTIFACT",
             format!(
-                "PATH pipeline requires input artifact '{}' but received '{}'",
+                "PATH module requires input artifact '{}' but received '{}'",
                 PATH_REQUIRED_INPUTS[0], input_file_name
             ),
         ));
@@ -800,19 +800,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.PATH_INPUT_ARTIFACT",
             format!(
-                "PATH pipeline requires sibling inputs next to '{}'",
+                "PATH module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     fs::read_to_string(path).map_err(|source| {
         FeffError::io_system(
             "IO.PATH_INPUT_READ",
@@ -826,7 +826,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
     })
 }
 
-fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>> {
+fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
     fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.PATH_INPUT_READ",
@@ -840,7 +840,7 @@ fn read_input_bytes(path: &Path, artifact_name: &str) -> PipelineResult<Vec<u8>>
     })
 }
 
-fn parse_paths_input(fixture_id: &str, source: &str) -> PipelineResult<PathControlInput> {
+fn parse_paths_input(fixture_id: &str, source: &str) -> ComputeResult<PathControlInput> {
     let numeric_rows = source
         .lines()
         .map(parse_numeric_tokens)
@@ -890,7 +890,7 @@ fn parse_paths_input(fixture_id: &str, source: &str) -> PipelineResult<PathContr
     })
 }
 
-fn parse_geom_input(fixture_id: &str, source: &str) -> PipelineResult<GeomPathInput> {
+fn parse_geom_input(fixture_id: &str, source: &str) -> ComputeResult<GeomPathInput> {
     let numeric_rows = source
         .lines()
         .map(parse_numeric_tokens)
@@ -971,7 +971,7 @@ fn parse_geom_input(fixture_id: &str, source: &str) -> PipelineResult<GeomPathIn
     })
 }
 
-fn parse_global_input(fixture_id: &str, source: &str) -> PipelineResult<GlobalPathInput> {
+fn parse_global_input(fixture_id: &str, source: &str) -> ComputeResult<GlobalPathInput> {
     let values = source
         .lines()
         .flat_map(parse_numeric_tokens)
@@ -999,7 +999,7 @@ fn parse_global_input(fixture_id: &str, source: &str) -> PipelineResult<GlobalPa
     })
 }
 
-fn parse_phase_input(fixture_id: &str, bytes: &[u8]) -> PipelineResult<PhasePathInput> {
+fn parse_phase_input(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PhasePathInput> {
     if bytes.is_empty() {
         return Err(path_parse_error(fixture_id, "phase.bin must be non-empty"));
     }
@@ -1069,7 +1069,7 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
     normalized.parse::<f64>().ok()
 }
 
-fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> {
+fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> ComputeResult<i32> {
     if !value.is_finite() {
         return Err(path_parse_error(
             fixture_id,
@@ -1092,7 +1092,7 @@ fn f64_to_i32(value: f64, fixture_id: &str, field: &str) -> PipelineResult<i32> 
     Ok(rounded as i32)
 }
 
-fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> PipelineResult<usize> {
+fn f64_to_usize(value: f64, fixture_id: &str, field: &str) -> ComputeResult<usize> {
     let integer = f64_to_i32(value, fixture_id, field)?;
     if integer < 0 {
         return Err(path_parse_error(
@@ -1169,17 +1169,17 @@ fn push_f64(target: &mut Vec<u8>, value: f64) {
     target.extend_from_slice(&value.to_le_bytes());
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{PATH_BINARY_MAGIC, PathPipelineScaffold};
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
-    use crate::pipelines::path::PATH_BINARY_MAGIC as EXPORTED_PATH_BINARY_MAGIC;
-    use crate::pipelines::xsph::XSPH_PHASE_BINARY_MAGIC;
+    use super::{PATH_BINARY_MAGIC, PathModule};
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
+    use crate::modules::path::PATH_BINARY_MAGIC as EXPORTED_PATH_BINARY_MAGIC;
+    use crate::modules::xsph::XSPH_PHASE_BINARY_MAGIC;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::Path;
@@ -1213,13 +1213,13 @@ ipol ispin le2 elpty angks
 
     #[test]
     fn contract_returns_required_path_compute_artifacts() {
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             "paths.inp",
             "actual-output",
         );
-        let contract = PathPipelineScaffold
+        let contract = PathModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -1240,13 +1240,13 @@ ipol ispin le2 elpty angks
         let output_dir = temp.path().join("actual");
         stage_path_inputs(&input_dir, &sample_xsph_phase_binary());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             input_dir.join("paths.inp"),
             &output_dir,
         );
-        let artifacts = PathPipelineScaffold
+        let artifacts = PathModule
             .execute(&request)
             .expect("PATH execution should succeed");
 
@@ -1284,24 +1284,24 @@ ipol ispin le2 elpty angks
         stage_path_inputs(&input_dir, &sample_xsph_phase_binary());
 
         let first_dir = temp.path().join("first");
-        let first_request = PipelineRequest::new(
+        let first_request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             input_dir.join("paths.inp"),
             &first_dir,
         );
-        let first_artifacts = PathPipelineScaffold
+        let first_artifacts = PathModule
             .execute(&first_request)
             .expect("first PATH run should succeed");
 
         let second_dir = temp.path().join("second");
-        let second_request = PipelineRequest::new(
+        let second_request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             input_dir.join("paths.inp"),
             &second_dir,
         );
-        let second_artifacts = PathPipelineScaffold
+        let second_artifacts = PathModule
             .execute(&second_request)
             .expect("second PATH run should succeed");
 
@@ -1334,13 +1334,13 @@ ipol ispin le2 elpty angks
             &[1_u8, 2_u8, 3_u8, 4_u8, 5_u8, 6_u8, 7_u8, 8_u8],
         );
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             input_dir.join("paths.inp"),
             &output_dir,
         );
-        let artifacts = PathPipelineScaffold
+        let artifacts = PathModule
             .execute(&request)
             .expect("PATH execution should accept legacy phase.bin");
 
@@ -1357,13 +1357,13 @@ ipol ispin le2 elpty angks
         let output_dir = temp.path().join("actual");
         stage_path_inputs(&input_dir, &sample_xsph_phase_binary());
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Pot,
+            ComputeModule::Pot,
             input_dir.join("paths.inp"),
             &output_dir,
         );
-        let error = PathPipelineScaffold
+        let error = PathModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1381,13 +1381,13 @@ ipol ispin le2 elpty angks
         fs::write(input_dir.join("global.inp"), GLOBAL_INPUT_FIXTURE)
             .expect("global.inp should write");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             input_dir.join("paths.inp"),
             temp.path().join("actual"),
         );
-        let error = PathPipelineScaffold
+        let error = PathModule
             .execute(&request)
             .expect_err("missing phase.bin should fail");
 
@@ -1408,13 +1408,13 @@ ipol ispin le2 elpty angks
         fs::write(input_dir.join("phase.bin"), sample_xsph_phase_binary())
             .expect("phase.bin should write");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-PATH-001",
-            PipelineModule::Path,
+            ComputeModule::Path,
             input_dir.join("paths.inp"),
             temp.path().join("actual"),
         );
-        let error = PathPipelineScaffold
+        let error = PathModule
             .execute(&request)
             .expect_err("invalid paths input should fail");
 
@@ -1454,7 +1454,7 @@ ipol ispin le2 elpty angks
             .collect()
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

@@ -1,6 +1,6 @@
-use super::PipelineExecutor;
+use super::ModuleExecutor;
 use super::serialization::{format_fixed_f64, write_text_artifact};
-use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
+use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -21,10 +21,10 @@ const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
 const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SelfEnergyPipelineInterface {
-    pub required_inputs: Vec<PipelineArtifact>,
-    pub optional_inputs: Vec<PipelineArtifact>,
-    pub expected_outputs: Vec<PipelineArtifact>,
+pub struct SelfEnergyContract {
+    pub required_inputs: Vec<ComputeArtifact>,
+    pub optional_inputs: Vec<ComputeArtifact>,
+    pub expected_outputs: Vec<ComputeArtifact>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -103,13 +103,13 @@ struct SelfOutputConfig {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SelfEnergyPipelineScaffold;
+pub struct SelfEnergyModule;
 
-impl SelfEnergyPipelineScaffold {
+impl SelfEnergyModule {
     pub fn contract_for_request(
         &self,
-        request: &PipelineRequest,
-    ) -> PipelineResult<SelfEnergyPipelineInterface> {
+        request: &ComputeRequest,
+    ) -> ComputeResult<SelfEnergyContract> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -126,15 +126,15 @@ impl SelfEnergyPipelineScaffold {
             exc_source.as_deref(),
         )?;
 
-        let mut required_inputs = vec![PipelineArtifact::new(SELF_PRIMARY_INPUT)];
+        let mut required_inputs = vec![ComputeArtifact::new(SELF_PRIMARY_INPUT)];
         required_inputs.extend(
             model
                 .spectrum_artifact_names()
                 .iter()
-                .map(PipelineArtifact::new),
+                .map(ComputeArtifact::new),
         );
 
-        Ok(SelfEnergyPipelineInterface {
+        Ok(SelfEnergyContract {
             required_inputs,
             optional_inputs: artifact_list(&SELF_OPTIONAL_INPUTS),
             expected_outputs: model.expected_outputs(),
@@ -142,8 +142,8 @@ impl SelfEnergyPipelineScaffold {
     }
 }
 
-impl PipelineExecutor for SelfEnergyPipelineScaffold {
-    fn execute(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+impl ModuleExecutor for SelfEnergyModule {
+    fn execute(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -201,7 +201,7 @@ impl SelfModel {
         sfconv_source: &str,
         spectrum_sources: Vec<StagedSpectrumSource>,
         exc_source: Option<&str>,
-    ) -> PipelineResult<Self> {
+    ) -> ComputeResult<Self> {
         let control = parse_sfconv_source(sfconv_source);
         let mut spectra = Vec::with_capacity(spectrum_sources.len());
         for spectrum in spectrum_sources {
@@ -216,7 +216,7 @@ impl SelfModel {
             return Err(FeffError::input_validation(
                 "INPUT.SELF_SPECTRUM_INPUT",
                 format!(
-                    "SELF pipeline requires at least one staged spectrum input for fixture '{}'",
+                    "SELF module requires at least one staged spectrum input for fixture '{}'",
                     fixture_id
                 ),
             ));
@@ -237,7 +237,7 @@ impl SelfModel {
             .collect()
     }
 
-    fn expected_outputs(&self) -> Vec<PipelineArtifact> {
+    fn expected_outputs(&self) -> Vec<ComputeArtifact> {
         let mut outputs = artifact_list(&SELF_REQUIRED_OUTPUTS);
         for spectrum in &self.spectra {
             upsert_artifact(&mut outputs, &spectrum.artifact);
@@ -332,7 +332,7 @@ impl SelfModel {
         }
     }
 
-    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
         let contents = match artifact_name {
             "selfenergy.dat" => self.render_selfenergy(),
             "sigma.dat" => self.render_sigma(),
@@ -690,11 +690,11 @@ impl SelfModel {
     }
 }
 
-fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
-    if request.module != PipelineModule::SelfEnergy {
+fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<()> {
+    if request.module != ComputeModule::SelfEnergy {
         return Err(FeffError::input_validation(
             "INPUT.SELF_MODULE",
-            format!("SELF pipeline expects module SELF, got {}", request.module),
+            format!("SELF module expects SELF, got {}", request.module),
         ));
     }
 
@@ -706,7 +706,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
             FeffError::input_validation(
                 "INPUT.SELF_INPUT_ARTIFACT",
                 format!(
-                    "SELF pipeline expects input artifact '{}' at '{}'",
+                    "SELF module expects input artifact '{}' at '{}'",
                     SELF_PRIMARY_INPUT,
                     request.input_path.display()
                 ),
@@ -717,7 +717,7 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
         return Err(FeffError::input_validation(
             "INPUT.SELF_INPUT_ARTIFACT",
             format!(
-                "SELF pipeline requires input artifact '{}' but received '{}'",
+                "SELF module requires input artifact '{}' but received '{}'",
                 SELF_PRIMARY_INPUT, input_file_name
             ),
         ));
@@ -726,19 +726,19 @@ fn validate_request_shape(request: &PipelineRequest) -> PipelineResult<()> {
     Ok(())
 }
 
-fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
+fn input_parent_dir(request: &ComputeRequest) -> ComputeResult<&Path> {
     request.input_path.parent().ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.SELF_INPUT_ARTIFACT",
             format!(
-                "SELF pipeline requires sibling inputs next to '{}'",
+                "SELF module requires sibling inputs next to '{}'",
                 request.input_path.display()
             ),
         )
     })
 }
 
-fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
+fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResult<String> {
     let bytes = fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.SELF_INPUT_READ",
@@ -756,7 +756,7 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
 fn maybe_read_optional_input_source(
     path: PathBuf,
     artifact_name: &str,
-) -> PipelineResult<Option<String>> {
+) -> ComputeResult<Option<String>> {
     if path.is_file() {
         return read_input_source(&path, artifact_name).map(Some);
     }
@@ -764,13 +764,13 @@ fn maybe_read_optional_input_source(
     Ok(None)
 }
 
-fn load_staged_spectrum_sources(directory: &Path) -> PipelineResult<Vec<StagedSpectrumSource>> {
+fn load_staged_spectrum_sources(directory: &Path) -> ComputeResult<Vec<StagedSpectrumSource>> {
     let artifacts = collect_staged_spectrum_artifacts(directory)?;
     if artifacts.is_empty() {
         return Err(FeffError::input_validation(
             "INPUT.SELF_SPECTRUM_INPUT",
             format!(
-                "SELF pipeline requires at least one staged spectrum input (xmu.dat, chi.dat, loss.dat, or feffNNNN.dat) in '{}'",
+                "SELF module requires at least one staged spectrum input (xmu.dat, chi.dat, loss.dat, or feffNNNN.dat) in '{}'",
                 directory.display()
             ),
         ));
@@ -784,7 +784,7 @@ fn load_staged_spectrum_sources(directory: &Path) -> PipelineResult<Vec<StagedSp
     Ok(sources)
 }
 
-fn collect_staged_spectrum_artifacts(directory: &Path) -> PipelineResult<Vec<String>> {
+fn collect_staged_spectrum_artifacts(directory: &Path) -> ComputeResult<Vec<String>> {
     let mut artifacts = Vec::new();
     let mut seen = BTreeSet::new();
 
@@ -820,7 +820,7 @@ fn collect_feff_spectrum_artifacts(
     placeholder: &'static str,
     location: &'static str,
     location_label: &'static str,
-) -> PipelineResult<Vec<String>> {
+) -> ComputeResult<Vec<String>> {
     let entries = fs::read_dir(directory).map_err(|source| {
         FeffError::io_system(
             placeholder,
@@ -917,7 +917,7 @@ fn parse_spectrum_source(
     fixture_id: &str,
     artifact: &str,
     source: &str,
-) -> PipelineResult<SelfSpectrumInput> {
+) -> ComputeResult<SelfSpectrumInput> {
     let mut rows = Vec::new();
     for line in source.lines() {
         let trimmed = line.trim();
@@ -1103,11 +1103,11 @@ fn is_feff_spectrum_name(name: &str) -> bool {
     !suffix.is_empty() && suffix.chars().all(|ch| ch.is_ascii_digit())
 }
 
-fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
-    paths.iter().copied().map(PipelineArtifact::new).collect()
+fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
+    paths.iter().copied().map(ComputeArtifact::new).collect()
 }
 
-fn upsert_artifact(artifacts: &mut Vec<PipelineArtifact>, artifact: &str) {
+fn upsert_artifact(artifacts: &mut Vec<ComputeArtifact>, artifact: &str) {
     let normalized = artifact.to_ascii_lowercase();
     if artifacts.iter().any(|candidate| {
         candidate
@@ -1118,16 +1118,16 @@ fn upsert_artifact(artifacts: &mut Vec<PipelineArtifact>, artifact: &str) {
     }) {
         return;
     }
-    artifacts.push(PipelineArtifact::new(artifact));
+    artifacts.push(ComputeArtifact::new(artifact));
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        SELF_OPTIONAL_INPUTS, SELF_PRIMARY_INPUT, SELF_REQUIRED_OUTPUTS, SelfEnergyPipelineScaffold,
+        SELF_OPTIONAL_INPUTS, SELF_PRIMARY_INPUT, SELF_REQUIRED_OUTPUTS, SelfEnergyModule,
     };
-    use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
-    use crate::pipelines::PipelineExecutor;
+    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -1172,13 +1172,13 @@ NULL
         let input_path = temp.path().join(SELF_PRIMARY_INPUT);
         fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SELF-001",
-            PipelineModule::SelfEnergy,
+            ComputeModule::SelfEnergy,
             &input_path,
             temp.path().join("out"),
         );
-        let error = SelfEnergyPipelineScaffold
+        let error = SelfEnergyModule
             .contract_for_request(&request)
             .expect_err("missing spectra should fail contract");
 
@@ -1195,13 +1195,13 @@ NULL
         fs::write(temp.path().join("loss.dat"), LOSS_INPUT_FIXTURE)
             .expect("loss should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SELF-001",
-            PipelineModule::SelfEnergy,
+            ComputeModule::SelfEnergy,
             &input_path,
             temp.path().join("out"),
         );
-        let contract = SelfEnergyPipelineScaffold
+        let contract = SelfEnergyModule
             .contract_for_request(&request)
             .expect("contract should build");
 
@@ -1235,13 +1235,13 @@ NULL
         fs::write(temp.path().join(SELF_OPTIONAL_INPUTS[0]), EXC_INPUT_FIXTURE)
             .expect("exc input should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SELF-001",
-            PipelineModule::SelfEnergy,
+            ComputeModule::SelfEnergy,
             &input_path,
             &output_dir,
         );
-        let artifacts = SelfEnergyPipelineScaffold
+        let artifacts = SelfEnergyModule
             .execute(&request)
             .expect("SELF execution should succeed");
 
@@ -1284,13 +1284,13 @@ NULL
         fs::write(temp.path().join("feff0001.dat"), FEFF_INPUT_FIXTURE)
             .expect("feff spectrum should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SELF-001",
-            PipelineModule::SelfEnergy,
+            ComputeModule::SelfEnergy,
             &input_path,
             temp.path().join("out"),
         );
-        let artifacts = SelfEnergyPipelineScaffold
+        let artifacts = SelfEnergyModule
             .execute(&request)
             .expect("SELF execution should accept feffNNNN spectrum input");
         let emitted = artifact_set(&artifacts);
@@ -1307,13 +1307,13 @@ NULL
         fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
         fs::write(temp.path().join("xmu.dat"), XMU_INPUT_FIXTURE).expect("xmu should be written");
 
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SELF-001",
-            PipelineModule::Screen,
+            ComputeModule::Screen,
             &input_path,
             temp.path().join("out"),
         );
-        let error = SelfEnergyPipelineScaffold
+        let error = SelfEnergyModule
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -1351,13 +1351,13 @@ NULL
             .expect("exc should be written");
 
         let output_dir = case_root.join("out");
-        let request = PipelineRequest::new(
+        let request = ComputeRequest::new(
             "FX-SELF-001",
-            PipelineModule::SelfEnergy,
+            ComputeModule::SelfEnergy,
             case_root.join(SELF_PRIMARY_INPUT),
             &output_dir,
         );
-        let artifacts = SelfEnergyPipelineScaffold
+        let artifacts = SelfEnergyModule
             .execute(&request)
             .expect("SELF execution should succeed");
 
@@ -1382,7 +1382,7 @@ NULL
         artifacts
     }
 
-    fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+    fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
         artifacts
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))

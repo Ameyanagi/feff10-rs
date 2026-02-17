@@ -1,9 +1,9 @@
-use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
-use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::pot::PotPipelineScaffold;
-use feff10_rs::pipelines::rdinp::RdinpPipelineScaffold;
-use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
-use feff10_rs::pipelines::screen::ScreenPipelineScaffold;
+use feff10_rs::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
+use feff10_rs::modules::ModuleExecutor;
+use feff10_rs::modules::pot::PotModule;
+use feff10_rs::modules::rdinp::RdinpModule;
+use feff10_rs::modules::regression::{RegressionRunnerConfig, run_regression};
+use feff10_rs::modules::screen::ScreenModule;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -78,7 +78,7 @@ fn approved_screen_fixtures_are_deterministic_across_runs() {
 }
 
 #[test]
-fn screen_pipeline_supports_missing_optional_screen_input() {
+fn screen_module_supports_missing_optional_screen_input() {
     for fixture in &APPROVED_SCREEN_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
         let output_dir = run_rdinp_pot_and_screen_for_fixture(
@@ -169,13 +169,13 @@ fn run_rdinp_pot_and_screen_for_fixture(
     include_screen_override: bool,
 ) -> PathBuf {
     let output_dir = root.join(fixture.id).join(subdir);
-    let rdinp_request = PipelineRequest::new(
+    let rdinp_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Rdinp,
+        ComputeModule::Rdinp,
         Path::new(fixture.input_directory).join("feff.inp"),
         &output_dir,
     );
-    let rdinp_artifacts = RdinpPipelineScaffold
+    let rdinp_artifacts = RdinpModule
         .execute(&rdinp_request)
         .expect("RDINP execution should succeed");
 
@@ -189,13 +189,13 @@ fn run_rdinp_pot_and_screen_for_fixture(
         );
     }
 
-    let pot_request = PipelineRequest::new(
+    let pot_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Pot,
+        ComputeModule::Pot,
         output_dir.join("pot.inp"),
         &output_dir,
     );
-    let pot_artifacts = PotPipelineScaffold
+    let pot_artifacts = PotModule
         .execute(&pot_request)
         .expect("POT execution should succeed");
     assert_eq!(
@@ -217,13 +217,13 @@ fn run_rdinp_pot_and_screen_for_fixture(
         }
     }
 
-    let screen_request = PipelineRequest::new(
+    let screen_request = ComputeRequest::new(
         fixture.id,
-        PipelineModule::Screen,
+        ComputeModule::Screen,
         output_dir.join("pot.inp"),
         &output_dir,
     );
-    let screen_artifacts = ScreenPipelineScaffold
+    let screen_artifacts = ScreenModule
         .execute(&screen_request)
         .expect("SCREEN execution should succeed");
     assert_eq!(
@@ -243,7 +243,7 @@ fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {
         .collect()
 }
 
-fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
+fn artifact_set(artifacts: &[ComputeArtifact]) -> BTreeSet<String> {
     artifacts
         .iter()
         .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))
