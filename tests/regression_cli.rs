@@ -286,6 +286,93 @@ fn regression_command_run_pot_input_mismatch_emits_computation_diagnostic_contra
 }
 
 #[test]
+fn regression_command_run_compton_input_mismatch_emits_deterministic_diagnostic_contract() {
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-COMPTON-001";
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = temp.path().join("policy.json");
+    let baseline_root = temp.path().join("baseline-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/report.json");
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+
+    write_file(
+        &manifest_path,
+        r#"
+        {
+          "fixtures": [
+            {
+              "id": "FX-COMPTON-001",
+              "modulesCovered": ["COMPTON"]
+            }
+          ]
+        }
+        "#,
+    );
+    write_file(
+        &policy_path,
+        r#"
+        {
+          "defaultMode": "exact_text"
+        }
+        "#,
+    );
+
+    stage_workspace_fixture_file(
+        fixture_id,
+        "compton.inp",
+        &staged_output_dir.join("compton.inp"),
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "pot.bin",
+        &staged_output_dir.join("pot.bin"),
+        &[0_u8, 1_u8, 2_u8, 3_u8],
+    );
+    assert!(
+        !staged_output_dir.join("gg_slice.bin").exists(),
+        "test setup should intentionally omit gg_slice.bin to verify binary input contracts"
+    );
+
+    let output = run_regression_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &baseline_root,
+        &actual_root,
+        &report_path,
+        &["--run-compton"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "missing COMPTON binary input should map to deterministic IO fatal exit code, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ERROR: [IO.COMPTON_INPUT_READ]"),
+        "stderr should include COMPTON input-contract placeholder, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("gg_slice.bin"),
+        "stderr should identify missing gg_slice.bin required input, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("FATAL EXIT CODE: 3"),
+        "stderr should include deterministic fatal exit summary line, stderr: {}",
+        stderr
+    );
+    assert!(
+        !report_path.exists(),
+        "fatal COMPTON input-contract failures should not emit a regression report"
+    );
+}
+
+#[test]
 fn oracle_command_runs_capture_and_rust_generation_for_same_fixture_set() {
     if !command_available("jq") {
         eprintln!("Skipping oracle CLI test because jq is unavailable in PATH.");
@@ -2082,6 +2169,184 @@ rdirec, toler1, toler2\n\
 }
 
 #[test]
+fn oracle_command_runs_compton_parity_and_mixed_input_contract_coverage() {
+    if !command_available("jq") {
+        eprintln!("Skipping COMPTON oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-COMPTON-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-compton.json");
+    let fixture_input_dir = workspace_root.join("feff10/examples/COMPTON/Cu");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["COMPTON"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "compton.inp",
+        &staged_output_dir.join("compton.inp"),
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "pot.bin",
+        &staged_output_dir.join("pot.bin"),
+        &[0_u8, 1_u8, 2_u8, 3_u8],
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "gg_slice.bin",
+        &staged_output_dir.join("gg_slice.bin"),
+        &[4_u8, 5_u8, 6_u8, 7_u8],
+    );
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-compton",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "COMPTON oracle parity should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Fixture FX-COMPTON-001 mismatches"),
+        "COMPTON oracle summary should include fixture mismatch details, stdout: {}",
+        stdout
+    );
+    for artifact in ["compton.dat", "jzzp.dat", "rhozzp.dat", "logcompton.dat"] {
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join(artifact)
+                .is_file(),
+            "run-compton should materialize '{}' for '{}'",
+            artifact,
+            fixture_id
+        );
+    }
+    assert!(
+        report_path.is_file(),
+        "COMPTON oracle parity should emit a report"
+    );
+
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let fixture_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-COMPTON-001");
+    let artifact_reports = fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+
+    let compton_report = artifact_reports
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("compton.dat"))
+        .expect("COMPTON fixture should include compton.dat comparison");
+    assert_eq!(
+        compton_report["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "compton.dat should be compared using numeric_tolerance mode"
+    );
+    assert_eq!(
+        compton_report["comparison"]["matched_category"],
+        Value::from("columnar_spectra"),
+        "compton.dat should resolve the columnar_spectra policy category"
+    );
+    assert_eq!(
+        compton_report["comparison"]["metrics"]["kind"],
+        Value::from("numeric_tolerance"),
+        "compton.dat comparison should emit numeric tolerance metrics"
+    );
+    assert!(
+        compton_report["comparison"]["metrics"]["compared_values"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "compton.dat tolerance metrics should include compared values"
+    );
+
+    let mismatch_fixtures = parsed["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let mismatch_fixture = mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("mismatch_fixtures should include COMPTON fixture");
+    let mismatch_artifacts = mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("fixture mismatch artifact list should be an array");
+    assert!(
+        !mismatch_artifacts.is_empty(),
+        "COMPTON mismatch report should include artifact details"
+    );
+    assert!(
+        mismatch_artifacts.iter().all(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| !path.is_empty())
+                && artifact["reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty())
+        }),
+        "COMPTON mismatch artifacts should include deterministic path and reason fields"
+    );
+}
+
+#[test]
 fn oracle_command_run_screen_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");
@@ -2271,6 +2536,34 @@ fn stage_workspace_fixture_file(fixture_id: &str, relative_path: &str, destinati
         fs::create_dir_all(parent).expect("destination parent should be created");
     }
     fs::write(destination, source_bytes).expect("fixture baseline should be staged");
+}
+
+fn stage_workspace_fixture_file_with_fallback_bytes(
+    fixture_id: &str,
+    relative_path: &str,
+    destination: &Path,
+    fallback_bytes: &[u8],
+) {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("artifacts/fortran-baselines")
+        .join(fixture_id)
+        .join("baseline")
+        .join(relative_path);
+    if source.is_file() {
+        let source_bytes = fs::read(&source).unwrap_or_else(|_| {
+            panic!("fixture baseline should be readable: {}", source.display())
+        });
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should be created");
+        }
+        fs::write(destination, source_bytes).expect("fixture baseline should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should be created");
+    }
+    fs::write(destination, fallback_bytes).expect("fixture fallback should be staged");
 }
 
 fn stage_band_input_with_fallback(fixture_id: &str, destination: &Path) {

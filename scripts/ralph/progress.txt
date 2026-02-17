@@ -29,6 +29,7 @@
 - For module control decks that include numeric literals in label text (for example `mband : ... if = 1`), parse by keyword marker plus the following value row instead of flattening all numeric tokens across the file.
 - For parity suites that call `run_regression` with module pre-compare hooks enabled, stage each module's required input artifacts into `actual-root/<fixture>/actual` even when baseline outputs are seeded from generated true-compute artifacts.
 - For true-compute module parity tests, seed temporary baselines from generated outputs and stage deterministic fallback bytes when a declared required binary input is missing from committed fixture baselines (for example `gg_slice.bin` for `FX-COMPTON-001`).
+- For COMPTON oracle/regression coverage, stage mixed required inputs (`compton.inp` text plus `pot.bin`/`gg_slice.bin` binaries), and assert missing `gg_slice.bin` fails deterministically with `IO.COMPTON_INPUT_READ` / fatal exit code `3`.
 - For LDOS oracle parity coverage, stage `ldos.inp`, `geom.dat`, `pot.bin`, and `reciprocal.inp` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-ldos`, and assert failed `ldos*.dat` comparisons report `comparison.mode=numeric_tolerance` with `matched_category=density_tables` and numeric tolerance metrics.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
@@ -364,4 +365,17 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: COMPTON runtime and regression coverage should treat `gg_slice.bin` as a required staged binary input even when fixture baselines do not provide it, using deterministic fallback bytes in tests.
   - Gotchas encountered: `FX-COMPTON-001` baseline snapshots currently omit `gg_slice.bin`, so parity/CLI tests must stage fallback bytes or COMPTON exits with deterministic `IO.COMPTON_INPUT_READ` failures.
   - Useful context: The COMPTON true-compute parser reads marker lines plus following value rows in `compton.inp` to avoid accidental numeric-token capture from descriptive label text.
+---
+## [2026-02-17 11:07:15 JST] - US-030
+- Added COMPTON oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-COMPTON-001` by running `feff10-rs oracle` with `--run-compton` and CI capture-runner plumbing.
+- Staged mixed COMPTON required inputs (`compton.inp` text plus `pot.bin`/`gg_slice.bin` binaries) under `actual-root/<fixture>/actual`, with deterministic fallback bytes when fixture baselines omit `gg_slice.bin`, then asserted COMPTON output materialization and fixture-level mismatch reporting.
+- Added regression input-contract coverage for COMPTON by omitting `gg_slice.bin` and asserting deterministic fatal diagnostics (`IO.COMPTON_INPUT_READ`, `FATAL EXIT CODE: 3`) with no report emission on pre-compare hook failure.
+- Added tolerance-policy assertions proving `compton.dat` comparisons resolve `comparison.mode=numeric_tolerance`, `matched_category=columnar_spectra`, and numeric-tolerance metrics.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-030` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: COMPTON oracle parity should stage mixed input contracts (`compton.inp`, `pot.bin`, `gg_slice.bin`) and assert tolerance routing on `compton.dat` through the `columnar_spectra` policy category.
+  - Gotchas encountered: `FX-COMPTON-001` baselines omit `gg_slice.bin`, so COMPTON oracle/regression tests must stage deterministic fallback bytes or module hooks fail with `IO.COMPTON_INPUT_READ`.
+  - Useful context: Deterministic pre-compare hook failures should assert fatal exit codes and stderr placeholders, and should not emit regression/oracle reports.
 ---
