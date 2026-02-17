@@ -14,6 +14,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - `faer` general eigensolver output ordering is unspecified; sort eigenpairs (value + matching vector column) by `(Re(lambda), Im(lambda))` before exposing deterministic APIs or comparing against reference spectra.
 - FEFF `somm.f90` parity requires Simpson weights over `r^(m+1)` on the log-radius grid plus endpoint corrections from the first two radial points using the near-zero exponent parameter.
 - FEFF `conv.f90` parity requires an extrapolated final interval with `dx = max(last_step, 50*broadening)` and a small-`|t|` polynomial branch for `conv1` when `|t| < 0.1`.
+- Keep numerics cross-domain regression baselines in `tasks/math-regression-fixtures.json` and load them from integration tests so Bessel/harmonics/Wigner/linalg/integration/convolution checks share one fixture source.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -137,4 +138,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: FEFF convolution parity depends on appending an extrapolated final segment using `dx = max(last_step, 50*broadening)` before evaluating interval integrals.
   - Gotchas encountered: interval integration needs the small-`|t|` branch (`|t| < 0.1`) to avoid instability in `log((1+t)/(1-t))`.
   - Useful context: there are still no repository-local `AGENTS.md` files in this workspace, so reusable convolution guidance remains centralized in `scripts/ralph/progress.txt`.
+---
+
+## 2026-02-17 23:15:09 JST - US-012
+- Added consolidated MATH regression fixtures at `tasks/math-regression-fixtures.json` for Bessel (`j/n/h`), spherical harmonics, Wigner (`3j/6j`), LU solve/invert, eigenvalues, `somm` integration, and convolution/interpolation reference outputs.
+- Added `crates/feff-core/tests/math_primitives_regression.rs` to load fixture JSON and assert all numerics primitive APIs against per-case absolute/relative tolerances.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `tasks/math-regression-fixtures.json`, `crates/feff-core/tests/math_primitives_regression.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: when adding new numerics primitives, extend `tasks/math-regression-fixtures.json` and `crates/feff-core/tests/math_primitives_regression.rs` instead of creating isolated one-off fixture formats.
+  - Gotchas encountered: this workspace still has no local `AGENTS.md`, so reusable module patterns must be captured in `scripts/ralph/progress.txt`.
+  - Useful context: integration tests resolve fixture files from workspace root via `CARGO_MANIFEST_DIR` parent traversal, matching existing parity-test conventions.
 ---
