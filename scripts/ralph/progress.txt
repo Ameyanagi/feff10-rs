@@ -1,0 +1,16 @@
+# Ralph Progress Log
+Started: Tue Feb 17 21:53:52 JST 2026
+
+## Codebase Patterns
+- Add shared third-party dependencies in workspace `Cargo.toml` and consume them in crates with `<dependency>.workspace = true`.
+- For new numerics domains, add `pub mod <domain>;` to `crates/feff-core/src/numerics/mod.rs` and re-export public APIs from `crates/feff-core/src/numerics/<domain>/mod.rs`.
+
+## 2026-02-17 22:00:24 JST - US-001
+- Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
+- Wired `special` through `crates/feff-core/src/numerics/mod.rs` and added `num-complex` + `faer` as workspace-backed dependencies in `Cargo.toml` and `crates/feff-core/Cargo.toml`.
+- Files changed: `Cargo.toml`, `Cargo.lock`, `crates/feff-core/Cargo.toml`, `crates/feff-core/src/numerics/mod.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `crates/feff-core/src/numerics/special/bessel.rs`, `crates/feff-core/src/numerics/special/harmonics.rs`, `crates/feff-core/src/numerics/special/wigner.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: `feff-core` dependency declarations follow workspace indirection (`*.workspace = true`) rather than pinning versions per crate.
+  - Gotchas encountered: running `cargo fmt` from workspace root can touch many unrelated files; use targeted `rustfmt` for scoped story diffs.
+  - Useful context: the new numerics home for upcoming Fortran parity kernels is `crates/feff-core/src/numerics/special/`, with APIs re-exported from `special/mod.rs`.
+---

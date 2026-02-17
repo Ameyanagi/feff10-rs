@@ -1,0 +1,807 @@
+{
+  "project": "feff10-rs",
+  "branchName": "ralph/feff10-rs-physics-migration",
+  "description": "Replace placeholder physics formulas across all FEFF10 modules with real Fortran-parity Rust computation kernels.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Create numerics special-function module scaffolding",
+      "description": "As a developer, I want dedicated numerics submodules for physics math so Fortran kernel ports have a stable home.",
+      "acceptanceCriteria": [
+        "Create `crates/feff-core/src/numerics/special/` with `mod.rs` and public APIs for Bessel, harmonics, and Wigner functions.",
+        "Wire the new submodules through `crates/feff-core/src/numerics/mod.rs` without breaking existing callers.",
+        "Add or confirm `num-complex` and `faer` dependencies in `crates/feff-core/Cargo.toml` for complex arithmetic and dense linear algebra.",
+        "Standardize numerics implementation on `num-complex` and `faer` (do not introduce alternate dense linear algebra backends for this migration track).",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Port complex spherical Bessel J_l functions",
+      "description": "As a developer, I want complex-argument spherical Bessel J_l support so FEFF radial kernels can be computed in Rust.",
+      "acceptanceCriteria": [
+        "Implement complex-argument spherical Bessel `j_l(z)` routines equivalent to FEFF `besjh.f90` usage using `num_complex::Complex64`.",
+        "Cover `l=0..8` against reference vectors in unit tests with explicit tolerance assertions.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Port complex spherical Neumann and Hankel functions",
+      "description": "As a developer, I want complex Neumann and Hankel functions so downstream scattering kernels can reuse a complete basis.",
+      "acceptanceCriteria": [
+        "Implement complex-argument spherical Neumann `n_l(z)` and Hankel `h_l(z)` APIs alongside `j_l` using `num_complex::Complex64`.",
+        "Add branch-cut and large-argument regression cases from FEFF reference data.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Port spherical harmonics Y_lm implementation",
+      "description": "As a developer, I want spherical harmonics in numerics so angular scattering code can be ported without placeholders.",
+      "acceptanceCriteria": [
+        "Implement complex spherical harmonics `Y_lm(theta, phi)` used by scattering modules using `num_complex::Complex64`.",
+        "Verify normalization and symmetry identities in unit tests for representative `l,m` values.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Port Wigner 3j coefficient solver",
+      "description": "As a developer, I want Wigner 3j coefficients so angular momentum coupling can match FEFF behavior.",
+      "acceptanceCriteria": [
+        "Implement Wigner 3j computation compatible with FEFF `cwig3j.f90` conventions.",
+        "Add tests for selection-rule zeros and known tabulated values.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Port Wigner 6j coefficient solver",
+      "description": "As a developer, I want Wigner 6j coefficients so higher-order coupling terms can be ported with parity checks.",
+      "acceptanceCriteria": [
+        "Implement Wigner 6j computation needed by FEFF coupling code paths.",
+        "Add tests against known reference values across integer and half-integer cases.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Port LU factorization and linear solve kernels",
+      "description": "As a developer, I want LU decomposition in core numerics so matrix-heavy ports do not depend on placeholders.",
+      "acceptanceCriteria": [
+        "Implement dense LU decomposition with pivoting equivalent to FEFF `lu.f90` behavior using `faer` matrix primitives.",
+        "Expose a solve API for linear systems used by module physics kernels.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Port dense matrix inversion helper",
+      "description": "As a developer, I want matrix inversion utilities so FMS and related ports can reuse tested numerics code.",
+      "acceptanceCriteria": [
+        "Implement matrix inversion helper equivalent to FEFF `invertmatrix.f90` usage using `faer`.",
+        "Add failure-path tests for singular and ill-conditioned matrices.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Port eigenvalue solver helper",
+      "description": "As a developer, I want an eigenvalue helper so solver ports can compute spectrum steps without stubs.",
+      "acceptanceCriteria": [
+        "Implement eigenvalue helper equivalent to FEFF `seigen.f90` requirements using `faer` eigensolver APIs.",
+        "Validate eigenpairs on reference matrices relevant to scattering workflows.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Port numerical integration utilities",
+      "description": "As a developer, I want integration routines on radial grids so atom and scattering solvers can be ported incrementally.",
+      "acceptanceCriteria": [
+        "Implement integration routines equivalent to FEFF `somm.f90` behavior for radial-grid use.",
+        "Add deterministic tests comparing numerical integrals to analytic functions and fixture values.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Port convolution and interpolation utilities",
+      "description": "As a developer, I want convolution and interpolation kernels so spectrum-processing ports avoid ad hoc math.",
+      "acceptanceCriteria": [
+        "Implement convolution/interpolation helpers equivalent to FEFF `conv.f90` usages not covered by current numerics.",
+        "Add unit tests for boundary handling and tolerance behavior on representative spectra arrays.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Add MATH subsystem regression fixtures",
+      "description": "As a maintainer, I want regression fixtures for math primitives so future ports can be validated quickly.",
+      "acceptanceCriteria": [
+        "Add fixture set under `tasks/` for MATH primitive reference outputs used by tests.",
+        "Add regression tests that exercise Bessel, harmonics, Wigner, linear algebra, integration, and convolution APIs.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Create exchange-correlation model API",
+      "description": "As a developer, I want a shared exchange API so POT and XSPH can choose FEFF-compatible models consistently.",
+      "acceptanceCriteria": [
+        "Add `crates/feff-core/src/numerics/exchange/` with model enum and shared evaluation interface.",
+        "Wire API entry points into POT/XSPH call paths without changing physics outputs yet.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Port Hedin-Lundqvist and Dirac-Hara exchange potentials",
+      "description": "As a developer, I want two core exchange models ported so early POT integration can run with real physics.",
+      "acceptanceCriteria": [
+        "Implement Hedin-Lundqvist and Dirac-Hara evaluators in `numerics/exchange`.",
+        "Add unit tests against known reference samples for both models.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Port Von Barth-Hedin and Perdew-Zunger exchange potentials",
+      "description": "As a developer, I want the remaining FEFF exchange models ported so runtime model selection is complete.",
+      "acceptanceCriteria": [
+        "Implement Von Barth-Hedin and Perdew-Zunger evaluators in `numerics/exchange`.",
+        "Add unit tests validating model selection and value parity against reference vectors.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Add EXCH subsystem regression tests",
+      "description": "As a maintainer, I want exchange regression coverage so model ports remain stable during module integration.",
+      "acceptanceCriteria": [
+        "Add EXCH regression fixtures and tests for all four exchange-correlation models.",
+        "Verify deterministic API outputs for fixed density and energy inputs.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Port physical constants and units from COMMON",
+      "description": "As a developer, I want COMMON constants in Rust so module math uses one authoritative source.",
+      "acceptanceCriteria": [
+        "Add a constants module equivalent to physics-critical values in `m_constants.f90`.",
+        "Replace duplicated ad hoc constants in core code with imports from the new module.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Port electronic configuration dataset",
+      "description": "As a developer, I want element configuration data ported so atomic solvers can query FEFF-equivalent inputs.",
+      "acceptanceCriteria": [
+        "Port `m_config.f90` electronic configuration data into a structured Rust dataset.",
+        "Add APIs for lookup by atomic number used by ATOM/POT workflows.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Port orbital extraction helpers",
+      "description": "As a developer, I want getorb-equivalent helpers so shell and orbital metadata is available to physics kernels.",
+      "acceptanceCriteria": [
+        "Implement `getorb`-equivalent APIs for orbital occupancy and quantum number metadata.",
+        "Add tests for representative elements across K, L, and M shell lookups.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Port edge and lifetime helper routines",
+      "description": "As a developer, I want edge and lifetime helpers so module defaults match FEFF reference behavior.",
+      "acceptanceCriteria": [
+        "Implement equivalents for `isedge.f90` and `setgam.f90` in `feff-core`.",
+        "Add tests for common edges (K, L1, L2, L3) with fixture-based expected broadening outputs.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Add COMMON subsystem regression tests",
+      "description": "As a maintainer, I want COMMON regression coverage so constants/config ports stay stable as modules migrate.",
+      "acceptanceCriteria": [
+        "Add regression tests validating constants, configuration lookup, orbitals, and edge/lifetime helpers together.",
+        "Ensure COMMON APIs are exposed through `feff-core` public interfaces.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Create radial-grid and state abstractions for ATOM and FOVRG",
+      "description": "As a developer, I want shared radial solver abstractions so ATOM and FOVRG ports can reuse infrastructure.",
+      "acceptanceCriteria": [
+        "Add reusable radial-grid and solver-state structs for bound-state and complex-energy workflows.",
+        "Refactor existing POT/XSPH preparatory paths to consume the shared abstractions.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Port ATOM radial Dirac solver kernel",
+      "description": "As a developer, I want a bound-state Dirac solver so ATOM can produce real radial wavefunctions.",
+      "acceptanceCriteria": [
+        "Implement radial Dirac bound-state stepper equivalent to core ATOM solver routines.",
+        "Add solver tests for convergence and boundary behavior on reference atomic cases.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Port ATOM density and potential update kernels",
+      "description": "As a developer, I want density and potential update kernels so SCF iteration can be implemented in Rust.",
+      "acceptanceCriteria": [
+        "Implement charge-density update and muffin-tin potential update steps used by ATOM SCF.",
+        "Add tests for charge normalization and expected radial potential constraints from fixtures.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Port ATOM SCF loop with Broyden mixing",
+      "description": "As a developer, I want SCF convergence logic ported so POT can use physically meaningful atomic solutions.",
+      "acceptanceCriteria": [
+        "Implement SCF iteration control, convergence checks, and Broyden mixing in the ATOM flow.",
+        "Add tests verifying convergence behavior and iteration cap handling on reference inputs.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-026",
+      "title": "Port ATOM total-energy and S02 outputs",
+      "description": "As a developer, I want total energy and S02 outputs so POT receives FEFF-equivalent atomic results.",
+      "acceptanceCriteria": [
+        "Implement total energy and `S02` computations equivalent to ATOM outputs consumed by POT.",
+        "Add tests comparing computed energies and amplitudes against FEFF reference values.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-027",
+      "title": "Replace POT placeholder model with ATOM outputs",
+      "description": "As a user, I want POT to run real SCF physics so downstream modules no longer depend on placeholder formulas.",
+      "acceptanceCriteria": [
+        "Remove placeholder arithmetic in `crates/feff-core/src/modules/pot/model.rs` and call ATOM/COMMON/EXCH kernels.",
+        "Keep POT output artifact contracts unchanged while switching the physics backend.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 27,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-028",
+      "title": "Add POT oracle parity regression",
+      "description": "As a maintainer, I want POT oracle parity checks so SCF migration is guarded by numeric regression.",
+      "acceptanceCriteria": [
+        "Add POT entries to `tasks/golden-fixture-manifest.json` and `tasks/numeric-tolerance-policy.json`.",
+        "Ensure `cargo run -- oracle` reports POT parity within configured tolerances.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 28,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-029",
+      "title": "Replace SCREEN placeholder model with POT-driven physics",
+      "description": "As a user, I want SCREEN to consume real POT data so dielectric responses are physically based.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/screen/model.rs` and compute screening from POT outputs.",
+        "Preserve SCREEN artifact schema and required output files.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 29,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-030",
+      "title": "Replace CRPA placeholder model with SCREEN outputs",
+      "description": "As a user, I want CRPA to use SCREEN physics outputs so response functions are no longer synthetic.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/crpa/model.rs` and derive response data from SCREEN outputs.",
+        "Preserve CRPA input/output contracts and error handling behavior.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 30,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-031",
+      "title": "Add SCREEN and CRPA oracle parity regression",
+      "description": "As a maintainer, I want SCREEN/CRPA parity coverage so mid-chain physics ports are regression checked.",
+      "acceptanceCriteria": [
+        "Add SCREEN and CRPA fixtures and tolerance entries to oracle configuration files.",
+        "Ensure oracle runs include both modules and fail on tolerance regressions.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 31,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-032",
+      "title": "Port FOVRG complex-energy Dirac solver",
+      "description": "As a developer, I want FOVRG complex-energy solving in Rust so XSPH can compute real photoelectron states.",
+      "acceptanceCriteria": [
+        "Implement complex-energy Dirac solver routines from FOVRG for photoelectron states.",
+        "Add tests for stable solutions across representative energies and angular momenta.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 32,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-033",
+      "title": "Port FOVRG boundary matching and exchange coupling",
+      "description": "As a developer, I want FOVRG boundary matching so XSPH phase outputs respect muffin-tin constraints.",
+      "acceptanceCriteria": [
+        "Implement `solin`/`solout` style boundary matching and integrate exchange coupling behavior (`potex` path).",
+        "Add regression tests validating continuity and phase behavior at muffin-tin boundaries.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 33,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-034",
+      "title": "Replace XSPH placeholder model with FOVRG outputs",
+      "description": "As a user, I want XSPH to compute phase shifts and cross sections from real Dirac solutions.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/xsph/model.rs` and compute outputs via FOVRG kernels.",
+        "Preserve XSPH output artifact names and format contracts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 34,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-035",
+      "title": "Add XSPH oracle parity regression",
+      "description": "As a maintainer, I want XSPH parity checks so photoelectron migration remains numerically tracked.",
+      "acceptanceCriteria": [
+        "Add XSPH fixtures and tolerance policy entries for oracle validation.",
+        "Ensure oracle runs compare XSPH outputs against Fortran references.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 35,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-036",
+      "title": "Port MKGTR Green's-function matrix kernels",
+      "description": "As a developer, I want MKGTR matrix kernels so FMS can use real Green's-function inversion.",
+      "acceptanceCriteria": [
+        "Implement MKGTR matrix assembly, rotation, and inversion utilities required by FMS using `faer` for dense linear algebra operations.",
+        "Add unit tests for matrix conditioning and inversion accuracy on reference cases.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 36,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-037",
+      "title": "Port GENFMT path-expansion kernels",
+      "description": "As a developer, I want GENFMT kernels so PATH can compute multiple-scattering expansions without placeholders.",
+      "acceptanceCriteria": [
+        "Implement GENFMT scattering amplitude and path expansion kernels used by PATH.",
+        "Add tests for path contribution accumulation against reference fixture outputs.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 37,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-038",
+      "title": "Replace FMS and PATH placeholders with MKGTR and GENFMT outputs",
+      "description": "As a user, I want FMS and PATH to run real scattering physics so EXAFS chain outputs are meaningful.",
+      "acceptanceCriteria": [
+        "Remove placeholder formulas in `fms/model.rs` and `path/model.rs` and wire MKGTR/GENFMT kernels.",
+        "Preserve existing artifact format contracts for both modules.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 38,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-039",
+      "title": "Add FMS and PATH oracle parity regression",
+      "description": "As a maintainer, I want FMS/PATH parity checks so scattering-chain migration is enforced by CI gates.",
+      "acceptanceCriteria": [
+        "Add FMS and PATH fixtures with module-specific tolerances in oracle policy files.",
+        "Ensure oracle comparisons fail when matrix or path outputs exceed tolerance budgets.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 39,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-040",
+      "title": "Port KSPACE Brillouin-zone integration kernels",
+      "description": "As a developer, I want KSPACE integration kernels so BAND and LDOS can consume real reciprocal-space math.",
+      "acceptanceCriteria": [
+        "Implement core KSPACE integration primitives consumed by BAND and LDOS.",
+        "Add tests covering k-point weighting and grid-integration invariants.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 40,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-041",
+      "title": "Replace BAND placeholder model with KSPACE outputs",
+      "description": "As a user, I want BAND to compute KKR band structure from real kernels.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/band/model.rs` and compute outputs using KSPACE kernels.",
+        "Preserve BAND output contracts and command behavior.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 41,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-042",
+      "title": "Replace LDOS placeholder model with KSPACE outputs",
+      "description": "As a user, I want LDOS to compute density-of-states outputs from real reciprocal-space integration.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/ldos/model.rs` and compute outputs using KSPACE kernels.",
+        "Preserve LDOS output contracts and diagnostics behavior.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 42,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-043",
+      "title": "Add BAND and LDOS oracle parity regression",
+      "description": "As a maintainer, I want BAND/LDOS parity checks so reciprocal-space module ports are tracked.",
+      "acceptanceCriteria": [
+        "Add BAND and LDOS fixtures and tolerance entries to oracle configuration files.",
+        "Ensure oracle runs include both modules and enforce configured tolerances.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 43,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-044",
+      "title": "Port FF2X kernels for chi(k), mu(E), and Debye-Waller terms",
+      "description": "As a developer, I want FF2X kernels ported so spectroscopy modules can use real spectral math.",
+      "acceptanceCriteria": [
+        "Implement FF2X kernels needed by DEBYE and DMDW (`chi(k)`, `mu(E)`, Debye-Waller terms).",
+        "Add kernel-level tests against reference fixture values.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 44,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-045",
+      "title": "Replace DEBYE placeholder model with FF2X outputs",
+      "description": "As a user, I want DEBYE to compute outputs from real FF2X kernels.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/debye/model.rs` and compute with FF2X kernels.",
+        "Preserve DEBYE output contracts and CLI behavior.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 45,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-046",
+      "title": "Replace DMDW placeholder model with FF2X outputs",
+      "description": "As a user, I want DMDW to use real Debye-Waller computations instead of synthetic formulas.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/dmdw/model.rs` and compute with FF2X kernels.",
+        "Preserve DMDW output contracts and diagnostics.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 46,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-047",
+      "title": "Port RHORRP kernels for electron momentum density",
+      "description": "As a developer, I want RHORRP kernels so COMPTON can run physically grounded momentum-density calculations.",
+      "acceptanceCriteria": [
+        "Implement RHORRP kernels used for electron momentum density computation.",
+        "Add kernel-level tests against reference fixture values.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 47,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-048",
+      "title": "Replace COMPTON placeholder model with RHORRP outputs",
+      "description": "As a user, I want COMPTON to use real momentum-density kernels instead of synthetic formulas.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/compton/model.rs` and compute with RHORRP kernels.",
+        "Preserve COMPTON output contracts and command behavior.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 48,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-049",
+      "title": "Add DEBYE, DMDW, and COMPTON oracle parity regression",
+      "description": "As a maintainer, I want parity checks for remaining spectroscopy modules so their ports are numerically guarded.",
+      "acceptanceCriteria": [
+        "Add DEBYE, DMDW, and COMPTON fixtures and tolerance entries to oracle configuration files.",
+        "Ensure oracle runs include all three modules and enforce configured tolerances.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 49,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-050",
+      "title": "Port SFCONV spectral convolution kernels",
+      "description": "As a developer, I want SFCONV kernels so SELF can run real spectral-function convolution.",
+      "acceptanceCriteria": [
+        "Implement SFCONV convolution kernels required by SELF.",
+        "Add kernel-level tests with reference spectrum fixtures.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 50,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-051",
+      "title": "Replace SELF placeholder model with SFCONV outputs",
+      "description": "As a user, I want SELF to use real convolution kernels so spectral broadening behavior matches FEFF.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/self_energy/model.rs` and compute with SFCONV kernels.",
+        "Preserve SELF output contracts and CLI behavior.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 51,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-052",
+      "title": "Port TDLDA dielectric-response kernels",
+      "description": "As a developer, I want TDLDA kernels so EELS and related modules can consume real dielectric response physics.",
+      "acceptanceCriteria": [
+        "Implement TDLDA dielectric-response kernels used by EELS and screening-dependent modules.",
+        "Add kernel-level tests against reference dielectric data.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 52,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-053",
+      "title": "Replace EELS placeholder model with TDLDA outputs",
+      "description": "As a user, I want EELS to compute spectra from real TDLDA physics.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/eels/model.rs` and compute with TDLDA kernels.",
+        "Preserve EELS output contracts including optional `magic.dat` behavior.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 53,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-054",
+      "title": "Replace FULLSPECTRUM placeholder model with integrated physics outputs",
+      "description": "As a user, I want FULLSPECTRUM to aggregate real module physics instead of placeholder math.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/fullspectrum/model.rs` and compute from updated SCREEN, SELF, and EELS chains.",
+        "Preserve FULLSPECTRUM output artifact contracts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 54,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-055",
+      "title": "Replace RIXS placeholder model with integrated physics outputs",
+      "description": "As a user, I want RIXS to consume real upstream physics modules so output spectra are physically meaningful.",
+      "acceptanceCriteria": [
+        "Remove placeholder logic in `crates/feff-core/src/modules/rixs/model.rs` and compute from updated upstream module outputs.",
+        "Preserve RIXS multi-output artifact contracts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 55,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-056",
+      "title": "Add SELF, EELS, FULLSPECTRUM, and RIXS oracle parity regression",
+      "description": "As a maintainer, I want parity checks on final-chain modules so end-user spectroscopy outputs are regression protected.",
+      "acceptanceCriteria": [
+        "Add SELF, EELS, FULLSPECTRUM, and RIXS fixtures and tolerance entries to oracle configuration files.",
+        "Ensure oracle runs include all four modules and enforce configured tolerances.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 56,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-057",
+      "title": "Run full 16-module oracle parity gate and document residual deltas",
+      "description": "As a maintainer, I want a final full-system parity run so migration readiness is measurable and auditable.",
+      "acceptanceCriteria": [
+        "Execute oracle comparison across all modules in `tasks/golden-fixture-manifest.json` using `tasks/numeric-tolerance-policy.json`.",
+        "Record per-module pass/fail and residual numeric deltas in a migration summary file under `tasks/`.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 57,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
