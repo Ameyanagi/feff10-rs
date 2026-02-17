@@ -1,0 +1,14 @@
+SCREEN true-compute runtime
+fixture: FX-SCREEN-ORACLE-001
+title: Cu crystal
+nat: 531 nph: 1 atoms: 531
+neldos: 101
+radial_points: 216
+rfms:    4.00000
+ner: 50 nei: 10 maxl: 3
+pot_source: pot.bin
+pot_potentials: 2
+pot_density:     5.1263933
+pot_charge_scale:    29.0000000
+optional_screen_inp: absent
+nrptx0: 216

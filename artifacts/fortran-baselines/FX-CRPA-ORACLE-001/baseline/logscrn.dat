@@ -1,0 +1,11 @@
+CRPA true-compute runtime
+fixture: FX-CRPA-ORACLE-001
+title: Once upon a time ...
+rcut:    1.49000
+l_crpa: 3
+nat: 250 nph: 1 atoms: 250
+gamach:    3.26955
+rfms1:    4.00000
+optional_screen_log: absent
+optional_screen_wscrn: absent
+screen_wscrn_rows: 0

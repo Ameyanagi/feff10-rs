@@ -4,11 +4,12 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
-
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -713,6 +714,253 @@ fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes
             fixture_id
         );
     }
+}
+
+#[test]
+fn oracle_command_runs_screen_and_crpa_parity_for_required_fixtures_and_applies_policy_modes() {
+    if !command_available("jq") {
+        eprintln!("Skipping SCREEN/CRPA oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let screen_fixture = ("FX-SCREEN-ORACLE-001", "feff10/examples/MPSE/Cu_OPCONS");
+    let crpa_fixture = ("FX-CRPA-ORACLE-001", "feff10/examples/CRPA");
+    let fixtures = [screen_fixture, crpa_fixture];
+    let workspace_root = workspace_root();
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-screen-crpa-report.json");
+
+    let fixture_entries = fixtures
+        .iter()
+        .map(|(fixture_id, input_directory)| {
+            let fixture_input_dir = workspace_root.join(input_directory);
+            let modules = if *fixture_id == "FX-SCREEN-ORACLE-001" {
+                "[\"RDINP\", \"POT\", \"SCREEN\"]"
+            } else {
+                "[\"CRPA\"]"
+            };
+            format!(
+                r#"
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": {modules},
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+            "#,
+                fixture_id = fixture_id,
+                modules = modules,
+                input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [{}]
+        }}
+        "#,
+        fixture_entries
+    );
+    write_file(&manifest_path, &manifest);
+
+    let crpa_actual_dir = actual_root.join(crpa_fixture.0).join("actual");
+    stage_workspace_fixture_file(
+        crpa_fixture.0,
+        "feff.inp",
+        &crpa_actual_dir.join("feff.inp"),
+    );
+    stage_workspace_fixture_file(
+        crpa_fixture.0,
+        "Ce-Cerium.cif",
+        &crpa_actual_dir.join("Ce-Cerium.cif"),
+    );
+    stage_workspace_fixture_file(
+        crpa_fixture.0,
+        "crpa.inp",
+        &crpa_actual_dir.join("crpa.inp"),
+    );
+    stage_workspace_fixture_file(crpa_fixture.0, "pot.inp", &crpa_actual_dir.join("pot.inp"));
+    stage_workspace_fixture_file(
+        crpa_fixture.0,
+        "geom.dat",
+        &crpa_actual_dir.join("geom.dat"),
+    );
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-rdinp",
+            "--run-pot",
+            "--run-screen",
+            "--run-crpa",
+        ],
+    );
+
+    assert!(
+        output.status.success(),
+        "oracle SCREEN/CRPA parity should pass against committed baselines, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Regression status: PASS"),
+        "oracle summary should include pass status, stdout: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Mismatches: 0 fixture(s), 0 artifact(s)"),
+        "oracle summary should report zero mismatches, stdout: {}",
+        stdout
+    );
+
+    assert!(
+        actual_root
+            .join(screen_fixture.0)
+            .join("actual")
+            .join("wscrn.dat")
+            .is_file(),
+        "run-screen should materialize wscrn.dat for '{}'",
+        screen_fixture.0
+    );
+    assert!(
+        actual_root
+            .join(screen_fixture.0)
+            .join("actual")
+            .join("logscreen.dat")
+            .is_file(),
+        "run-screen should materialize logscreen.dat for '{}'",
+        screen_fixture.0
+    );
+    assert!(
+        actual_root
+            .join(crpa_fixture.0)
+            .join("actual")
+            .join("wscrn.dat")
+            .is_file(),
+        "run-crpa should materialize wscrn.dat for '{}'",
+        crpa_fixture.0
+    );
+    assert!(
+        actual_root
+            .join(crpa_fixture.0)
+            .join("actual")
+            .join("logscrn.dat")
+            .is_file(),
+        "run-crpa should materialize logscrn.dat for '{}'",
+        crpa_fixture.0
+    );
+
+    assert!(
+        report_path.is_file(),
+        "oracle command should emit a SCREEN/CRPA parity report"
+    );
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["passed"], Value::Bool(true));
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(0));
+    assert_eq!(parsed["mismatch_artifact_count"], Value::from(0));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+
+    let screen_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(screen_fixture.0))
+        .expect("report should include SCREEN fixture");
+    let screen_artifacts = screen_report["artifacts"]
+        .as_array()
+        .expect("SCREEN artifacts should be an array");
+    let screen_wscrn = screen_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("wscrn.dat"))
+        .expect("SCREEN fixture should include wscrn.dat comparison");
+    assert_eq!(
+        screen_wscrn["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "SCREEN wscrn.dat should use numeric_tolerance comparison mode"
+    );
+    assert_eq!(
+        screen_wscrn["comparison"]["matched_category"],
+        Value::from("screen_crpa_wscrn_tables"),
+        "SCREEN wscrn.dat should resolve screen_crpa_wscrn_tables policy category"
+    );
+    let screen_log = screen_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("logscreen.dat"))
+        .expect("SCREEN fixture should include logscreen.dat comparison");
+    assert_eq!(
+        screen_log["comparison"]["mode"],
+        Value::from("exact_text"),
+        "SCREEN logscreen.dat should use exact_text comparison mode"
+    );
+    assert_eq!(
+        screen_log["comparison"]["matched_category"],
+        Value::from("screen_crpa_diagnostic_reports"),
+        "SCREEN logscreen.dat should resolve screen_crpa_diagnostic_reports policy category"
+    );
+
+    let crpa_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(crpa_fixture.0))
+        .expect("report should include CRPA fixture");
+    let crpa_artifacts = crpa_report["artifacts"]
+        .as_array()
+        .expect("CRPA artifacts should be an array");
+    let crpa_wscrn = crpa_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("wscrn.dat"))
+        .expect("CRPA fixture should include wscrn.dat comparison");
+    assert_eq!(
+        crpa_wscrn["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "CRPA wscrn.dat should use numeric_tolerance comparison mode"
+    );
+    assert_eq!(
+        crpa_wscrn["comparison"]["matched_category"],
+        Value::from("screen_crpa_wscrn_tables"),
+        "CRPA wscrn.dat should resolve screen_crpa_wscrn_tables policy category"
+    );
+    let crpa_log = crpa_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("logscrn.dat"))
+        .expect("CRPA fixture should include logscrn.dat comparison");
+    assert_eq!(
+        crpa_log["comparison"]["mode"],
+        Value::from("exact_text"),
+        "CRPA logscrn.dat should use exact_text comparison mode"
+    );
+    assert_eq!(
+        crpa_log["comparison"]["matched_category"],
+        Value::from("screen_crpa_diagnostic_reports"),
+        "CRPA logscrn.dat should resolve screen_crpa_diagnostic_reports policy category"
+    );
 }
 
 #[test]

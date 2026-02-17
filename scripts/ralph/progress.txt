@@ -32,6 +32,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF `s02at.f90` parity depends on its in-place determinant flow (`determ(m1,morb)` followed by `determ(m1,morb-1)` on the mutated matrix) plus the 8x8 per-kappa subshell cap and `elimin` branch for non-terminal core holes.
 - FEFF ATOM total-energy output uses `etotal.f90` sign convention `E_tot = sum(occ_i*e_i) - (E_coul + E_exch) + E_mag + E_ret`; keep this assembly rule explicit when wiring SCF-derived energy terms into downstream POT outputs.
 - Module-scoped oracle parity should use dedicated fixture IDs (for example `FX-POT-ORACLE-*`) with committed snapshots in `artifacts/fortran-baselines/<fixture>/baseline`; comparing against full workflow baselines causes large missing-artifact noise.
+- Oracle capture always seeds top-level fixture inputs into `<fixture>/outputs` before runner overrides; keep oracle fixture baseline snapshots aligned to that seeded file set (or pre-stage matching files in `actual`) to avoid false missing-artifact regressions.
 - `select_serial_fixture` for `feff` should prefer workflow candidates with the largest `modulesCovered` set so RDINP+module parity fixtures do not preempt full serial-chain fixtures.
 - Regression RDINP execution should stage `feff.inp` into actual outputs only when the baseline fixture includes `feff.inp`; unconditional staging breaks suites that intentionally compare module outputs only.
 - For downstream physics modules that can consume POT outputs, parse `pot.bin` (`POTBIN10`) first and keep a deterministic `pot.inp` fallback only for workflows where POT artifacts are not staged.
@@ -380,4 +381,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: downstream module ports can consume upstream module artifacts as optional sibling inputs to improve physics coupling without breaking required artifact contracts.
   - Gotchas encountered: CRPA and SCREEN both use `wscrn.dat`; guard SCREEN coupling on `logscreen.dat` presence so rerunning CRPA in-place does not consume its own prior `wscrn.dat`.
   - Useful context: regression flow order already executes SCREEN before CRPA in combined runs, so optional SCREEN coupling becomes active without orchestration changes.
+---
+## 2026-02-18 02:10:51 JST - US-031
+- Added dedicated SCREEN/CRPA oracle fixtures to `tasks/golden-fixture-manifest.json`: `FX-SCREEN-ORACLE-001` (`RDINP+POT+SCREEN`) and `FX-CRPA-ORACLE-001` (`CRPA`) with committed oracle snapshot IDs.
+- Added SCREEN/CRPA tolerance policy categories in `tasks/numeric-tolerance-policy.json`: `screen_crpa_wscrn_tables` (`numeric_tolerance` for `wscrn.dat`) and `screen_crpa_diagnostic_reports` (`exact_text` for `logscreen.dat`/`logscrn.dat`).
+- Added committed baseline snapshots under `artifacts/fortran-baselines/FX-SCREEN-ORACLE-001/baseline/` and `artifacts/fortran-baselines/FX-CRPA-ORACLE-001/baseline/` for oracle parity gating.
+- Added a passing oracle CLI regression test in `crates/feff-cli/tests/regression_cli.rs` (`oracle_command_runs_screen_and_crpa_parity_for_required_fixtures_and_applies_policy_modes`) that runs SCREEN and CRPA modules together and asserts policy-category application.
+- Verified quality gates with `cargo check`, `cargo test -p feff-core`, and `cargo test -p feff-cli`.
+- Files changed: `tasks/golden-fixture-manifest.json`, `tasks/numeric-tolerance-policy.json`, `artifacts/fortran-baselines/FX-SCREEN-ORACLE-001/baseline/*`, `artifacts/fortran-baselines/FX-CRPA-ORACLE-001/baseline/*`, `crates/feff-cli/tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: oracle fixture policy coverage should assert both mode and `matched_category` in regression CLI tests, not only pass/fail status.
+  - Gotchas encountered: capture outputs include seeded top-level fixture inputs before runner overlay; parity fixtures can fail with missing-artifact noise unless baseline and actual staging account for those seeded files.
+  - Useful context: CRPA oracle fixtures that run `--run-crpa` without upstream module flags need pre-staged `crpa.inp`, `pot.inp`, and `geom.dat` in `actual/<fixture>/actual`.
 ---

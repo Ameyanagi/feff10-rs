@@ -160,6 +160,70 @@
       }
     },
     {
+      "id": "FX-SCREEN-ORACLE-001",
+      "title": "SCREEN oracle parity fixture from MPSE Cu_OPCONS example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "RDINP",
+        "POT",
+        "SCREEN"
+      ],
+      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "SCREEN oracle fixture preserves optional screen.inp override behavior from MPSE Cu_OPCONS."
+      }
+    },
+    {
+      "id": "FX-CRPA-ORACLE-001",
+      "title": "CRPA oracle parity fixture from CRPA example runtime deck",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "CRPA"
+      ],
+      "inputDirectory": "feff10/examples/CRPA",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/CRPA/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "CRPA oracle fixture stages CRPA runtime decks directly so tolerance checks focus on wscrn/logscrn parity."
+      }
+    },
+    {
       "id": "FX-PATH-001",
       "title": "PATH compatibility fixture from EXAFS Cu example",
       "fixtureType": "module",
