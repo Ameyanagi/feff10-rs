@@ -62,6 +62,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Path
             | PipelineModule::Fms
             | PipelineModule::Band
+            | PipelineModule::Ldos
     )
 }
 
@@ -98,6 +99,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Path => RuntimePathExecutor.execute_runtime(request),
         PipelineModule::Fms => RuntimeFmsExecutor.execute_runtime(request),
         PipelineModule::Band => RuntimeBandExecutor.execute_runtime(request),
+        PipelineModule::Ldos => RuntimeLdosExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -171,6 +173,15 @@ struct RuntimeBandExecutor;
 impl RuntimePipelineExecutor for RuntimeBandExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         band::BandPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeLdosExecutor;
+
+impl RuntimePipelineExecutor for RuntimeLdosExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        ldos::LdosPipelineScaffold.execute(request)
     }
 }
 
@@ -353,12 +364,13 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Path));
         assert!(runtime_compute_engine_available(PipelineModule::Fms));
         assert!(runtime_compute_engine_available(PipelineModule::Band));
+        assert!(runtime_compute_engine_available(PipelineModule::Ldos));
     }
 
     #[test]
     fn runtime_dispatch_rejects_modules_without_compute_engines() {
-        let request = PipelineRequest::new("FX-LDOS-001", PipelineModule::Ldos, "ldos.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Ldos, &request)
+        let request = PipelineRequest::new("FX-RIXS-001", PipelineModule::Rixs, "rixs.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Rixs, &request)
             .expect_err("unsupported runtime module should fail");
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -674,8 +686,59 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_ldos_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let output_dir = temp.path().join("outputs");
+        let rdinp_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Rdinp,
+            "feff10/examples/XANES/Cu/feff.inp",
+            &output_dir,
+        );
+        execute_runtime_pipeline(PipelineModule::Rdinp, &rdinp_request)
+            .expect("RDINP runtime execution should succeed");
+
+        let pot_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Pot,
+            output_dir.join("pot.inp"),
+            &output_dir,
+        );
+        execute_runtime_pipeline(PipelineModule::Pot, &pot_request)
+            .expect("POT runtime execution should succeed");
+
+        std::fs::write(output_dir.join("reciprocal.inp"), RECIPROCAL_INPUT_FIXTURE)
+            .expect("reciprocal input should be written");
+
+        let ldos_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Ldos,
+            output_dir.join("ldos.inp"),
+            &output_dir,
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Ldos, &ldos_request)
+            .expect("LDOS runtime execution should succeed");
+        assert!(
+            artifacts.iter().any(|artifact| {
+                artifact
+                    .relative_path
+                    .to_string_lossy()
+                    .to_ascii_lowercase()
+                    .starts_with("ldos")
+            }),
+            "LDOS runtime should emit ldosNN.dat outputs"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logdos.dat")),
+            "LDOS runtime should emit logdos.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
-        let error = runtime_engine_unavailable_error(PipelineModule::Ldos);
+        let error = runtime_engine_unavailable_error(PipelineModule::Rixs);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -745,6 +808,10 @@ ikpath : type of k-path
    2
 freeprop :  empty lattice if = T
  F
+";
+
+    const RECIPROCAL_INPUT_FIXTURE: &str = "ispace
+   1
 ";
 
     const GLOBAL_INPUT_FIXTURE: &str = " nabs, iphabs - CFAVERAGE data

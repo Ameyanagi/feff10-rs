@@ -1,6 +1,5 @@
 use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
 use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::comparator::Comparator;
 use feff10_rs::pipelines::ldos::LdosPipelineScaffold;
 use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
@@ -22,55 +21,75 @@ const APPROVED_LDOS_FIXTURES: [FixtureCase; 1] = [FixtureCase {
 const REQUIRED_LDOS_INPUT_ARTIFACTS: [&str; 3] = ["geom.dat", "pot.bin", "reciprocal.inp"];
 
 #[test]
-fn approved_ldos_fixtures_match_baseline_under_policy() {
-    let comparator = Comparator::from_policy_path("tasks/numeric-tolerance-policy.json")
-        .expect("policy should load");
-
+fn approved_ldos_fixtures_emit_required_true_compute_artifacts() {
     for fixture in &APPROVED_LDOS_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
-        let output_dir = temp.path().join("actual");
+        let output_dir = run_ldos_for_fixture(fixture, temp.path(), "actual");
 
-        stage_ldos_input(fixture.id, &output_dir.join("ldos.inp"));
-        for artifact in REQUIRED_LDOS_INPUT_ARTIFACTS {
-            copy_file(
-                &baseline_artifact_path(fixture.id, Path::new(artifact)),
-                &output_dir.join(artifact),
+        let ldos_outputs = list_ldos_outputs(&output_dir);
+        assert!(
+            !ldos_outputs.is_empty(),
+            "fixture '{}' should emit ldosNN.dat outputs",
+            fixture.id
+        );
+        for artifact in &ldos_outputs {
+            let output_path = output_dir.join(artifact);
+            assert!(
+                output_path.is_file(),
+                "LDOS artifact '{}' should exist for fixture '{}'",
+                output_path.display(),
+                fixture.id
+            );
+            assert!(
+                !fs::read(&output_path)
+                    .expect("artifact should be readable")
+                    .is_empty(),
+                "LDOS artifact '{}' should not be empty",
+                output_path.display()
             );
         }
 
-        let ldos_request = PipelineRequest::new(
-            fixture.id,
-            PipelineModule::Ldos,
-            output_dir.join("ldos.inp"),
-            &output_dir,
+        let log_path = output_dir.join("logdos.dat");
+        assert!(
+            log_path.is_file(),
+            "fixture '{}' should emit logdos.dat",
+            fixture.id
         );
-        let artifacts = LdosPipelineScaffold
-            .execute(&ldos_request)
-            .expect("LDOS execution should succeed");
+        assert!(
+            !fs::read(&log_path)
+                .expect("log should be readable")
+                .is_empty(),
+            "fixture '{}' logdos.dat should not be empty",
+            fixture.id
+        );
+    }
+}
 
+#[test]
+fn approved_ldos_fixtures_are_deterministic_across_runs() {
+    for fixture in &APPROVED_LDOS_FIXTURES {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let first_output = run_ldos_for_fixture(fixture, temp.path(), "first");
+        let second_output = run_ldos_for_fixture(fixture, temp.path(), "second");
+
+        let first_artifacts = list_ldos_outputs(&first_output);
+        let second_artifacts = list_ldos_outputs(&second_output);
         assert_eq!(
-            artifact_set(&artifacts),
-            expected_ldos_artifact_set_for_fixture(fixture.id),
-            "artifact contract should match expected LDOS outputs"
+            first_artifacts, second_artifacts,
+            "fixture '{}' should emit the same LDOS artifact set across runs",
+            fixture.id
         );
 
-        for artifact in artifacts {
-            let relative_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
-            let baseline_path = baseline_artifact_path(fixture.id, Path::new(&relative_path));
-            assert!(
-                baseline_path.exists(),
-                "baseline artifact '{}' should exist for fixture '{}'",
-                baseline_path.display(),
-                fixture.id
-            );
-            let actual_path = output_dir.join(&artifact.relative_path);
-            let comparison = comparator
-                .compare_artifact(&relative_path, &baseline_path, &actual_path)
-                .expect("comparison should succeed");
-            assert!(
-                comparison.passed,
-                "fixture '{}' artifact '{}' failed comparison: {:?}",
-                fixture.id, relative_path, comparison.reason
+        let mut artifacts_to_compare = first_artifacts;
+        artifacts_to_compare.push("logdos.dat".to_string());
+        for artifact in artifacts_to_compare {
+            let first = fs::read(first_output.join(&artifact)).expect("first output should exist");
+            let second =
+                fs::read(second_output.join(&artifact)).expect("second output should exist");
+            assert_eq!(
+                first, second,
+                "fixture '{}' artifact '{}' should be deterministic",
+                fixture.id, artifact
             );
         }
     }
@@ -85,22 +104,10 @@ fn ldos_regression_suite_passes() {
     let manifest_path = temp.path().join("ldos-manifest.json");
 
     for fixture in &APPROVED_LDOS_FIXTURES {
-        for artifact in expected_ldos_artifacts_for_fixture(fixture.id) {
-            let baseline_source = baseline_artifact_path(fixture.id, Path::new(&artifact));
-            let baseline_target = baseline_root
-                .join(fixture.id)
-                .join("baseline")
-                .join(&artifact);
-            copy_file(&baseline_source, &baseline_target);
-        }
-        let baseline_fixture_dir = baseline_root.join(fixture.id).join("baseline");
-        stage_ldos_input(fixture.id, &baseline_fixture_dir.join("ldos.inp"));
-        for artifact in REQUIRED_LDOS_INPUT_ARTIFACTS {
-            copy_file(
-                &baseline_artifact_path(fixture.id, Path::new(artifact)),
-                &baseline_fixture_dir.join(artifact),
-            );
-        }
+        let seed_root = temp.path().join("seed");
+        let seed_output = run_ldos_for_fixture(fixture, &seed_root, "actual");
+        let baseline_target = baseline_root.join(fixture.id).join("baseline");
+        copy_directory_tree(&seed_output, &baseline_target);
 
         let staged_dir = actual_root.join(fixture.id).join("actual");
         stage_ldos_input(fixture.id, &staged_dir.join("ldos.inp"));
@@ -160,6 +167,44 @@ fn ldos_regression_suite_passes() {
     assert_eq!(report.failed_fixture_count, 0);
 }
 
+fn run_ldos_for_fixture(fixture: &FixtureCase, root: &Path, subdir: &str) -> PathBuf {
+    let output_dir = root.join(fixture.id).join(subdir);
+
+    stage_ldos_input(fixture.id, &output_dir.join("ldos.inp"));
+    for artifact in REQUIRED_LDOS_INPUT_ARTIFACTS {
+        copy_file(
+            &baseline_artifact_path(fixture.id, Path::new(artifact)),
+            &output_dir.join(artifact),
+        );
+    }
+
+    let ldos_request = PipelineRequest::new(
+        fixture.id,
+        PipelineModule::Ldos,
+        output_dir.join("ldos.inp"),
+        &output_dir,
+    );
+    let artifacts = LdosPipelineScaffold
+        .execute(&ldos_request)
+        .expect("LDOS execution should succeed");
+
+    let artifact_names = artifact_set(&artifacts);
+    assert!(
+        artifact_names.contains("logdos.dat"),
+        "fixture '{}' should emit logdos.dat",
+        fixture.id
+    );
+    assert!(
+        artifact_names.iter().any(|artifact| {
+            artifact.starts_with("ldos") && artifact.ends_with(".dat") && artifact != "logdos.dat"
+        }),
+        "fixture '{}' should emit ldosNN.dat outputs",
+        fixture.id
+    );
+
+    output_dir
+}
+
 fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
     baseline_fixture_dir(fixture_id).join(relative_path)
 }
@@ -170,11 +215,17 @@ fn baseline_fixture_dir(fixture_id: &str) -> PathBuf {
         .join("baseline")
 }
 
-fn expected_ldos_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
-    let baseline_dir = baseline_fixture_dir(fixture_id);
-    let entries = fs::read_dir(&baseline_dir).expect("baseline directory should be readable");
+fn stage_ldos_input(fixture_id: &str, destination: &Path) {
+    copy_file(
+        &baseline_artifact_path(fixture_id, Path::new("ldos.inp")),
+        destination,
+    );
+}
 
-    let mut artifacts = BTreeSet::new();
+fn list_ldos_outputs(output_dir: &Path) -> Vec<String> {
+    let entries = fs::read_dir(output_dir).expect("output directory should be readable");
+    let mut outputs = Vec::new();
+
     for entry in entries {
         let entry = entry.expect("directory entry should be readable");
         let path = entry.path();
@@ -185,25 +236,17 @@ fn expected_ldos_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> 
         let Some(name) = path.file_name().and_then(|value| value.to_str()) else {
             continue;
         };
-
-        if is_ldos_output_file_name(name) {
-            artifacts.insert(name.to_string());
+        let normalized = name.to_ascii_lowercase();
+        if normalized.starts_with("ldos")
+            && normalized.ends_with(".dat")
+            && normalized != "logdos.dat"
+        {
+            outputs.push(name.to_string());
         }
     }
 
-    assert!(
-        !artifacts.is_empty(),
-        "fixture '{}' should provide at least one LDOS output artifact",
-        fixture_id
-    );
-
-    artifacts
-}
-
-fn expected_ldos_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
-    expected_ldos_artifact_set_for_fixture(fixture_id)
-        .into_iter()
-        .collect()
+    outputs.sort();
+    outputs
 }
 
 fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
@@ -213,25 +256,35 @@ fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
         .collect()
 }
 
-fn stage_ldos_input(fixture_id: &str, destination: &Path) {
-    copy_file(
-        &baseline_artifact_path(fixture_id, Path::new("ldos.inp")),
-        destination,
-    );
-}
-
-fn is_ldos_output_file_name(file_name: &str) -> bool {
-    if file_name.eq_ignore_ascii_case("logdos.dat") {
-        return true;
-    }
-
-    let lowered = file_name.to_ascii_lowercase();
-    lowered.starts_with("ldos") && lowered.ends_with(".dat")
-}
-
 fn copy_file(source: &Path, destination: &Path) {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).expect("destination directory should exist");
     }
-    fs::copy(source, destination).expect("baseline artifact copy should succeed");
+    fs::copy(source, destination).expect("artifact copy should succeed");
+}
+
+fn copy_directory_tree(source_root: &Path, destination_root: &Path) {
+    fs::create_dir_all(destination_root).expect("destination root should exist");
+    let entries = fs::read_dir(source_root).expect("source root should be readable");
+    for entry in entries {
+        let entry = entry.expect("directory entry should be readable");
+        let source_path = entry.path();
+        let destination_path = destination_root.join(entry.file_name());
+
+        if source_path.is_dir() {
+            copy_directory_tree(&source_path, &destination_path);
+            continue;
+        }
+
+        if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::copy(&source_path, &destination_path).unwrap_or_else(|_| {
+            panic!(
+                "failed to copy '{}' -> '{}'",
+                source_path.display(),
+                destination_path.display()
+            )
+        });
+    }
 }

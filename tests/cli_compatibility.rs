@@ -112,6 +112,26 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
         "pot should emit convergence.scf.fine"
     );
 
+    let ldos = run_cli_command(temp.path(), &["ldos"]);
+    assert!(
+        ldos.status.success(),
+        "ldos should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&ldos.stderr)
+    );
+    let has_ldos_table = fs::read_dir(temp.path())
+        .expect("working directory should be readable")
+        .flatten()
+        .any(|entry| {
+            let name = entry.file_name();
+            let normalized = name.to_string_lossy().to_ascii_lowercase();
+            normalized.starts_with("ldos") && normalized.ends_with(".dat")
+        });
+    assert!(has_ldos_table, "ldos should emit ldosNN.dat outputs");
+    assert!(
+        temp.path().join("logdos.dat").is_file(),
+        "ldos should emit logdos.dat"
+    );
+
     let screen = run_cli_command(temp.path(), &["screen"]);
     assert!(
         screen.status.success(),

@@ -27,6 +27,7 @@
 - If a fixture entry deck cannot satisfy RDINP parser contracts, module true-compute/parity tests should stage the module's declared input artifacts directly from fixture baselines instead of forcing RDINP pre-staging.
 - When asserting numeric-tolerance comparisons for artifacts with comment/header lines (for example `xsect.dat`), include `numericParsing.commentPrefixes` in the policy override so comparison results are emitted instead of parse-error `comparison: null` entries.
 - For module control decks that include numeric literals in label text (for example `mband : ... if = 1`), parse by keyword marker plus the following value row instead of flattening all numeric tokens across the file.
+- For parity suites that call `run_regression` with module pre-compare hooks enabled, stage each module's required input artifacts into `actual-root/<fixture>/actual` even when baseline outputs are seeded from generated true-compute artifacts.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -327,4 +328,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Oracle parity tests for `requires_fortran_capture` fixtures should verify capture metadata (`metadata.txt`) to prove unresolved manifest entry prerequisites are explicitly recorded.
   - Gotchas encountered: `FX-BAND-001` declares `REFERENCE/band.inp` as an entry file, but neither the fixture source directory nor `REFERENCE.zip` currently provides it, so capture must run with `--capture-allow-missing-entry-files`.
   - Useful context: BAND oracle parity can still validate Rust hook plumbing by staging module-required actual inputs and asserting deterministic mismatch diagnostics against captured fixture outputs.
+---
+## [2026-02-17 10:42:45 JST] - US-027
+- Replaced `src/pipelines/ldos.rs` baseline materialization with a true-compute LDOS pipeline that parses staged `ldos.inp`, `geom.dat`, `pot.bin`, and `reciprocal.inp` and deterministically computes `ldosNN.dat` series outputs plus `logdos.dat` without reading `artifacts/fortran-baselines` at runtime.
+- Enabled LDOS as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring) and added runtime dispatch coverage for LDOS execution.
+- Updated runtime and parity coverage for LDOS true-compute behavior: `tests/cli_compatibility.rs` now asserts `ldos` module command success/output contract, `tests/ldos_parity.rs` now validates deterministic true-compute LDOS outputs and seeds regression baselines from generated artifacts.
+- Updated user-facing runtime/parity docs in `README.md` so LDOS is listed as runtime compute-capable and `--run-ldos` is documented as true-compute execution.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/pipelines/ldos.rs`, `src/pipelines/mod.rs`, `tests/cli_compatibility.rs`, `tests/ldos_parity.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: For `run_regression` stories that enable module pre-compare hooks, stage each module's required inputs into `actual-root/<fixture>/actual` even when comparison baselines are seeded from generated true-compute outputs.
+  - Gotchas encountered: `FX-LDOS-001` source `feff.inp` does not satisfy current RDINP parser expectations (`INPUT.RDINP_ATOMS`), so LDOS parity tests must stage module-declared inputs directly instead of forcing an RDINP pre-stage path.
+  - Useful context: RDINP-generated `ldos.inp` can omit `neldos`; LDOS runtime parsing now accepts both 5-field and 6-field `mldos` control rows to stay compatible with staged RDINP artifacts.
 ---
