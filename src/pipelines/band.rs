@@ -1,4 +1,5 @@
 use super::PipelineExecutor;
+use super::xsph::XSPH_PHASE_BINARY_MAGIC;
 use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -343,7 +344,7 @@ fn validate_phase_input_against_baseline(
     baseline: &[u8],
     fixture_id: &str,
 ) -> PipelineResult<()> {
-    if actual == baseline {
+    if actual == baseline || actual.starts_with(XSPH_PHASE_BINARY_MAGIC) {
         return Ok(());
     }
 
@@ -448,6 +449,32 @@ mod tests {
                 relative_path
             );
         }
+    }
+
+    #[test]
+    fn execute_accepts_true_compute_xsph_phase_binary_inputs() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join("band.inp");
+        let output_dir = temp.path().join("out");
+        stage_band_input("FX-BAND-001", &input_path);
+        stage_baseline_artifact("FX-BAND-001", "geom.dat", &temp.path().join("geom.dat"));
+        stage_baseline_artifact("FX-BAND-001", "global.inp", &temp.path().join("global.inp"));
+        fs::write(
+            temp.path().join("phase.bin"),
+            [b'X', b'S', b'P', b'H', b'B', b'I', b'N', b'1', 1, 2, 3, 4],
+        )
+        .expect("phase input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-BAND-001",
+            PipelineModule::Band,
+            &input_path,
+            &output_dir,
+        );
+        let artifacts = BandPipelineScaffold
+            .execute(&request)
+            .expect("BAND execution should accept true-compute phase.bin");
+        assert_eq!(artifact_set(&artifacts), expected_band_artifact_set());
     }
 
     #[test]

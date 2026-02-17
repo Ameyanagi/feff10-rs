@@ -116,7 +116,7 @@ Supported module commands are:
 All module commands run in the current working directory and do not accept positional arguments.
 Runtime commands (`feff`, `feffmpi`, and module commands) must not use `artifacts/fortran-baselines` as output-generation sources.
 Baseline snapshots are validation/test-only inputs for regression and fixture tooling.
-Runtime compute engines are currently available for `RDINP` and `POT`; commands for modules that have not been ported to true-compute yet return `RUN.RUNTIME_ENGINE_UNAVAILABLE` with exit code `4`.
+Runtime compute engines are currently available for `RDINP`, `POT`, `SCREEN`, `CRPA`, and `XSPH`; commands for modules that have not been ported to true-compute yet return `RUN.RUNTIME_ENGINE_UNAVAILABLE` with exit code `4`.
 
 MPI parity is still deferred for Rust v1 (`D-2`). `feffmpi <nprocs>` validates `<nprocs>` and runs the serial compatibility chain, emitting a deterministic warning when `nprocs > 1`.
 
@@ -159,7 +159,7 @@ The command prints a human-readable pass/fail summary and exits with status `1` 
 Use `--run-rdinp` when you want the Rust RDINP pipeline to materialize outputs into `--actual-root/<fixture>/<actual-subdir>` before comparisons.
 Use `--run-pot` to execute the Rust POT true-compute path before comparisons; it expects staged `pot.inp` and `geom.dat` in each fixture actual output directory and computes the POT artifact contract (`pot.bin`, `pot.dat`, `log1.dat`, `convergence.scf`, `convergence.scf.fine`) without baseline snapshot reads.
 Use `--run-screen` to execute the Rust SCREEN true-compute path before comparisons; it expects staged `pot.inp`, `geom.dat`, and `ldos.inp` (optionally `screen.inp`) in each fixture actual output directory and computes the SCREEN artifact contract (`wscrn.dat`, `logscreen.dat`) without baseline snapshot reads.
-Use `--run-xsph` to execute the Rust XSPH parity path before comparisons; it expects staged `xsph.inp`, `geom.dat`, `global.inp`, and `pot.bin` (optionally `wscrn.dat`) in each fixture actual output directory and materializes approved XSPH artifacts (`phase.bin`, `xsect.dat`, `log2.dat`) from canonical fixture baselines.
+Use `--run-xsph` to execute the Rust XSPH true-compute path before comparisons; it expects staged `xsph.inp`, `geom.dat`, `global.inp`, and `pot.bin` (optionally `wscrn.dat`) in each fixture actual output directory and computes the XSPH artifact contract (`phase.bin`, `xsect.dat`, `log2.dat`) without baseline snapshot reads.
 Use `--run-path` to execute the Rust PATH parity path before comparisons; it expects staged `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` in each fixture actual output directory and materializes approved PATH artifacts (`paths.dat`, `log4.dat`) from canonical fixture baselines.
 Use `--run-fms` to execute the Rust FMS parity path before comparisons; it expects staged `fms.inp`, `geom.dat`, `global.inp`, and `phase.bin` in each fixture actual output directory and materializes approved FMS artifacts (`gg.bin`, `log3.dat`) from canonical fixture baselines.
 Use `--run-band` to execute the Rust BAND parity path before comparisons; it expects staged `band.inp`, `geom.dat`, `global.inp`, and `phase.bin` in each fixture actual output directory and materializes approved BAND artifacts from canonical fixture baselines (`bandstructure.dat`/`logband.dat` when present, otherwise fixture-provided `list.dat`/`log5.dat`).

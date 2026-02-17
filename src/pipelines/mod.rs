@@ -54,7 +54,11 @@ where
 pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
     matches!(
         module,
-        PipelineModule::Rdinp | PipelineModule::Pot | PipelineModule::Screen | PipelineModule::Crpa
+        PipelineModule::Rdinp
+            | PipelineModule::Pot
+            | PipelineModule::Screen
+            | PipelineModule::Crpa
+            | PipelineModule::Xsph
     )
 }
 
@@ -87,6 +91,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Pot => RuntimePotExecutor.execute_runtime(request),
         PipelineModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
         PipelineModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
+        PipelineModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -124,6 +129,15 @@ struct RuntimeCrpaExecutor;
 impl RuntimePipelineExecutor for RuntimeCrpaExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         crpa::CrpaPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeXsphExecutor;
+
+impl RuntimePipelineExecutor for RuntimeXsphExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        xsph::XsphPipelineScaffold.execute(request)
     }
 }
 
@@ -302,13 +316,13 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Pot));
         assert!(runtime_compute_engine_available(PipelineModule::Screen));
         assert!(runtime_compute_engine_available(PipelineModule::Crpa));
-        assert!(!runtime_compute_engine_available(PipelineModule::Xsph));
+        assert!(runtime_compute_engine_available(PipelineModule::Xsph));
     }
 
     #[test]
     fn runtime_dispatch_rejects_modules_without_compute_engines() {
-        let request = PipelineRequest::new("FX-XSPH-001", PipelineModule::Xsph, "xsph.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Xsph, &request)
+        let request = PipelineRequest::new("FX-PATH-001", PipelineModule::Path, "paths.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Path, &request)
             .expect_err("unsupported runtime module should fail");
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -433,6 +447,56 @@ mod tests {
                 .iter()
                 .any(|artifact| artifact.relative_path == Path::new("logscrn.dat")),
             "CRPA runtime should emit logscrn.dat"
+        );
+    }
+
+    #[test]
+    fn runtime_dispatch_executes_xsph_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let output_dir = temp.path().join("outputs");
+        let rdinp_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Rdinp,
+            "feff10/examples/XANES/Cu/feff.inp",
+            &output_dir,
+        );
+        execute_runtime_pipeline(PipelineModule::Rdinp, &rdinp_request)
+            .expect("RDINP runtime execution should succeed");
+
+        let pot_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Pot,
+            output_dir.join("pot.inp"),
+            &output_dir,
+        );
+        execute_runtime_pipeline(PipelineModule::Pot, &pot_request)
+            .expect("POT runtime execution should succeed");
+
+        let xsph_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Xsph,
+            output_dir.join("xsph.inp"),
+            &output_dir,
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Xsph, &xsph_request)
+            .expect("XSPH runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("phase.bin")),
+            "XSPH runtime should emit phase.bin"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("xsect.dat")),
+            "XSPH runtime should emit xsect.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("log2.dat")),
+            "XSPH runtime should emit log2.dat"
         );
     }
 

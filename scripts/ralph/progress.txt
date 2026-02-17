@@ -4,6 +4,7 @@
 - On macOS arm64, run Rust quality gates with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures in test binaries.
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
 - During staged producer/consumer rewrites, stamp new producer binaries with a stable magic header (for POT: `POTBIN10`) and let downstream validation scaffolds accept that header while they still baseline-copy outputs.
+- During staged XSPH producer/consumer rewrites, stamp `phase.bin` with `XSPHBIN1` and let baseline-backed PATH/FMS/BAND scaffolds accept that header while they still materialize baseline outputs.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
@@ -226,4 +227,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: For module-parity stories where fixture artifacts default to exact-text policy, a local policy override inside the test is a low-impact way to validate numeric-tolerance report fields without changing global tolerance contracts.
   - Gotchas encountered: The capture runner command in oracle CLI tests still needs `GITHUB_WORKSPACE=<repo-root>` when invoked from temp directories, or fixture baseline resolution fails before comparisons run.
   - Useful context: This repository has no in-tree `AGENTS.md`; reusable story learnings were added to `scripts/ralph/progress.txt` instead.
+---
+## [2026-02-17 09:29:48 JST] - US-019
+- Replaced `src/pipelines/xsph.rs` baseline materialization with a true-compute XSPH pipeline that parses staged `xsph.inp`, `geom.dat`, `global.inp`, and `pot.bin` (plus optional `wscrn.dat`) and deterministically computes `phase.bin`, `xsect.dat`, and `log2.dat` without runtime baseline reads.
+- Enabled XSPH as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring), extended CLI compatibility coverage for the `xsph` module command, and updated README runtime/regression hook docs to describe XSPH as compute-path execution.
+- Added transitional consumer compatibility by updating PATH/FMS/BAND phase-input validation to accept true-compute XSPH `phase.bin` headers (`XSPHBIN1`) while those modules still materialize baseline outputs.
+- Updated XSPH parity coverage in `tests/xsph_parity.rs` to the true-compute test pattern (deterministic outputs + regression baselines seeded from generated artifacts) including optional `wscrn.dat` behavior checks.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/pipelines/xsph.rs`, `src/pipelines/mod.rs`, `src/pipelines/path.rs`, `src/pipelines/fms.rs`, `src/pipelines/band.rs`, `tests/xsph_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: When converting a producer module to true-compute binary output, version the binary with an explicit magic header and teach downstream baseline-backed consumers to accept that header until their own compute rewrites land.
+  - Gotchas encountered: Regression baselines seeded from generated output should omit optional artifacts that pre-compare hooks do not generate (for XSPH, avoid seeding `wscrn.dat` unless a hook stages it).
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/test conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---
