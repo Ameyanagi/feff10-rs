@@ -171,38 +171,6 @@ enum OracleCaptureMode {
     BinDir(PathBuf),
 }
 
-struct CurrentDirGuard {
-    original: PathBuf,
-}
-
-impl CurrentDirGuard {
-    fn change_to(target: &Path) -> PipelineResult<Self> {
-        let original = std::env::current_dir().map_err(|source| {
-            FeffError::io_system(
-                "IO.CLI_CURRENT_DIR",
-                format!("failed to read current working directory: {}", source),
-            )
-        })?;
-        std::env::set_current_dir(target).map_err(|source| {
-            FeffError::io_system(
-                "IO.CLI_WORKDIR",
-                format!(
-                    "failed to switch CLI execution directory to '{}': {}",
-                    target.display(),
-                    source
-                ),
-            )
-        })?;
-        Ok(Self { original })
-    }
-}
-
-impl Drop for CurrentDirGuard {
-    fn drop(&mut self) {
-        let _ = std::env::set_current_dir(&self.original);
-    }
-}
-
 pub fn run_from_env() -> i32 {
     let mut args = std::env::args();
     let program_name = args.next().unwrap_or_else(|| "feff10-rs".to_string());
@@ -354,7 +322,8 @@ fn run_feff_command(args: Vec<String>) -> Result<i32, CliError> {
     for module in modules {
         if let Some(spec) = module_command_for_module(module) {
             println!("Running {}...", spec.module);
-            execute_module_with_fixture(&context, spec, &fixture.id).map_err(CliError::Pipeline)?;
+            execute_module_with_fixture(&context.working_dir, spec, &fixture.id)
+                .map_err(CliError::Pipeline)?;
         }
     }
     println!("Completed serial workflow for fixture '{}'.", fixture.id);
@@ -416,12 +385,15 @@ fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> Result<i32,
         )));
     }
 
-    let context = load_cli_context()?;
-    let fixture_id =
-        select_fixture_for_module(&context, spec, false).map_err(CliError::Pipeline)?;
+    let working_dir = current_working_dir().map_err(CliError::Pipeline)?;
+    let fixture_id = if let Some(context) = load_cli_context_if_available(&working_dir)? {
+        select_fixture_for_module(&context, spec, false).map_err(CliError::Pipeline)?
+    } else {
+        default_fixture_for_module(spec.module).to_string()
+    };
     println!("Running {}...", spec.module);
     let artifacts =
-        execute_module_with_fixture(&context, spec, &fixture_id).map_err(CliError::Pipeline)?;
+        execute_module_with_fixture(&working_dir, spec, &fixture_id).map_err(CliError::Pipeline)?;
     println!(
         "{} completed for fixture '{}' ({} artifacts).",
         spec.module,
@@ -432,12 +404,7 @@ fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> Result<i32,
 }
 
 fn load_cli_context() -> Result<CliContext, CliError> {
-    let working_dir = std::env::current_dir().map_err(|source| {
-        CliError::Pipeline(FeffError::io_system(
-            "IO.CLI_CURRENT_DIR",
-            format!("failed to read current working directory: {}", source),
-        ))
-    })?;
+    let working_dir = current_working_dir().map_err(CliError::Pipeline)?;
     let workspace_root = find_workspace_root(&working_dir).ok_or_else(|| {
         CliError::Pipeline(FeffError::input_validation(
             "INPUT.CLI_WORKSPACE",
@@ -454,6 +421,48 @@ fn load_cli_context() -> Result<CliContext, CliError> {
         workspace_root,
         manifest,
     })
+}
+
+fn load_cli_context_if_available(working_dir: &Path) -> Result<Option<CliContext>, CliError> {
+    let Some(workspace_root) = find_workspace_root(working_dir) else {
+        return Ok(None);
+    };
+    let manifest = load_cli_manifest(&workspace_root)?;
+    Ok(Some(CliContext {
+        working_dir: working_dir.to_path_buf(),
+        workspace_root,
+        manifest,
+    }))
+}
+
+fn current_working_dir() -> PipelineResult<PathBuf> {
+    std::env::current_dir().map_err(|source| {
+        FeffError::io_system(
+            "IO.CLI_CURRENT_DIR",
+            format!("failed to read current working directory: {}", source),
+        )
+    })
+}
+
+fn default_fixture_for_module(module: PipelineModule) -> &'static str {
+    match module {
+        PipelineModule::Rdinp => "FX-RDINP-001",
+        PipelineModule::Pot => "FX-POT-001",
+        PipelineModule::Xsph => "FX-XSPH-001",
+        PipelineModule::Path => "FX-PATH-001",
+        PipelineModule::Fms => "FX-FMS-001",
+        PipelineModule::Band => "FX-BAND-001",
+        PipelineModule::Ldos => "FX-LDOS-001",
+        PipelineModule::Rixs => "FX-RIXS-001",
+        PipelineModule::Crpa => "FX-CRPA-001",
+        PipelineModule::Compton => "FX-COMPTON-001",
+        PipelineModule::Debye => "FX-DEBYE-001",
+        PipelineModule::Dmdw => "FX-DMDW-001",
+        PipelineModule::Screen => "FX-SCREEN-001",
+        PipelineModule::SelfEnergy => "FX-SELF-001",
+        PipelineModule::Eels => "FX-EELS-001",
+        PipelineModule::FullSpectrum => "FX-FULLSPECTRUM-001",
+    }
 }
 
 fn find_workspace_root(start: &Path) -> Option<PathBuf> {
@@ -671,10 +680,7 @@ fn probe_module_for_fixture(
         &probe_output_dir,
     );
 
-    let result = {
-        let _guard = CurrentDirGuard::change_to(&context.workspace_root)?;
-        execute_pipeline_for_spec(spec, &request).map(|_| ())
-    };
+    let result = execute_pipeline_for_spec(spec, &request).map(|_| ());
 
     let _ = fs::remove_dir_all(&probe_output_dir);
     result
@@ -715,17 +721,16 @@ fn probe_directory_for(module: PipelineModule, fixture_id: &str) -> PipelineResu
 }
 
 fn execute_module_with_fixture(
-    context: &CliContext,
+    working_dir: &Path,
     spec: ModuleCommandSpec,
     fixture_id: &str,
 ) -> PipelineResult<Vec<PipelineArtifact>> {
     let request = PipelineRequest::new(
         fixture_id.to_string(),
         spec.module,
-        context.working_dir.join(spec.input_artifact),
-        &context.working_dir,
+        working_dir.join(spec.input_artifact),
+        working_dir,
     );
-    let _guard = CurrentDirGuard::change_to(&context.workspace_root)?;
     execute_pipeline_for_spec(spec, &request)
 }
 

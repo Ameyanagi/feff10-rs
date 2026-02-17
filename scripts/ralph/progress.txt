@@ -10,6 +10,7 @@
 - For PATH oracle parity coverage, stage `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-path`, and assert `paths.dat` resolves `comparison.mode=exact_text` with `matched_category=path_listing_reports`.
 - For FMS oracle parity coverage, stage `fms.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-fms`, and assert `gg.bin` reports `comparison.mode=exact_text` and `comparison.metrics.kind=exact_text`.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
+- Runtime module commands should resolve fixture IDs from manifest context when available, but fall back to deterministic module-default fixture IDs when no workspace manifest can be discovered from the current working directory.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
@@ -534,4 +535,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Reference-file oracle fixtures can validate canonical comparator routing by aliasing one captured reference artifact to a canonical filename while still comparing the original reference-named file.
   - Gotchas encountered: `FX-RIXS-001` fixture baselines do not provide canonical `rixs*.dat` files, so canonical artifact comparisons require an explicit capture-time alias or they default to deterministic `Missing baseline artifact` outcomes.
   - Useful context: `stage_workspace_fixture_file_with_fallback_bytes` is required for RIXS oracle tests because committed `FX-RIXS-001` baselines omit `rixs.inp` and required sibling staged inputs.
+---
+## [2026-02-17 13:08:21 JST] - US-043
+- Removed runtime CLI module-command dependency on workspace-root CWD switching by deleting the `CurrentDirGuard` path change in module execution/probe flows; runtime pipelines now execute directly against staged absolute paths from the caller's current directory.
+- Decoupled module commands from workspace-only manifest discovery: when `tasks/golden-fixture-manifest.json` is not discoverable from CWD ancestors, module commands now use deterministic compatibility fixture defaults (for example `pot` -> `FX-POT-001`) instead of failing with `INPUT.CLI_WORKSPACE`.
+- Preserved compatibility fixture selection behavior when workspace context is available, and added CLI coverage for both paths (manifest-based selection and outside-workspace default selection).
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test cli_compatibility`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/cli/mod.rs`, `tests/cli_compatibility.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Module commands can remain compatibility-stable outside repository workspaces by using deterministic per-module fixture fallbacks while retaining manifest-driven fixture resolution in workspace contexts.
+  - Gotchas encountered: Previous module-command behavior hard-failed outside workspace roots due mandatory manifest lookup; keep fallback logic limited to module commands so `feff`/oracle/regression flows still require explicit workspace contracts.
+  - Useful context: There are no repository-local `AGENTS.md` files under `feff10-rs`, so reusable implementation/testing patterns continue to be recorded in `scripts/ralph/progress.txt`.
 ---

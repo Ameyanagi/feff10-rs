@@ -95,6 +95,12 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
         "pot should succeed once runtime compute engine is available, stderr: {}",
         String::from_utf8_lossy(&pot.stderr)
     );
+    let pot_stdout = String::from_utf8_lossy(&pot.stdout);
+    assert!(
+        pot_stdout.contains("fixture 'FX-POT-001'"),
+        "pot should resolve the compatibility fixture through manifest-based selection, stdout: {}",
+        pot_stdout
+    );
     assert!(
         temp.path().join("pot.bin").is_file(),
         "pot should emit pot.bin"
@@ -202,6 +208,35 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
     assert!(
         temp.path().join("log3.dat").is_file(),
         "fms should emit log3.dat"
+    );
+}
+
+#[test]
+fn module_command_runs_without_workspace_context() {
+    let temp = TempDir::new().expect("temp dir should be created");
+    stage_baseline_artifact("FX-POT-001", "pot.inp", temp.path().join("pot.inp"));
+    stage_baseline_artifact("FX-POT-001", "geom.dat", temp.path().join("geom.dat"));
+
+    let pot = run_cli_command(temp.path(), &["pot"]);
+    assert!(
+        pot.status.success(),
+        "pot should run outside workspace-root context, stderr: {}",
+        String::from_utf8_lossy(&pot.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&pot.stdout);
+    assert!(
+        stdout.contains("fixture 'FX-POT-001'"),
+        "pot should use default compatibility fixture selection outside workspace context, stdout: {}",
+        stdout
+    );
+    assert!(
+        temp.path().join("pot.bin").is_file(),
+        "pot should emit pot.bin when run outside workspace context"
+    );
+    assert!(
+        temp.path().join("convergence.scf").is_file(),
+        "pot should emit convergence.scf when run outside workspace context"
     );
 }
 
