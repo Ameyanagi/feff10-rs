@@ -133,6 +133,10 @@ Capture mode is required and exclusive:
 Optional capture behavior:
 - `--capture-allow-missing-entry-files` (records unresolved entry files in capture metadata and continues)
 
+For BAND oracle validation on `FX-BAND-001`, this flag is required because the fixture
+intentionally declares `REFERENCE/band.inp` as an entry-file prerequisite but that file is not
+materialized from the source example/REFERENCE archive.
+
 This command is validation-only and is intentionally isolated from runtime CLI paths.
 
 ### CI Oracle Parity Gate

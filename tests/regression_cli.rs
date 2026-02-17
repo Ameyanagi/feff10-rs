@@ -1754,6 +1754,171 @@ fn oracle_command_runs_fms_parity_for_required_fixtures_and_reports_binary_contr
 }
 
 #[test]
+fn oracle_command_runs_band_parity_with_capture_prerequisite_handling() {
+    if !command_available("jq") {
+        eprintln!("Skipping BAND oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-BAND-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/KSPACE/Cr2GeC");
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-band.json");
+
+    let baseline_archive = fixture_input_dir.join("REFERENCE.zip");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["BAND"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp", "REFERENCE/band.inp"],
+              "baselineStatus": "requires_fortran_capture",
+              "baselineSources": [
+                {{
+                  "kind": "reference_archive",
+                  "path": "{baseline_archive}"
+                }}
+              ]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\"),
+        baseline_archive = baseline_archive.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_band_input_with_fallback(fixture_id, &staged_output_dir.join("band.inp"));
+    stage_workspace_fixture_file(fixture_id, "geom.dat", &staged_output_dir.join("geom.dat"));
+    stage_workspace_fixture_file(
+        fixture_id,
+        "global.inp",
+        &staged_output_dir.join("global.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "phase.bin",
+        &staged_output_dir.join("phase.bin"),
+    );
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--capture-allow-missing-entry-files",
+            "--run-band",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "BAND oracle parity should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Mismatches:"),
+        "BAND oracle summary should include mismatch totals, stdout: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Fixture FX-BAND-001 mismatches"),
+        "BAND oracle summary should include fixture mismatch details, stdout: {}",
+        stdout
+    );
+    assert!(
+        actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("bandstructure.dat")
+            .is_file(),
+        "run-band should materialize bandstructure.dat"
+    );
+    assert!(
+        actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("logband.dat")
+            .is_file(),
+        "run-band should materialize logband.dat"
+    );
+    assert!(
+        report_path.is_file(),
+        "BAND oracle parity should emit a report"
+    );
+
+    let capture_metadata_path = oracle_root.join(fixture_id).join("metadata.txt");
+    assert!(
+        capture_metadata_path.is_file(),
+        "capture metadata should be emitted for '{}'",
+        fixture_id
+    );
+    let capture_metadata =
+        fs::read_to_string(&capture_metadata_path).expect("capture metadata should be readable");
+    assert!(
+        capture_metadata.contains("allow_missing_entry_files=1"),
+        "capture metadata should record allow-missing-entry-files usage, metadata: {}",
+        capture_metadata
+    );
+    assert!(
+        capture_metadata.contains("missing_entry_files=REFERENCE/band.inp"),
+        "capture metadata should record unresolved BAND entry file prerequisite, metadata: {}",
+        capture_metadata
+    );
+
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let fixture_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-BAND-001");
+    let artifact_reports = fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+    assert!(
+        artifact_reports
+            .iter()
+            .any(|artifact| artifact["artifact_path"].as_str() == Some("bandstructure.dat")),
+        "fixture report should include bandstructure.dat artifact entry"
+    );
+}
+
+#[test]
 fn oracle_command_run_screen_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");
@@ -1943,6 +2108,31 @@ fn stage_workspace_fixture_file(fixture_id: &str, relative_path: &str, destinati
         fs::create_dir_all(parent).expect("destination parent should be created");
     }
     fs::write(destination, source_bytes).expect("fixture baseline should be staged");
+}
+
+fn stage_band_input_with_fallback(fixture_id: &str, destination: &Path) {
+    let source = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("artifacts/fortran-baselines")
+        .join(fixture_id)
+        .join("baseline")
+        .join("band.inp");
+
+    if source.is_file() {
+        let source_bytes = fs::read(&source).unwrap_or_else(|_| {
+            panic!("fixture baseline should be readable: {}", source.display())
+        });
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should be created");
+        }
+        fs::write(destination, source_bytes).expect("fixture baseline should be staged");
+        return;
+    }
+
+    write_file(destination, default_band_input_source());
+}
+
+fn default_band_input_source() -> &'static str {
+    "mband : calculate bands if = 1\n   1\nemin, emax, estep : energy mesh\n    -8.00000      6.00000      0.05000\nnkp : # points in k-path\n 121\nikpath : type of k-path\n   2\nfreeprop :  empty lattice if = T\n F\n"
 }
 
 fn command_available(command: &str) -> bool {

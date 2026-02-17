@@ -77,6 +77,10 @@ jq -r '
 ' artifacts/regression/oracle-report.json > artifacts/regression/oracle-diff.txt
 ```
 
+For BAND oracle validation on `FX-BAND-001` (`baselineStatus=requires_fortran_capture`), include
+`--capture-allow-missing-entry-files` so unresolved `REFERENCE/band.inp` is recorded in capture
+metadata and the parity run can continue.
+
 When the oracle command exits non-zero, CI uploads:
 - `artifacts/regression/oracle-report.json`
 - `artifacts/regression/oracle-diff.txt`

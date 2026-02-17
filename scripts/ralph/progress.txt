@@ -13,6 +13,7 @@
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
+- For oracle parity on fixtures with `baselineStatus=requires_fortran_capture` and unresolved `REFERENCE/*.inp` entry files (for example `FX-BAND-001`), pass `--capture-allow-missing-entry-files` and assert capture `metadata.txt` records `missing_entry_files`.
 - For oracle parity tests that must cover optional module inputs, stage required artifacts directly into `actual-root/<fixture>/actual` and run only the target module hook (for example, `--run-screen`) so optional-file present/absent variants are deterministic.
 - For single-fixture oracle parity tests that must prove both tolerance reporting and contract-failure diagnostics, use a story-specific policy override for one artifact and stage one synthetic actual-only artifact to assert deterministic `Missing baseline artifact` reasons.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
@@ -315,4 +316,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: BAND control inputs are safer to parse by marker-plus-following-row because `band.inp` label lines can contain numeric literals that are not values.
   - Gotchas encountered: `FX-BAND-001` baseline snapshots can omit `band.inp`, so BAND tests/fixtures should stage a deterministic fallback deck when that artifact is absent.
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions were captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 10:26:42 JST] - US-026
+- Added BAND oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-BAND-001` by running `feff10-rs oracle` with `--run-band`, CI capture-runner plumbing, and `--capture-allow-missing-entry-files`.
+- Staged BAND required runtime inputs (`band.inp`, `geom.dat`, `global.inp`, `phase.bin`) under `actual-root/<fixture>/actual`, including a deterministic `band.inp` fallback when baseline snapshots omit it, then asserted `bandstructure.dat` and `logband.dat` generation plus fixture-level mismatch reporting.
+- Documented the BAND fortran-capture prerequisite path in `README.md` and `docs/developer-workflows.md`, including why `--capture-allow-missing-entry-files` is required and how capture metadata records unresolved `REFERENCE/band.inp`.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli oracle_command_runs_band_parity_with_capture_prerequisite_handling`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `tests/regression_cli.rs`, `README.md`, `docs/developer-workflows.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Oracle parity tests for `requires_fortran_capture` fixtures should verify capture metadata (`metadata.txt`) to prove unresolved manifest entry prerequisites are explicitly recorded.
+  - Gotchas encountered: `FX-BAND-001` declares `REFERENCE/band.inp` as an entry file, but neither the fixture source directory nor `REFERENCE.zip` currently provides it, so capture must run with `--capture-allow-missing-entry-files`.
+  - Useful context: BAND oracle parity can still validate Rust hook plumbing by staging module-required actual inputs and asserting deterministic mismatch diagnostics against captured fixture outputs.
 ---
