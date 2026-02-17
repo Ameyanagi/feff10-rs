@@ -8,6 +8,7 @@ name = "feff10-rs"
 path = "src/main.rs"
 
 [dependencies]
+anyhow.workspace = true
 clap.workspace = true
 feff-core.workspace = true
 serde.workspace = true

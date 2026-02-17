@@ -1,3 +1,4 @@
+use anyhow::Context;
 use super::CliError;
 use super::dispatch::ModuleCommandSpec;
 use feff_core::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
@@ -133,26 +134,11 @@ pub(super) fn find_workspace_root(start: &Path) -> Option<PathBuf> {
 
 pub(super) fn load_cli_manifest(workspace_root: &Path) -> Result<CliManifest, CliError> {
     let path = workspace_root.join(MANIFEST_RELATIVE_PATH);
-    let content = fs::read_to_string(&path).map_err(|source| {
-        CliError::Compute(FeffError::io_system(
-            "IO.CLI_MANIFEST_READ",
-            format!(
-                "failed to read CLI manifest '{}': {}",
-                path.display(),
-                source
-            ),
-        ))
-    })?;
-    serde_json::from_str::<CliManifest>(&content).map_err(|source| {
-        CliError::Compute(FeffError::input_validation(
-            "INPUT.CLI_MANIFEST_PARSE",
-            format!(
-                "failed to parse CLI manifest '{}': {}",
-                path.display(),
-                source
-            ),
-        ))
-    })
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("failed to read CLI manifest '{}'", path.display()))?;
+    serde_json::from_str::<CliManifest>(&content)
+        .with_context(|| format!("failed to parse CLI manifest '{}'", path.display()))
+        .map_err(CliError::from)
 }
 
 pub(super) fn select_serial_fixture(context: &CliContext) -> ComputeResult<CliManifestFixture> {

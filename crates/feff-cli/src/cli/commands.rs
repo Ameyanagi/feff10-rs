@@ -1,3 +1,4 @@
+use anyhow::Context;
 use super::CliError;
 use super::dispatch::{ModuleCommandSpec, module_command_for_module};
 use super::helpers::*;
@@ -239,12 +240,8 @@ pub(super) fn run_regression_command(args: RegressionArgs) -> Result<i32, CliErr
 
 pub(super) fn run_oracle_command(args: OracleArgs) -> Result<i32, CliError> {
     let mut config = args.into_config();
-    let working_dir = std::env::current_dir().map_err(|source| {
-        CliError::Compute(FeffError::io_system(
-            "IO.CLI_CURRENT_DIR",
-            format!("failed to read current working directory: {}", source),
-        ))
-    })?;
+    let working_dir = std::env::current_dir()
+        .context("failed to read current working directory")?;
     config.regression = resolve_regression_paths(config.regression, &working_dir);
 
     let workspace_root = find_workspace_root(&working_dir).ok_or_else(|| {

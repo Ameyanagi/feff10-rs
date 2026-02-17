@@ -158,6 +158,8 @@ pub enum CliError {
     Usage(String),
     #[error("{0}")]
     Compute(FeffError),
+    #[error(transparent)]
+    Internal(#[from] anyhow::Error),
 }
 
 impl CliError {
@@ -165,6 +167,7 @@ impl CliError {
         match self {
             Self::Usage(message) => FeffError::input_validation("INPUT.CLI_USAGE", message.clone()),
             Self::Compute(error) => error.clone(),
+            Self::Internal(error) => FeffError::io_system("IO.CLI", format!("{error:#}")),
         }
     }
 }
