@@ -6,11 +6,28 @@
 - Developer workflows: `docs/developer-workflows.md`
 - User and operator guide: `docs/operator-guide.md`
 - Troubleshooting: `docs/troubleshooting.md`
-- License: `LICENSE`
+- License summary: `LICENSE`
+- Repository licenses: `LICENSE-MIT`, `LICENSE-APACHE`
+- FEFF10 third-party license: `THIRD_PARTY_LICENSES/FEFF10-LICENSE`
 - Cutover rehearsal checklist: `docs/cutover-rehearsal-checklist.md`
 - Rollback rehearsal checklist: `docs/rollback-rehearsal-checklist.md`
 - Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-17.md`
 - Latest rollback rehearsal and GA sign-off report: `tasks/rollback-rehearsal-2026-02-17.md`
+
+## License And Attribution
+
+This repository's original Rust code is dual-licensed under `MIT` or `Apache-2.0` at your
+option. See `LICENSE-MIT`, `LICENSE-APACHE`, and `LICENSE`.
+
+FEFF10 reference code and example inputs are not authored by this repository owner and are not
+relicensed under MIT/Apache by this project. FEFF10 remains under its original license and
+copyright:
+
+- FEFF Project, University of Washington, and SLAC National Accelerator Laboratory
+- Upstream project: `https://github.com/times-software/feff10`
+- License terms: `THIRD_PARTY_LICENSES/FEFF10-LICENSE`
+
+Any use or redistribution of FEFF10-derived materials must comply with the FEFF10 license terms.
 
 ## Rust Architecture Scaffolding
 
@@ -35,8 +52,9 @@ cargo fmt --all -- --check
 ```
 
 `cargo test` and oracle parity flows read fixture inputs from `feff10/examples/...`.
-`feff10/` is intentionally not committed in this repository; it is a local checkout with its own
-license file (`feff10/LICENSE`) fetched by `scripts/fortran/ensure-feff10-reference.sh`.
+`feff10/` is intentionally not committed in this repository; it is a local checkout fetched by
+`scripts/fortran/ensure-feff10-reference.sh`. FEFF10 usage must follow
+`THIRD_PARTY_LICENSES/FEFF10-LICENSE`.
 
 macOS targets are configured to use `clang` by default via `.cargo/config.toml`.
 If your local toolchain still cannot resolve `clang`, install Xcode Command Line Tools or run:
