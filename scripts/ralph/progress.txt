@@ -15,6 +15,7 @@
 - When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
 - For oracle parity fixtures whose required entry files live only in `REFERENCE.zip` (not `inputDirectory`), include a `baselineSources` `reference_archive` path in the manifest so capture can resolve those entries deterministically.
 - For oracle parity on fixtures with `baselineStatus=requires_fortran_capture` and unresolved `REFERENCE/*.inp` entry files (for example `FX-BAND-001`), pass `--capture-allow-missing-entry-files` and assert capture `metadata.txt` records `missing_entry_files`.
+- For `baselineStatus=requires_fortran_capture` fixtures with archive-resolvable entry prerequisites (for example `FX-FULLSPECTRUM-001`), assert capture `metadata.txt` keeps `missing_entry_files=` empty and that the staged entry deck appears under `oracle-root/<fixture>/outputs` before module parity assertions.
 - For oracle parity tests that must cover optional module inputs, stage required artifacts directly into `actual-root/<fixture>/actual` and run only the target module hook (for example, `--run-screen`) so optional-file present/absent variants are deterministic.
 - For true-compute modules with optional inputs, keep the output artifact contract stable and encode optional-input presence/absence in deterministic output metadata so parity and CLI tests can assert both input variants without changing expected output filenames.
 - For FULLSPECTRUM true-compute/parity coverage, stage `fullspectrum.inp` and `xmu.dat` (optionally `prexmu.dat` and `referencexmu.dat`), assert the fixed output contract (`xmu.dat`, `osc_str.dat`, `eps.dat`, `drude.dat`, `background.dat`, `fine_st.dat`, `logfullspectrum.dat`), and seed regression baselines from generated outputs.
@@ -496,4 +497,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: FULLSPECTRUM keeps a fixed output contract while optional `prexmu.dat`/`referencexmu.dat` inputs only influence deterministic output contents, matching the repo’s optional-input contract pattern.
   - Gotchas encountered: Fixture `FX-FULLSPECTRUM-001` still has `baselineStatus=requires_fortran_capture`, so parity coverage should seed temporary baselines from generated true-compute outputs instead of relying on committed FULLSPECTRUM baseline artifacts.
   - Useful context: Runtime availability docs/tests need coordinated updates across `src/pipelines/mod.rs`, `tests/cli_compatibility.rs`, and `README.md` when a module transitions to true-compute.
+---
+## [2026-02-17 12:35:22 JST] - US-040
+- Added FULLSPECTRUM oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-FULLSPECTRUM-001` by running `feff10-rs oracle` with `--run-fullspectrum` and CI capture-runner plumbing.
+- Added capture prerequisite assertions for this `requires_fortran_capture` fixture: `REFERENCE/fullspectrum.inp` is materialized into `oracle-root/<fixture>/outputs` and capture metadata records `baseline_status=requires_fortran_capture` with no unresolved `missing_entry_files`.
+- Added parity-report assertions for the FULLSPECTRUM output contract (`xmu.dat`, `osc_str.dat`, `eps.dat`, `drude.dat`, `background.dat`, `fine_st.dat`, `logfullspectrum.dat`), including deterministic `Missing baseline artifact` diagnostics for captured-missing outputs.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-040` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FULLSPECTRUM oracle parity on capture-only fixtures should assert both capture metadata and full-output report artifacts, not just command exit status.
+  - Gotchas encountered: `FX-FULLSPECTRUM-001` committed baselines currently include only `xmu.dat` from the FULLSPECTRUM output set, so the remaining outputs should be asserted as deterministic `Missing baseline artifact` mismatches.
+  - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---

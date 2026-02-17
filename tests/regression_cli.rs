@@ -3289,6 +3289,231 @@ fn oracle_command_runs_eels_parity_with_optional_magic_and_tolerance_reporting()
 }
 
 #[test]
+fn oracle_command_runs_fullspectrum_parity_with_capture_prerequisites_and_full_output_reporting() {
+    if !command_available("jq") {
+        eprintln!("Skipping FULLSPECTRUM oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-FULLSPECTRUM-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/XES/Cu");
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-fullspectrum.json");
+    let baseline_archive = fixture_input_dir.join("REFERENCE.zip");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["FULLSPECTRUM"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp", "REFERENCE/fullspectrum.inp"],
+              "baselineStatus": "requires_fortran_capture",
+              "baselineSources": [
+                {{
+                  "kind": "reference_archive",
+                  "path": "{baseline_archive}"
+                }}
+              ]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\"),
+        baseline_archive = baseline_archive.to_string_lossy().replace('\\', "\\\\"),
+    );
+    write_file(&manifest_path, &manifest);
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "fullspectrum.inp",
+        &staged_output_dir.join("fullspectrum.inp"),
+    );
+    stage_workspace_fixture_file(fixture_id, "xmu.dat", &staged_output_dir.join("xmu.dat"));
+    stage_workspace_fixture_file(
+        fixture_id,
+        "prexmu.dat",
+        &staged_output_dir.join("prexmu.dat"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "referencexmu.dat",
+        &staged_output_dir.join("referencexmu.dat"),
+    );
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-fullspectrum",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "FULLSPECTRUM oracle parity should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Mismatches:"),
+        "FULLSPECTRUM oracle summary should include mismatch totals, stdout: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Fixture FX-FULLSPECTRUM-001 mismatches"),
+        "FULLSPECTRUM oracle summary should include fixture mismatch details, stdout: {}",
+        stdout
+    );
+
+    let expected_outputs = [
+        "xmu.dat",
+        "osc_str.dat",
+        "eps.dat",
+        "drude.dat",
+        "background.dat",
+        "fine_st.dat",
+        "logfullspectrum.dat",
+    ];
+    for artifact in expected_outputs {
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join(artifact)
+                .is_file(),
+            "run-fullspectrum should materialize '{}' for '{}'",
+            artifact,
+            fixture_id
+        );
+    }
+    assert!(
+        report_path.is_file(),
+        "FULLSPECTRUM oracle parity should emit a report"
+    );
+
+    let capture_outputs_dir = oracle_root.join(fixture_id).join("outputs");
+    assert!(
+        capture_outputs_dir.join("fullspectrum.inp").is_file(),
+        "capture should materialize REFERENCE/fullspectrum.inp prerequisite into oracle outputs"
+    );
+    let capture_metadata_path = oracle_root.join(fixture_id).join("metadata.txt");
+    assert!(
+        capture_metadata_path.is_file(),
+        "capture metadata should be emitted for '{}'",
+        fixture_id
+    );
+    let capture_metadata =
+        fs::read_to_string(&capture_metadata_path).expect("capture metadata should be readable");
+    assert!(
+        capture_metadata.contains("baseline_status=requires_fortran_capture"),
+        "capture metadata should record requires_fortran_capture baseline status, metadata: {}",
+        capture_metadata
+    );
+    assert!(
+        capture_metadata.contains("missing_entry_files="),
+        "capture metadata should record missing_entry_files field, metadata: {}",
+        capture_metadata
+    );
+    assert!(
+        !capture_metadata.contains("missing_entry_files=REFERENCE/fullspectrum.inp"),
+        "capture should resolve fullspectrum entry prerequisites from baseline archives, metadata: {}",
+        capture_metadata
+    );
+
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let fixture_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-FULLSPECTRUM-001");
+    let artifact_reports = fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+
+    for artifact in expected_outputs {
+        assert!(
+            artifact_reports
+                .iter()
+                .any(|report| report["artifact_path"].as_str() == Some(artifact)),
+            "fixture report should include FULLSPECTRUM artifact '{}'",
+            artifact
+        );
+    }
+
+    let mismatch_fixtures = parsed["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let mismatch_fixture = mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("mismatch_fixtures should include FX-FULLSPECTRUM-001");
+    let mismatch_artifacts = mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("fixture mismatch artifact list should be an array");
+
+    for artifact in [
+        "osc_str.dat",
+        "eps.dat",
+        "drude.dat",
+        "background.dat",
+        "fine_st.dat",
+        "logfullspectrum.dat",
+    ] {
+        let mismatch = mismatch_artifacts
+            .iter()
+            .find(|entry| entry["artifact_path"].as_str() == Some(artifact))
+            .unwrap_or_else(|| {
+                panic!(
+                    "mismatch diagnostics should include full output artifact '{}'",
+                    artifact
+                )
+            });
+        assert_eq!(
+            mismatch["reason"],
+            Value::from("Missing baseline artifact"),
+            "full output artifact '{}' should report missing captured baseline details",
+            artifact
+        );
+    }
+}
+
+#[test]
 fn oracle_command_run_dmdw_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping DMDW oracle CLI test because jq is unavailable in PATH.");
