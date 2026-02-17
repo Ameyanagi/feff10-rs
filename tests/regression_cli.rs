@@ -2999,6 +2999,296 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
 }
 
 #[test]
+fn oracle_command_runs_eels_parity_with_optional_magic_and_tolerance_reporting() {
+    if !command_available("jq") {
+        eprintln!("Skipping EELS oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-EELS-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/ELNES/Cu");
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let baseline_archive = fixture_input_dir.join("REFERENCE.zip");
+    let baseline_reference_file = fixture_input_dir.join("reference_eels.dat");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["EELS"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"],
+              "baselineSources": [
+                {{
+                  "kind": "reference_archive",
+                  "path": "{baseline_archive}"
+                }},
+                {{
+                  "kind": "reference_file",
+                  "path": "{baseline_reference_file}"
+                }}
+              ]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\"),
+        baseline_archive = baseline_archive.to_string_lossy().replace('\\', "\\\\"),
+        baseline_reference_file = baseline_reference_file
+            .to_string_lossy()
+            .replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+
+    let with_magic_oracle_root = temp.path().join("oracle-root-with-magic");
+    let with_magic_actual_root = temp.path().join("actual-root-with-magic");
+    let with_magic_report_path = temp.path().join("report/oracle-eels-with-magic.json");
+    let with_magic_staged_output_dir = with_magic_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "eels.inp",
+        &with_magic_staged_output_dir.join("eels.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "xmu.dat",
+        &with_magic_staged_output_dir.join("xmu.dat"),
+    );
+    write_file(
+        &with_magic_staged_output_dir.join("magic.inp"),
+        "magic energy offset\n12.5\nangular tweak\n0.45\n",
+    );
+
+    let with_magic_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &with_magic_oracle_root,
+        &with_magic_actual_root,
+        &with_magic_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-eels",
+        ],
+    );
+
+    assert_eq!(
+        with_magic_output.status.code(),
+        Some(1),
+        "EELS oracle parity with optional magic.inp should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&with_magic_output.stderr)
+    );
+    let with_magic_stdout = String::from_utf8_lossy(&with_magic_output.stdout);
+    assert!(
+        with_magic_stdout.contains("Fixture FX-EELS-001 mismatches"),
+        "EELS oracle summary should include fixture mismatch details, stdout: {}",
+        with_magic_stdout
+    );
+    for artifact in ["eels.dat", "logeels.dat", "magic.dat"] {
+        assert!(
+            with_magic_actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join(artifact)
+                .is_file(),
+            "run-eels should materialize '{}' when optional magic input is staged",
+            artifact
+        );
+    }
+    assert!(
+        with_magic_report_path.is_file(),
+        "EELS oracle parity should emit a report for optional-magic case"
+    );
+    let with_magic_report: Value = serde_json::from_str(
+        &fs::read_to_string(&with_magic_report_path).expect("report should be readable"),
+    )
+    .expect("report JSON should parse");
+    assert_eq!(with_magic_report["mismatch_fixture_count"], Value::from(1));
+
+    let with_magic_fixture_reports = with_magic_report["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let with_magic_fixture_report = with_magic_fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-EELS-001");
+    let with_magic_artifact_reports = with_magic_fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+    let eels_report = with_magic_artifact_reports
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("eels.dat"))
+        .expect("EELS fixture should include eels.dat comparison");
+    assert_eq!(
+        eels_report["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "eels.dat should be compared using numeric_tolerance mode"
+    );
+    assert_eq!(
+        eels_report["comparison"]["matched_category"],
+        Value::from("columnar_spectra"),
+        "eels.dat should resolve columnar_spectra policy category"
+    );
+    assert_eq!(
+        eels_report["comparison"]["metrics"]["kind"],
+        Value::from("numeric_tolerance"),
+        "eels.dat comparison should emit numeric tolerance metrics"
+    );
+    assert!(
+        eels_report["comparison"]["metrics"]["compared_values"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "eels.dat tolerance metrics should include compared values"
+    );
+
+    let with_magic_mismatch_fixtures = with_magic_report["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let with_magic_fixture = with_magic_mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("mismatch_fixtures should include EELS fixture for optional-magic case");
+    let with_magic_mismatch_artifacts = with_magic_fixture["artifacts"]
+        .as_array()
+        .expect("fixture mismatch artifact list should be an array");
+    let with_magic_output_mismatch = with_magic_mismatch_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("magic.dat"))
+        .expect("optional magic output should be included in mismatch diagnostics");
+    assert_eq!(
+        with_magic_output_mismatch["reason"],
+        Value::from("Missing baseline artifact"),
+        "magic.dat should report missing baseline artifact when optional output is generated"
+    );
+
+    let without_magic_oracle_root = temp.path().join("oracle-root-without-magic");
+    let without_magic_actual_root = temp.path().join("actual-root-without-magic");
+    let without_magic_report_path = temp.path().join("report/oracle-eels-without-magic.json");
+    let without_magic_staged_output_dir = without_magic_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "eels.inp",
+        &without_magic_staged_output_dir.join("eels.inp"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "xmu.dat",
+        &without_magic_staged_output_dir.join("xmu.dat"),
+    );
+    assert!(
+        !without_magic_staged_output_dir.join("magic.inp").exists(),
+        "test setup should omit optional magic.inp to verify optional EELS output behavior"
+    );
+
+    let without_magic_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &without_magic_oracle_root,
+        &without_magic_actual_root,
+        &without_magic_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-eels",
+        ],
+    );
+
+    assert_eq!(
+        without_magic_output.status.code(),
+        Some(1),
+        "EELS oracle parity without optional magic.inp should still run and report mismatches, stderr: {}",
+        String::from_utf8_lossy(&without_magic_output.stderr)
+    );
+    let without_magic_stdout = String::from_utf8_lossy(&without_magic_output.stdout);
+    assert!(
+        without_magic_stdout.contains("Fixture FX-EELS-001 mismatches"),
+        "EELS oracle summary should include fixture mismatch details, stdout: {}",
+        without_magic_stdout
+    );
+    assert!(
+        without_magic_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("eels.dat")
+            .is_file(),
+        "run-eels should materialize eels.dat when optional magic input is absent"
+    );
+    assert!(
+        without_magic_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("logeels.dat")
+            .is_file(),
+        "run-eels should materialize logeels.dat when optional magic input is absent"
+    );
+    assert!(
+        !without_magic_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("magic.dat")
+            .is_file(),
+        "run-eels should not materialize magic.dat when optional magic input is absent"
+    );
+    assert!(
+        without_magic_report_path.is_file(),
+        "EELS oracle parity should emit a report for missing-optional-input case"
+    );
+
+    let without_magic_report: Value = serde_json::from_str(
+        &fs::read_to_string(&without_magic_report_path).expect("report should be readable"),
+    )
+    .expect("report JSON should parse");
+    assert_eq!(
+        without_magic_report["mismatch_fixture_count"],
+        Value::from(1)
+    );
+
+    let without_magic_fixture_reports = without_magic_report["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let without_magic_fixture_report = without_magic_fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-EELS-001 without optional magic input");
+    let without_magic_artifact_reports = without_magic_fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+    let without_magic_eels_report = without_magic_artifact_reports
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("eels.dat"))
+        .expect("EELS fixture should include eels.dat comparison without optional input");
+    assert_eq!(
+        without_magic_eels_report["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "eels.dat should remain numeric_tolerance in no-magic optional-input case"
+    );
+    assert_eq!(
+        without_magic_eels_report["comparison"]["matched_category"],
+        Value::from("columnar_spectra"),
+        "eels.dat should resolve columnar_spectra category in no-magic optional-input case"
+    );
+}
+
+#[test]
 fn oracle_command_run_dmdw_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping DMDW oracle CLI test because jq is unavailable in PATH.");

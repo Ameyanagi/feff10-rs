@@ -18,6 +18,7 @@
 - For oracle parity tests that must cover optional module inputs, stage required artifacts directly into `actual-root/<fixture>/actual` and run only the target module hook (for example, `--run-screen`) so optional-file present/absent variants are deterministic.
 - For true-compute modules with optional inputs, keep the output artifact contract stable and encode optional-input presence/absence in deterministic output metadata so parity and CLI tests can assert both input variants without changing expected output filenames.
 - For EELS true-compute flows, treat `magic.dat` as optional output enabled by either `eels.inp` magic flag or staged `magic.inp`, and keep baseline seeding plus staged actual inputs on the same optional-input variant for deterministic regression/oracle coverage.
+- For EELS oracle parity coverage on `FX-EELS-001`, stage `eels.inp` and `xmu.dat`, run `feff10-rs oracle --run-eels` with and without staged `magic.inp`, and assert `eels.dat` resolves `comparison.mode=numeric_tolerance` with `matched_category=columnar_spectra`.
 - For single-fixture oracle parity tests that must prove both tolerance reporting and contract-failure diagnostics, use a story-specific policy override for one artifact and stage one synthetic actual-only artifact to assert deterministic `Missing baseline artifact` reasons.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - For multi-fixture oracle parity stories, assert `mismatch_fixtures` per required fixture (not only aggregate mismatch counts) so artifact-level reason coverage remains deterministic.
@@ -470,4 +471,17 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: EELS output contract is dynamic on optional magic controls; `magic.dat` should be expected when either `eels.inp` enables magic or `magic.inp` is staged.
   - Gotchas encountered: Existing regression helper tests staged minimal `eels.inp` control rows, so EELS parsing must keep deterministic defaults for omitted optional control rows instead of requiring full-deck parity formatting.
   - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 12:19:44 JST] - US-038
+- Added EELS oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-EELS-001` by running `feff10-rs oracle` with `--run-eels` and CI capture-runner plumbing.
+- Exercised optional `magic.inp` behavior in two oracle runs (present vs omitted), asserting deterministic EELS output contracts: `magic.dat` is emitted only when optional magic input is staged, while `eels.dat` and `logeels.dat` are emitted in both cases.
+- Added report assertions that `eels.dat` comparisons resolve `comparison.mode=numeric_tolerance`, `matched_category=columnar_spectra`, and numeric tolerance metrics (`comparison.metrics.kind=numeric_tolerance`, non-zero `compared_values`).
+- Verified optional-output mismatch diagnostics by asserting that generated `magic.dat` in the with-magic run reports deterministic `Missing baseline artifact` reasoning in `mismatch_fixtures`.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli oracle_command_runs_eels_parity_with_optional_magic_and_tolerance_reporting`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-038` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: EELS oracle parity should explicitly cover both optional-input variants (`magic.inp` present/absent) to lock optional output contract behavior and comparator policy routing in one test.
+  - Gotchas encountered: Under oracle capture seeded from committed baselines, optional `magic.dat` generation is expected to surface as deterministic `Missing baseline artifact` mismatch unless fixture baselines are expanded.
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---
