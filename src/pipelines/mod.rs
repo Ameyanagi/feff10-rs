@@ -63,6 +63,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Fms
             | PipelineModule::Band
             | PipelineModule::Ldos
+            | PipelineModule::Compton
     )
 }
 
@@ -100,6 +101,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Fms => RuntimeFmsExecutor.execute_runtime(request),
         PipelineModule::Band => RuntimeBandExecutor.execute_runtime(request),
         PipelineModule::Ldos => RuntimeLdosExecutor.execute_runtime(request),
+        PipelineModule::Compton => RuntimeComptonExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -182,6 +184,15 @@ struct RuntimeLdosExecutor;
 impl RuntimePipelineExecutor for RuntimeLdosExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         ldos::LdosPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeComptonExecutor;
+
+impl RuntimePipelineExecutor for RuntimeComptonExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        compton::ComptonPipelineScaffold.execute(request)
     }
 }
 
@@ -365,6 +376,7 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Fms));
         assert!(runtime_compute_engine_available(PipelineModule::Band));
         assert!(runtime_compute_engine_available(PipelineModule::Ldos));
+        assert!(runtime_compute_engine_available(PipelineModule::Compton));
     }
 
     #[test]
@@ -737,6 +749,58 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_compton_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("compton.inp"), COMPTON_INPUT_FIXTURE)
+            .expect("compton input should be written");
+        std::fs::write(
+            input_dir.join("pot.bin"),
+            [0_u8, 1_u8, 2_u8, 3_u8, 4_u8, 5_u8],
+        )
+        .expect("pot input should be written");
+        std::fs::write(
+            input_dir.join("gg_slice.bin"),
+            [6_u8, 7_u8, 8_u8, 9_u8, 10_u8, 11_u8],
+        )
+        .expect("gg_slice input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-COMPTON-001",
+            PipelineModule::Compton,
+            input_dir.join("compton.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Compton, &request)
+            .expect("COMPTON runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("compton.dat")),
+            "COMPTON runtime should emit compton.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("jzzp.dat")),
+            "COMPTON runtime should emit jzzp.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rhozzp.dat")),
+            "COMPTON runtime should emit rhozzp.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logcompton.dat")),
+            "COMPTON runtime should emit logcompton.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
         let error = runtime_engine_unavailable_error(PipelineModule::Rixs);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
@@ -812,6 +876,28 @@ freeprop :  empty lattice if = T
 
     const RECIPROCAL_INPUT_FIXTURE: &str = "ispace
    1
+";
+
+    const COMPTON_INPUT_FIXTURE: &str = "run compton module?
+           1
+pqmax, npq
+   5.000000            1000
+ns, nphi, nz, nzp
+  32  32  32 120
+smax, phimax, zmax, zpmax
+      0.00000      6.28319      0.00000     10.00000
+jpq? rhozzp? force_recalc_jzzp?
+ T T F
+window_type (0=Step, 1=Hann), window_cutoff
+           1  0.0000000E+00
+temperature (in eV)
+      0.00000
+set_chemical_potential? chemical_potential(eV)
+ F  0.0000000E+00
+rho_xy? rho_yz? rho_xz? rho_vol? rho_line?
+ F F F F F
+qhat_x qhat_y qhat_z
+  0.000000000000000E+000  0.000000000000000E+000   1.00000000000000
 ";
 
     const GLOBAL_INPUT_FIXTURE: &str = " nabs, iphabs - CFAVERAGE data

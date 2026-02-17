@@ -28,6 +28,7 @@
 - When asserting numeric-tolerance comparisons for artifacts with comment/header lines (for example `xsect.dat`), include `numericParsing.commentPrefixes` in the policy override so comparison results are emitted instead of parse-error `comparison: null` entries.
 - For module control decks that include numeric literals in label text (for example `mband : ... if = 1`), parse by keyword marker plus the following value row instead of flattening all numeric tokens across the file.
 - For parity suites that call `run_regression` with module pre-compare hooks enabled, stage each module's required input artifacts into `actual-root/<fixture>/actual` even when baseline outputs are seeded from generated true-compute artifacts.
+- For true-compute module parity tests, seed temporary baselines from generated outputs and stage deterministic fallback bytes when a declared required binary input is missing from committed fixture baselines (for example `gg_slice.bin` for `FX-COMPTON-001`).
 - For LDOS oracle parity coverage, stage `ldos.inp`, `geom.dat`, `pot.bin`, and `reciprocal.inp` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-ldos`, and assert failed `ldos*.dat` comparisons report `comparison.mode=numeric_tolerance` with `matched_category=density_tables` and numeric tolerance metrics.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
@@ -352,4 +353,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: LDOS oracle parity assertions should target failed `ldos*.dat` entries to verify tolerance-mode/category routing and numeric metric emission together.
   - Gotchas encountered: `FX-LDOS-001` can parse and run with staged module inputs alone, so oracle parity tests should stage declared LDOS inputs directly rather than chaining RDINP hooks.
   - Useful context: There are still no repository-local `AGENTS.md` files in this project tree, so reusable conventions are captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 11:02:01 JST] - US-029
+- Replaced `src/pipelines/compton.rs` baseline materialization with a true-compute COMPTON pipeline that parses staged `compton.inp`, `pot.bin`, and `gg_slice.bin` and deterministically computes `compton.dat`, `jzzp.dat`, `rhozzp.dat`, and `logcompton.dat` without runtime baseline reads.
+- Enabled COMPTON as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring) and added runtime dispatch coverage plus CLI module-command coverage for successful `compton` execution.
+- Reworked COMPTON parity coverage in `tests/compton_parity.rs` to the true-compute pattern (required artifact checks, deterministic repeated runs, regression baselines seeded from generated outputs) and updated README regression-hook docs to describe `--run-compton` as true-compute execution.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/pipelines/compton.rs`, `src/pipelines/mod.rs`, `tests/compton_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: COMPTON runtime and regression coverage should treat `gg_slice.bin` as a required staged binary input even when fixture baselines do not provide it, using deterministic fallback bytes in tests.
+  - Gotchas encountered: `FX-COMPTON-001` baseline snapshots currently omit `gg_slice.bin`, so parity/CLI tests must stage fallback bytes or COMPTON exits with deterministic `IO.COMPTON_INPUT_READ` failures.
+  - Useful context: The COMPTON true-compute parser reads marker lines plus following value rows in `compton.inp` to avoid accidental numeric-token capture from descriptive label text.
 ---

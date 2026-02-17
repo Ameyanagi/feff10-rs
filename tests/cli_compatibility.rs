@@ -253,6 +253,41 @@ fn band_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn compton_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_baseline_artifact(
+        "FX-COMPTON-001",
+        "compton.inp",
+        temp.path().join("compton.inp"),
+    );
+    stage_baseline_artifact("FX-COMPTON-001", "pot.bin", temp.path().join("pot.bin"));
+    stage_gg_slice_input(temp.path().join("gg_slice.bin"));
+
+    let compton = run_cli_command(temp.path(), &["compton"]);
+    assert!(
+        compton.status.success(),
+        "compton should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&compton.stderr)
+    );
+    assert!(
+        temp.path().join("compton.dat").is_file(),
+        "compton should emit compton.dat"
+    );
+    assert!(
+        temp.path().join("jzzp.dat").is_file(),
+        "compton should emit jzzp.dat"
+    );
+    assert!(
+        temp.path().join("rhozzp.dat").is_file(),
+        "compton should emit rhozzp.dat"
+    );
+    assert!(
+        temp.path().join("logcompton.dat").is_file(),
+        "compton should emit logcompton.dat"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
@@ -413,6 +448,28 @@ fn stage_band_input(destination: PathBuf) {
         "mband : calculate bands if = 1\n   1\nemin, emax, estep : energy mesh\n    -8.00000      6.00000      0.05000\nnkp : # points in k-path\n 121\nikpath : type of k-path\n   2\nfreeprop :  empty lattice if = T\n F\n",
     )
     .expect("band input should be staged");
+}
+
+fn stage_gg_slice_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-COMPTON-001")
+        .join("baseline")
+        .join("gg_slice.bin");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("gg_slice input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("gg_slice input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(&destination, [4_u8, 5_u8, 6_u8, 7_u8]).expect("gg_slice input should be staged");
 }
 
 fn workspace_root() -> PathBuf {
