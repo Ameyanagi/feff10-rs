@@ -406,6 +406,50 @@ fn eels_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn fullspectrum_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_fullspectrum_input(temp.path().join("fullspectrum.inp"));
+    stage_fullspectrum_spectrum_input(temp.path().join("xmu.dat"));
+    stage_fullspectrum_prexmu_input(temp.path().join("prexmu.dat"));
+    stage_fullspectrum_referencexmu_input(temp.path().join("referencexmu.dat"));
+
+    let fullspectrum = run_cli_command(temp.path(), &["fullspectrum"]);
+    assert!(
+        fullspectrum.status.success(),
+        "fullspectrum should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&fullspectrum.stderr)
+    );
+    assert!(
+        temp.path().join("xmu.dat").is_file(),
+        "fullspectrum should emit xmu.dat"
+    );
+    assert!(
+        temp.path().join("osc_str.dat").is_file(),
+        "fullspectrum should emit osc_str.dat"
+    );
+    assert!(
+        temp.path().join("eps.dat").is_file(),
+        "fullspectrum should emit eps.dat"
+    );
+    assert!(
+        temp.path().join("drude.dat").is_file(),
+        "fullspectrum should emit drude.dat"
+    );
+    assert!(
+        temp.path().join("background.dat").is_file(),
+        "fullspectrum should emit background.dat"
+    );
+    assert!(
+        temp.path().join("fine_st.dat").is_file(),
+        "fullspectrum should emit fine_st.dat"
+    );
+    assert!(
+        temp.path().join("logfullspectrum.dat").is_file(),
+        "fullspectrum should emit logfullspectrum.dat"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
@@ -692,6 +736,118 @@ fn stage_eels_spectrum_input(destination: PathBuf) {
         "# omega e k mu mu0 chi\n8979.411 -16.773 -1.540 5.56205E-06 6.25832E-06 -6.96262E-07\n8980.979 -15.204 -1.400 6.61771E-06 7.52318E-06 -9.05473E-07\n8982.398 -13.786 -1.260 7.99662E-06 9.19560E-06 -1.19897E-06\n",
     )
     .expect("xmu input should be staged");
+}
+
+fn stage_fullspectrum_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-FULLSPECTRUM-001")
+        .join("baseline")
+        .join("fullspectrum.inp");
+    if source.is_file() {
+        let source_bytes = fs::read(&source).unwrap_or_else(|_| {
+            panic!(
+                "fullspectrum input should be readable: {}",
+                source.display()
+            )
+        });
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("fullspectrum input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        " mFullSpectrum\n           1\n broadening drude\n     0.45000     1.25000\n oscillator epsilon_shift\n     1.10000     0.25000\n",
+    )
+    .expect("fullspectrum input should be staged");
+}
+
+fn stage_fullspectrum_spectrum_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-FULLSPECTRUM-001")
+        .join("baseline")
+        .join("xmu.dat");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("xmu input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("xmu input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "# omega e k mu mu0 chi\n8956.1761 -40.0000 -2.9103 9.162321E-02 9.102713E-02 5.960831E-04\n8956.6084 -39.5677 -2.8908 7.595159E-02 7.534298E-02 6.086083E-04\n8957.0407 -39.1354 -2.8711 6.248403E-02 6.186194E-02 6.220848E-04\n",
+    )
+    .expect("xmu input should be staged");
+}
+
+fn stage_fullspectrum_prexmu_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-FULLSPECTRUM-001")
+        .join("baseline")
+        .join("prexmu.dat");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("prexmu input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("prexmu input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "-1.4699723600E+00 -5.2212753390E-04 1.1530407310E-05\n-1.4540857260E+00 -5.1175235060E-04 9.5436958570E-06\n-1.4381990910E+00 -5.0195981330E-04 7.8360530260E-06\n",
+    )
+    .expect("prexmu input should be staged");
+}
+
+fn stage_fullspectrum_referencexmu_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-FULLSPECTRUM-001")
+        .join("baseline")
+        .join("referencexmu.dat");
+    if source.is_file() {
+        let source_bytes = fs::read(&source).unwrap_or_else(|_| {
+            panic!(
+                "referencexmu input should be readable: {}",
+                source.display()
+            )
+        });
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("referencexmu input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "# omega e k mu mu0 chi\n8956.1761 -40.0000 -2.9103 9.162321E-02 9.102713E-02 5.960831E-04\n8956.6084 -39.5677 -2.8908 7.595159E-02 7.534298E-02 6.086083E-04\n8957.0407 -39.1354 -2.8711 6.248403E-02 6.186194E-02 6.220848E-04\n",
+    )
+    .expect("referencexmu input should be staged");
 }
 
 fn stage_ff2x_input(destination: PathBuf) {

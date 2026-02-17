@@ -59,6 +59,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Screen
             | PipelineModule::SelfEnergy
             | PipelineModule::Eels
+            | PipelineModule::FullSpectrum
             | PipelineModule::Crpa
             | PipelineModule::Xsph
             | PipelineModule::Path
@@ -101,6 +102,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
         PipelineModule::SelfEnergy => RuntimeSelfExecutor.execute_runtime(request),
         PipelineModule::Eels => RuntimeEelsExecutor.execute_runtime(request),
+        PipelineModule::FullSpectrum => RuntimeFullSpectrumExecutor.execute_runtime(request),
         PipelineModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
         PipelineModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
         PipelineModule::Path => RuntimePathExecutor.execute_runtime(request),
@@ -156,6 +158,15 @@ struct RuntimeEelsExecutor;
 impl RuntimePipelineExecutor for RuntimeEelsExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         eels::EelsPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeFullSpectrumExecutor;
+
+impl RuntimePipelineExecutor for RuntimeFullSpectrumExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        fullspectrum::FullSpectrumPipelineScaffold.execute(request)
     }
 }
 
@@ -416,6 +427,9 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Screen));
         assert!(runtime_compute_engine_available(PipelineModule::SelfEnergy));
         assert!(runtime_compute_engine_available(PipelineModule::Eels));
+        assert!(runtime_compute_engine_available(
+            PipelineModule::FullSpectrum
+        ));
         assert!(runtime_compute_engine_available(PipelineModule::Crpa));
         assert!(runtime_compute_engine_available(PipelineModule::Xsph));
         assert!(runtime_compute_engine_available(PipelineModule::Path));
@@ -1026,6 +1040,71 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_fullspectrum_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(
+            input_dir.join("fullspectrum.inp"),
+            FULLSPECTRUM_INPUT_FIXTURE,
+        )
+        .expect("fullspectrum input should be written");
+        std::fs::write(input_dir.join("xmu.dat"), FULLSPECTRUM_XMU_INPUT_FIXTURE)
+            .expect("xmu input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-FULLSPECTRUM-001",
+            PipelineModule::FullSpectrum,
+            input_dir.join("fullspectrum.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::FullSpectrum, &request)
+            .expect("FULLSPECTRUM runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("xmu.dat")),
+            "FULLSPECTRUM runtime should emit xmu.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("osc_str.dat")),
+            "FULLSPECTRUM runtime should emit osc_str.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("eps.dat")),
+            "FULLSPECTRUM runtime should emit eps.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("drude.dat")),
+            "FULLSPECTRUM runtime should emit drude.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("background.dat")),
+            "FULLSPECTRUM runtime should emit background.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("fine_st.dat")),
+            "FULLSPECTRUM runtime should emit fine_st.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logfullspectrum.dat")),
+            "FULLSPECTRUM runtime should emit logfullspectrum.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
         let error = runtime_engine_unavailable_error(PipelineModule::Rixs);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
@@ -1112,6 +1191,21 @@ energy for magic angle - eV above threshold
 8979.411 -16.773 -1.540 5.56205E-06 6.25832E-06 -6.96262E-07
 8980.979 -15.204 -1.400 6.61771E-06 7.52318E-06 -9.05473E-07
 8982.398 -13.786 -1.260 7.99662E-06 9.19560E-06 -1.19897E-06
+";
+
+    const FULLSPECTRUM_INPUT_FIXTURE: &str = " mFullSpectrum
+           1
+ broadening drude
+     0.45000     1.25000
+ oscillator epsilon_shift
+     1.10000     0.25000
+";
+
+    const FULLSPECTRUM_XMU_INPUT_FIXTURE: &str = "# omega e k mu mu0 chi
+8956.1761 -40.0000 -2.9103 9.162321E-02 9.102713E-02 5.960831E-04
+8956.6084 -39.5677 -2.8908 7.595159E-02 7.534298E-02 6.086083E-04
+8957.0407 -39.1354 -2.8711 6.248403E-02 6.186194E-02 6.220848E-04
+8957.4730 -38.7031 -2.8512 5.166095E-02 5.102360E-02 6.373535E-04
 ";
 
     const CRPA_INPUT_FIXTURE: &str = " do_CRPA           1

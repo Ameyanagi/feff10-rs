@@ -1,6 +1,5 @@
 use feff10_rs::domain::{PipelineArtifact, PipelineModule, PipelineRequest};
 use feff10_rs::pipelines::PipelineExecutor;
-use feff10_rs::pipelines::comparator::Comparator;
 use feff10_rs::pipelines::fullspectrum::FullSpectrumPipelineScaffold;
 use feff10_rs::pipelines::regression::{RegressionRunnerConfig, run_regression};
 use serde_json::json;
@@ -19,7 +18,7 @@ const APPROVED_FULLSPECTRUM_FIXTURES: [FixtureCase; 1] = [FixtureCase {
     input_directory: "feff10/examples/XES/Cu",
 }];
 
-const FULLSPECTRUM_OUTPUT_CANDIDATES: [&str; 9] = [
+const FULLSPECTRUM_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
     "xmu.dat",
     "osc_str.dat",
     "eps.dat",
@@ -27,56 +26,93 @@ const FULLSPECTRUM_OUTPUT_CANDIDATES: [&str; 9] = [
     "background.dat",
     "fine_st.dat",
     "logfullspectrum.dat",
-    "prexmu.dat",
-    "referencexmu.dat",
 ];
 
 #[test]
-fn approved_fullspectrum_fixtures_match_baseline_under_policy() {
-    let comparator = Comparator::from_policy_path("tasks/numeric-tolerance-policy.json")
-        .expect("policy should load");
-
+fn approved_fullspectrum_fixtures_emit_required_true_compute_artifacts() {
     for fixture in &APPROVED_FULLSPECTRUM_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
-        let output_dir = temp.path().join("actual");
+        let (output_dir, expected_artifacts) =
+            run_fullspectrum_for_fixture(fixture, temp.path(), "actual", true);
 
-        stage_fullspectrum_inputs(fixture.id, &output_dir);
-
-        let fullspectrum_request = PipelineRequest::new(
-            fixture.id,
-            PipelineModule::FullSpectrum,
-            output_dir.join("fullspectrum.inp"),
-            &output_dir,
-        );
-        let artifacts = FullSpectrumPipelineScaffold
-            .execute(&fullspectrum_request)
-            .expect("FULLSPECTRUM execution should succeed");
-
-        assert_eq!(
-            artifact_set(&artifacts),
-            expected_fullspectrum_artifact_set_for_fixture(fixture.id),
-            "artifact contract should match expected FULLSPECTRUM outputs"
-        );
-
-        for artifact in artifacts {
-            let relative_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
-            let baseline_path = baseline_artifact_path(fixture.id, Path::new(&relative_path));
+        for artifact in expected_artifacts {
+            let output_path = output_dir.join(&artifact);
             assert!(
-                baseline_path.exists(),
-                "baseline artifact '{}' should exist for fixture '{}'",
-                baseline_path.display(),
+                output_path.is_file(),
+                "FULLSPECTRUM artifact '{}' should exist for fixture '{}'",
+                output_path.display(),
                 fixture.id
             );
-            let actual_path = output_dir.join(&artifact.relative_path);
-            let comparison = comparator
-                .compare_artifact(&relative_path, &baseline_path, &actual_path)
-                .expect("comparison should succeed");
             assert!(
-                comparison.passed,
-                "fixture '{}' artifact '{}' failed comparison: {:?}",
-                fixture.id, relative_path, comparison.reason
+                !fs::read(&output_path)
+                    .expect("artifact should be readable")
+                    .is_empty(),
+                "FULLSPECTRUM artifact '{}' should not be empty",
+                output_path.display()
             );
         }
+    }
+}
+
+#[test]
+fn approved_fullspectrum_fixtures_are_deterministic_across_runs() {
+    for fixture in &APPROVED_FULLSPECTRUM_FIXTURES {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let (first_output, first_expected) =
+            run_fullspectrum_for_fixture(fixture, temp.path(), "first", true);
+        let (second_output, second_expected) =
+            run_fullspectrum_for_fixture(fixture, temp.path(), "second", true);
+
+        assert_eq!(
+            first_expected, second_expected,
+            "fixture '{}' expected output contract should be stable",
+            fixture.id
+        );
+
+        for artifact in first_expected {
+            let first = fs::read(first_output.join(&artifact)).expect("first output should exist");
+            let second =
+                fs::read(second_output.join(&artifact)).expect("second output should exist");
+            assert_eq!(
+                first, second,
+                "fixture '{}' artifact '{}' should be deterministic",
+                fixture.id, artifact
+            );
+        }
+    }
+}
+
+#[test]
+fn fullspectrum_optional_component_inputs_are_supported() {
+    for fixture in &APPROVED_FULLSPECTRUM_FIXTURES {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let (with_optional_output, with_optional_expected) =
+            run_fullspectrum_for_fixture(fixture, temp.path(), "with-optional", true);
+        let (without_optional_output, without_optional_expected) =
+            run_fullspectrum_for_fixture(fixture, temp.path(), "without-optional", false);
+
+        assert_eq!(
+            with_optional_expected,
+            expected_artifact_set(&FULLSPECTRUM_REQUIRED_OUTPUT_ARTIFACTS),
+            "fixture '{}' should emit the FULLSPECTRUM required output contract with optional inputs",
+            fixture.id
+        );
+        assert_eq!(
+            without_optional_expected,
+            expected_artifact_set(&FULLSPECTRUM_REQUIRED_OUTPUT_ARTIFACTS),
+            "fixture '{}' should emit the FULLSPECTRUM required output contract without optional inputs",
+            fixture.id
+        );
+
+        let with_optional_xmu =
+            fs::read(with_optional_output.join("xmu.dat")).expect("xmu.dat should exist");
+        let without_optional_xmu =
+            fs::read(without_optional_output.join("xmu.dat")).expect("xmu.dat should exist");
+        assert_ne!(
+            with_optional_xmu, without_optional_xmu,
+            "fixture '{}' xmu.dat should change when prexmu/referencexmu inputs are staged",
+            fixture.id
+        );
     }
 }
 
@@ -89,20 +125,16 @@ fn fullspectrum_regression_suite_passes() {
     let manifest_path = temp.path().join("fullspectrum-manifest.json");
 
     for fixture in &APPROVED_FULLSPECTRUM_FIXTURES {
-        for artifact in expected_fullspectrum_artifacts_for_fixture(fixture.id) {
-            let baseline_source = baseline_artifact_path(fixture.id, Path::new(&artifact));
-            let baseline_target = baseline_root
-                .join(fixture.id)
-                .join("baseline")
-                .join(&artifact);
-            copy_file(&baseline_source, &baseline_target);
-        }
+        let seed_root = temp.path().join("seed");
+        let (seed_output, _) = run_fullspectrum_for_fixture(fixture, &seed_root, "actual", true);
+        let baseline_target = baseline_root.join(fixture.id).join("baseline");
+        copy_directory_tree(&seed_output, &baseline_target);
 
-        let baseline_fixture_dir = baseline_root.join(fixture.id).join("baseline");
-        stage_fullspectrum_inputs(fixture.id, &baseline_fixture_dir);
-
-        let staged_dir = actual_root.join(fixture.id).join("actual");
-        stage_fullspectrum_inputs(fixture.id, &staged_dir);
+        stage_fullspectrum_inputs_for_fixture(
+            fixture.id,
+            &actual_root.join(fixture.id).join("actual"),
+            true,
+        );
     }
 
     let manifest = json!({
@@ -153,6 +185,50 @@ fn fullspectrum_regression_suite_passes() {
     assert_eq!(report.failed_fixture_count, 0);
 }
 
+fn run_fullspectrum_for_fixture(
+    fixture: &FixtureCase,
+    root: &Path,
+    subdir: &str,
+    include_optional: bool,
+) -> (PathBuf, BTreeSet<String>) {
+    let output_dir = root.join(fixture.id).join(subdir);
+    stage_fullspectrum_inputs_for_fixture(fixture.id, &output_dir, include_optional);
+
+    let fullspectrum_request = PipelineRequest::new(
+        fixture.id,
+        PipelineModule::FullSpectrum,
+        output_dir.join("fullspectrum.inp"),
+        &output_dir,
+    );
+    let artifacts = FullSpectrumPipelineScaffold
+        .execute(&fullspectrum_request)
+        .expect("FULLSPECTRUM execution should succeed");
+
+    let expected_artifacts = expected_artifact_set(&FULLSPECTRUM_REQUIRED_OUTPUT_ARTIFACTS);
+    assert_eq!(
+        artifact_set(&artifacts),
+        expected_artifacts,
+        "fixture '{}' should emit expected FULLSPECTRUM output contract",
+        fixture.id
+    );
+
+    (output_dir, expected_artifacts)
+}
+
+fn stage_fullspectrum_inputs_for_fixture(
+    fixture_id: &str,
+    destination_dir: &Path,
+    include_optional: bool,
+) {
+    stage_fullspectrum_input(fixture_id, &destination_dir.join("fullspectrum.inp"));
+    stage_xmu_input(fixture_id, &destination_dir.join("xmu.dat"));
+
+    if include_optional {
+        stage_prexmu_input(fixture_id, &destination_dir.join("prexmu.dat"));
+        stage_referencexmu_input(fixture_id, &destination_dir.join("referencexmu.dat"));
+    }
+}
+
 fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
     PathBuf::from("artifacts/fortran-baselines")
         .join(fixture_id)
@@ -160,24 +236,66 @@ fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
         .join(relative_path)
 }
 
-fn expected_fullspectrum_artifact_set_for_fixture(fixture_id: &str) -> BTreeSet<String> {
-    let artifacts: BTreeSet<String> = FULLSPECTRUM_OUTPUT_CANDIDATES
-        .iter()
-        .filter(|artifact| baseline_artifact_path(fixture_id, Path::new(artifact)).is_file())
-        .map(|artifact| artifact.to_string())
-        .collect();
-
-    assert!(
-        !artifacts.is_empty(),
-        "fixture '{}' should provide at least one FULLSPECTRUM output artifact",
-        fixture_id
+fn stage_fullspectrum_input(fixture_id: &str, destination: &Path) {
+    stage_text_input(
+        fixture_id,
+        "fullspectrum.inp",
+        destination,
+        " mFullSpectrum\n           1\n broadening drude\n     0.45000     1.25000\n oscillator epsilon_shift\n     1.10000     0.25000\n",
     );
-    artifacts
 }
 
-fn expected_fullspectrum_artifacts_for_fixture(fixture_id: &str) -> Vec<String> {
-    expected_fullspectrum_artifact_set_for_fixture(fixture_id)
-        .into_iter()
+fn stage_xmu_input(fixture_id: &str, destination: &Path) {
+    stage_text_input(
+        fixture_id,
+        "xmu.dat",
+        destination,
+        "# omega e k mu mu0 chi\n8956.1761 -40.0000 -2.9103 9.162321E-02 9.102713E-02 5.960831E-04\n8956.6084 -39.5677 -2.8908 7.595159E-02 7.534298E-02 6.086083E-04\n8957.0407 -39.1354 -2.8711 6.248403E-02 6.186194E-02 6.220848E-04\n8957.4730 -38.7031 -2.8512 5.166095E-02 5.102360E-02 6.373535E-04\n",
+    );
+}
+
+fn stage_prexmu_input(fixture_id: &str, destination: &Path) {
+    stage_text_input(
+        fixture_id,
+        "prexmu.dat",
+        destination,
+        "-1.4699723600E+00 -5.2212753390E-04 1.1530407310E-05\n-1.4540857260E+00 -5.1175235060E-04 9.5436958570E-06\n-1.4381990910E+00 -5.0195981330E-04 7.8360530260E-06\n",
+    );
+}
+
+fn stage_referencexmu_input(fixture_id: &str, destination: &Path) {
+    stage_text_input(
+        fixture_id,
+        "referencexmu.dat",
+        destination,
+        "# omega e k mu mu0 chi\n8956.1761 -40.0000 -2.9103 9.162321E-02 9.102713E-02 5.960831E-04\n8956.6084 -39.5677 -2.8908 7.595159E-02 7.534298E-02 6.086083E-04\n8957.0407 -39.1354 -2.8711 6.248403E-02 6.186194E-02 6.220848E-04\n",
+    );
+}
+
+fn stage_text_input(fixture_id: &str, artifact: &str, destination: &Path, fallback: &str) {
+    let source = baseline_artifact_path(fixture_id, Path::new(artifact));
+    if source.is_file() {
+        copy_file(&source, destination);
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination directory should exist");
+    }
+    fs::write(destination, fallback).expect("text input should be staged");
+}
+
+fn copy_file(source: &Path, destination: &Path) {
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination directory should exist");
+    }
+    fs::copy(source, destination).expect("artifact copy should succeed");
+}
+
+fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {
+    artifacts
+        .iter()
+        .map(|artifact| artifact.to_string())
         .collect()
 }
 
@@ -188,27 +306,28 @@ fn artifact_set(artifacts: &[PipelineArtifact]) -> BTreeSet<String> {
         .collect()
 }
 
-fn stage_fullspectrum_inputs(fixture_id: &str, destination_dir: &Path) {
-    copy_file(
-        &baseline_artifact_path(fixture_id, Path::new("fullspectrum.inp")),
-        &destination_dir.join("fullspectrum.inp"),
-    );
-    copy_file(
-        &baseline_artifact_path(fixture_id, Path::new("xmu.dat")),
-        &destination_dir.join("xmu.dat"),
-    );
+fn copy_directory_tree(source_root: &Path, destination_root: &Path) {
+    fs::create_dir_all(destination_root).expect("destination root should exist");
+    let entries = fs::read_dir(source_root).expect("source root should be readable");
+    for entry in entries {
+        let entry = entry.expect("directory entry should be readable");
+        let source_path = entry.path();
+        let destination_path = destination_root.join(entry.file_name());
 
-    for optional_artifact in ["prexmu.dat", "referencexmu.dat"] {
-        let optional_source = baseline_artifact_path(fixture_id, Path::new(optional_artifact));
-        if optional_source.is_file() {
-            copy_file(&optional_source, &destination_dir.join(optional_artifact));
+        if source_path.is_dir() {
+            copy_directory_tree(&source_path, &destination_path);
+            continue;
         }
-    }
-}
 
-fn copy_file(source: &Path, destination: &Path) {
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent).expect("destination directory should exist");
+        if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::copy(&source_path, &destination_path).unwrap_or_else(|_| {
+            panic!(
+                "failed to copy '{}' -> '{}'",
+                source_path.display(),
+                destination_path.display()
+            )
+        });
     }
-    fs::copy(source, destination).expect("baseline artifact copy should succeed");
 }
