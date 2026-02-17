@@ -1,4 +1,4 @@
-use super::{XSPH_REQUIRED_INPUTS, POT_CONTROL_I32_COUNT, POT_CONTROL_F64_COUNT};
+use super::{POT_CONTROL_F64_COUNT, POT_CONTROL_I32_COUNT, XSPH_REQUIRED_INPUTS};
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use crate::modules::pot::POT_BINARY_MAGIC;
 use std::fs;
@@ -7,6 +7,7 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Clone, Copy)]
 pub(super) struct XsphControlInput {
     pub(super) mphase: i32,
+    pub(super) ixc: i32,
     pub(super) ispec: i32,
     pub(super) nph: i32,
     pub(super) n_poles: i32,
@@ -162,6 +163,7 @@ pub(super) fn parse_xsph_source(fixture_id: &str, source: &str) -> ComputeResult
     })?;
 
     let mphase = f64_to_i32(control_row[0], fixture_id, "xsph.inp mphase")?;
+    let ixc = f64_to_i32(control_row[2], fixture_id, "xsph.inp ixc")?;
     let ispec = f64_to_i32(control_row[4], fixture_id, "xsph.inp ispec")?;
     let nph = f64_to_i32(control_row[7], fixture_id, "xsph.inp nph")?.max(1);
     let n_poles = f64_to_i32(control_row[10], fixture_id, "xsph.inp NPoles")?.max(1);
@@ -202,6 +204,7 @@ pub(super) fn parse_xsph_source(fixture_id: &str, source: &str) -> ComputeResult
 
     Ok(XsphControlInput {
         mphase,
+        ixc,
         ispec,
         nph,
         n_poles,
@@ -277,7 +280,10 @@ pub(super) fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult
     })
 }
 
-pub(super) fn parse_global_source(fixture_id: &str, source: &str) -> ComputeResult<GlobalXsphInput> {
+pub(super) fn parse_global_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<GlobalXsphInput> {
     let mut values = Vec::new();
     for line in source.lines() {
         values.extend(parse_numeric_tokens(line));

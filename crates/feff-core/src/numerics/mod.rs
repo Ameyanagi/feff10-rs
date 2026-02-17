@@ -1,4 +1,10 @@
+pub mod exchange;
 pub mod special;
+
+pub use exchange::{
+    evaluate_exchange_potential, ExchangeEvaluation, ExchangeEvaluationInput, ExchangeModel,
+    ExchangePotential, ExchangePotentialApi,
+};
 
 use serde::{Deserialize, Serialize};
 use std::fs;
@@ -252,10 +258,10 @@ pub fn within_tolerance(
 #[cfg(test)]
 mod tests {
     use super::{
-        NUMERIC_TOLERANCE_POLICY_PATH, NumericTolerance, compare_with_policy_tolerance,
-        deterministic_argsort, distance3, format_numeric_for_policy, interpolate_linear,
-        linear_grid, load_numeric_tolerance_policy, relative_difference, stable_sum,
-        stable_weighted_mean, stable_weighted_sum, within_tolerance,
+        compare_with_policy_tolerance, deterministic_argsort, distance3, format_numeric_for_policy,
+        interpolate_linear, linear_grid, load_numeric_tolerance_policy, relative_difference,
+        stable_sum, stable_weighted_mean, stable_weighted_sum, within_tolerance, NumericTolerance,
+        NUMERIC_TOLERANCE_POLICY_PATH,
     };
     use std::path::{Path, PathBuf};
 
@@ -356,8 +362,10 @@ mod tests {
     #[test]
     fn load_numeric_tolerance_policy_reads_category_tolerance() {
         let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap()
-            .parent().unwrap();
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
         let policy_path = workspace_root.join(NUMERIC_TOLERANCE_POLICY_PATH);
         let policy = load_numeric_tolerance_policy(&policy_path).expect("policy should load");
         let tolerance = policy

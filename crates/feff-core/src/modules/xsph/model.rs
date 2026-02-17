@@ -1,11 +1,14 @@
-use super::XSPH_PHASE_BINARY_MAGIC;
 use super::parser::{
-    GeomXsphInput, GlobalXsphInput, PotXsphInput, WscrnXsphInput, XsphControlInput,
     format_scientific_f64, parse_geom_source, parse_global_source, parse_pot_source,
-    parse_wscrn_source, parse_xsph_source, push_f64, push_i32, push_u32,
+    parse_wscrn_source, parse_xsph_source, push_f64, push_i32, push_u32, GeomXsphInput,
+    GlobalXsphInput, PotXsphInput, WscrnXsphInput, XsphControlInput,
 };
+use super::XSPH_PHASE_BINARY_MAGIC;
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
+use crate::numerics::exchange::{
+    ExchangeEvaluationInput, ExchangeModel, ExchangePotential, ExchangePotentialApi,
+};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -16,6 +19,8 @@ pub(super) struct XsphModel {
     global: GlobalXsphInput,
     pot: PotXsphInput,
     wscrn: Option<WscrnXsphInput>,
+    exchange_model: ExchangeModel,
+    exchange_api: ExchangePotential,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -40,19 +45,30 @@ impl XsphModel {
         pot_bytes: &[u8],
         wscrn_source: Option<&str>,
     ) -> ComputeResult<Self> {
+        let control = parse_xsph_source(fixture_id, xsph_source)?;
+        let exchange_model = ExchangeModel::from_feff_ixc(control.ixc);
         Ok(Self {
             fixture_id: fixture_id.to_string(),
-            control: parse_xsph_source(fixture_id, xsph_source)?,
+            control,
             geom: parse_geom_source(fixture_id, geom_source)?,
             global: parse_global_source(fixture_id, global_source)?,
             pot: parse_pot_source(fixture_id, pot_bytes)?,
             wscrn: wscrn_source
                 .map(|source| parse_wscrn_source(fixture_id, source))
                 .transpose()?,
+            exchange_model,
+            exchange_api: ExchangePotential,
         })
     }
 
     fn output_config(&self) -> XsphOutputConfig {
+        let _exchange = self.exchange_api.evaluate(ExchangeEvaluationInput::new(
+            self.exchange_model,
+            self.pot.charge_scale,
+            self.control.gamach + self.pot.gamach,
+            self.control.xkmax,
+        ));
+
         let phase_channels = (self.control.lmaxph_max + self.control.nph)
             .max(2)
             .clamp(2, 16) as usize;
@@ -117,7 +133,11 @@ impl XsphModel {
         }
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         match artifact_name {
             "phase.bin" => {
                 write_binary_artifact(output_path, &self.render_phase_binary()).map_err(|source| {

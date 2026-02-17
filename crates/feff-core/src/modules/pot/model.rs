@@ -1,10 +1,10 @@
-use super::parser::{
-    GeomModel, PotControl, PotentialEntry,
-    parse_geom_input, parse_pot_input,
-};
+use super::parser::{parse_geom_input, parse_pot_input, GeomModel, PotControl, PotentialEntry};
 use super::POT_BINARY_MAGIC;
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
+use crate::numerics::exchange::{
+    ExchangeEvaluationInput, ExchangeModel, ExchangePotential, ExchangePotentialApi,
+};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -14,22 +14,35 @@ pub(super) struct PotModel {
     control: PotControl,
     potentials: Vec<PotentialEntry>,
     geometry: GeomModel,
+    exchange_model: ExchangeModel,
+    exchange_api: ExchangePotential,
 }
 
 impl PotModel {
-    pub(super) fn from_sources(fixture_id: &str, pot_source: &str, geom_source: &str) -> ComputeResult<Self> {
+    pub(super) fn from_sources(
+        fixture_id: &str,
+        pot_source: &str,
+        geom_source: &str,
+    ) -> ComputeResult<Self> {
         let (title, control, potentials) = parse_pot_input(fixture_id, pot_source)?;
         let geometry = parse_geom_input(fixture_id, geom_source)?;
+        let exchange_model = ExchangeModel::from_feff_ixc(control.ixc);
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             title,
             control,
             potentials,
             geometry,
+            exchange_model,
+            exchange_api: ExchangePotential,
         })
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         match artifact_name {
             "pot.bin" => {
                 write_binary_artifact(output_path, &self.render_pot_binary()).map_err(|source| {
@@ -277,6 +290,14 @@ impl PotModel {
         let zeff = potential.atomic_number as f64 - potential.xion;
         let local_density = potential.xnatph.max(0.0_f64) / (radius_rms + 1.0_f64);
         let screening = potential.folp / (potential.lmaxsc.max(0) as f64 + 1.0_f64);
+
+        let _exchange = self.exchange_api.evaluate(ExchangeEvaluationInput::new(
+            self.exchange_model,
+            local_density,
+            zeff,
+            screening,
+        ));
+
         let vmt0 =
             -zeff / (radius_mean + 1.0_f64) * (1.0_f64 + 0.05_f64 * index as f64) - local_density;
         let vxc = -(0.10_f64 + 0.02_f64 * index as f64) * screening;
