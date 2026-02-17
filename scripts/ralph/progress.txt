@@ -34,6 +34,7 @@
 - For true-compute module parity tests, seed temporary baselines from generated outputs and stage deterministic fallback bytes when a declared required binary input is missing from committed fixture baselines (for example `gg_slice.bin` for `FX-COMPTON-001`).
 - For COMPTON oracle/regression coverage, stage mixed required inputs (`compton.inp` text plus `pot.bin`/`gg_slice.bin` binaries), and assert missing `gg_slice.bin` fails deterministically with `IO.COMPTON_INPUT_READ` / fatal exit code `3`.
 - For LDOS oracle parity coverage, stage `ldos.inp`, `geom.dat`, `pot.bin`, and `reciprocal.inp` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-ldos`, and assert failed `ldos*.dat` comparisons report `comparison.mode=numeric_tolerance` with `matched_category=density_tables` and numeric tolerance metrics.
+- For DMDW oracle parity coverage, stage `dmdw.inp` and `feff.dym` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-dmdw`, and assert missing `feff.dym` fails with `IO.DMDW_INPUT_READ` / fatal exit code `3` without emitting a report.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -417,5 +418,17 @@ Started: Tue Feb 17 06:48:31 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: For text artifacts that may flow through numeric-tolerance comparisons, keep metadata lines comment-prefixed and keep data rows numeric-token-only so comparator parsing remains deterministic.
   - Gotchas encountered: Input-override tests should bypass baseline-copy staging helpers; otherwise fixture baselines can hide real input-dependency assertions.
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 11:43:17 JST] - US-034
+- Added DMDW oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-DMDW-001` by running `feff10-rs oracle` with `--run-dmdw` and CI capture-runner plumbing.
+- Staged required DMDW runtime inputs (`dmdw.inp`, `feff.dym`) under `actual-root/<fixture>/actual`, then asserted `dmdw.out` generation plus fixture-level mismatch reporting and deterministic artifact-level mismatch diagnostics.
+- Added oracle CLI input-contract coverage for DMDW by omitting `feff.dym` and asserting deterministic fatal diagnostics (`IO.DMDW_INPUT_READ`, `feff.dym`, `FATAL EXIT CODE: 3`) with no report emission.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-034` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: DMDW oracle parity can be validated with module-local staged inputs (`dmdw.inp`, `feff.dym`) plus `--run-dmdw`; no RDINP/POT/XSPH chaining is required in this validation path.
+  - Gotchas encountered: Missing `feff.dym` during oracle pre-compare hooks fails as `IO.DMDW_INPUT_READ` with fatal exit code `3`, so deterministic contract tests should assert IO diagnostics and absence of report files.
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---

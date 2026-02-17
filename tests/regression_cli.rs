@@ -2639,6 +2639,241 @@ fn oracle_command_runs_debye_parity_with_thermal_tolerance_and_optional_spring_o
 }
 
 #[test]
+fn oracle_command_runs_dmdw_parity_with_input_contract_and_comparison_diagnostics() {
+    if !command_available("jq") {
+        eprintln!("Skipping DMDW oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-DMDW-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/DEBYE/DM/EXAFS/Cu");
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-dmdw.json");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["DMDW"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp", "feff.dym"]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(fixture_id, "dmdw.inp", &staged_output_dir.join("dmdw.inp"));
+    stage_workspace_fixture_file(fixture_id, "feff.dym", &staged_output_dir.join("feff.dym"));
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-dmdw",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "DMDW oracle parity should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Fixture FX-DMDW-001 mismatches"),
+        "DMDW oracle summary should include fixture mismatch details, stdout: {}",
+        stdout
+    );
+    assert!(
+        actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("dmdw.out")
+            .is_file(),
+        "run-dmdw should materialize dmdw.out"
+    );
+    assert!(
+        report_path.is_file(),
+        "DMDW oracle parity should emit a report"
+    );
+
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let fixture_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-DMDW-001");
+    let artifact_reports = fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+    let dmdw_out_report = artifact_reports
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("dmdw.out"))
+        .expect("DMDW fixture should include dmdw.out comparison");
+    assert_eq!(
+        dmdw_out_report["comparison"]["mode"],
+        Value::from("exact_text"),
+        "dmdw.out should use exact_text comparison mode"
+    );
+    assert_eq!(
+        dmdw_out_report["comparison"]["metrics"]["kind"],
+        Value::from("exact_text"),
+        "dmdw.out should report exact_text metrics"
+    );
+
+    let mismatch_fixtures = parsed["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let mismatch_fixture = mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("mismatch_fixtures should include DMDW fixture");
+    let mismatch_artifacts = mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("fixture mismatch artifact list should be an array");
+    assert!(
+        !mismatch_artifacts.is_empty(),
+        "DMDW mismatch report should include artifact details"
+    );
+    assert!(
+        mismatch_artifacts.iter().all(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| !path.is_empty())
+                && artifact["reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty())
+        }),
+        "DMDW mismatch artifacts should include deterministic path and reason fields"
+    );
+}
+
+#[test]
+fn oracle_command_run_dmdw_input_mismatch_emits_deterministic_diagnostic_contract() {
+    if !command_available("jq") {
+        eprintln!("Skipping DMDW oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-DMDW-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/DEBYE/DM/EXAFS/Cu");
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = temp.path().join("policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-report.json");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["DMDW"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp", "feff.dym"]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+    write_file(
+        &policy_path,
+        r#"
+        {
+          "defaultMode": "exact_text"
+        }
+        "#,
+    );
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(fixture_id, "dmdw.inp", &staged_output_dir.join("dmdw.inp"));
+    assert!(
+        !staged_output_dir.join("feff.dym").exists(),
+        "test setup should intentionally omit feff.dym to verify DMDW input contracts"
+    );
+
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &["--capture-runner", ":", "--run-dmdw"],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(3),
+        "missing DMDW required input should map to deterministic IO fatal exit code, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("ERROR: [IO.DMDW_INPUT_READ]"),
+        "stderr should include DMDW input-contract placeholder, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("feff.dym"),
+        "stderr should identify the missing required DMDW input artifact, stderr: {}",
+        stderr
+    );
+    assert!(
+        stderr.contains("FATAL EXIT CODE: 3"),
+        "stderr should include deterministic fatal exit summary line, stderr: {}",
+        stderr
+    );
+    assert!(
+        !report_path.exists(),
+        "fatal DMDW input-contract failures should not emit an oracle report"
+    );
+}
+
+#[test]
 fn oracle_command_run_screen_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");
