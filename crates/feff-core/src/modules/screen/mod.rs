@@ -6,10 +6,13 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::ScreenModel;
-use parser::{artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, maybe_read_optional_input_bytes,
+    maybe_read_optional_input_source, read_input_source, validate_request_shape,
+};
 
 pub(crate) const SCREEN_REQUIRED_INPUTS: [&str; 3] = ["pot.inp", "geom.dat", "ldos.inp"];
-pub(crate) const SCREEN_OPTIONAL_INPUTS: [&str; 1] = ["screen.inp"];
+pub(crate) const SCREEN_OPTIONAL_INPUTS: [&str; 2] = ["screen.inp", "pot.bin"];
 pub(crate) const SCREEN_REQUIRED_OUTPUTS: [&str; 2] = ["wscrn.dat", "logscreen.dat"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -23,10 +26,7 @@ pub struct ScreenContract {
 pub struct ScreenModule;
 
 impl ScreenModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<ScreenContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<ScreenContract> {
         validate_request_shape(request)?;
         Ok(ScreenContract {
             required_inputs: artifact_list(&SCREEN_REQUIRED_INPUTS),
@@ -54,6 +54,10 @@ impl ModuleExecutor for ScreenModule {
             input_dir.join(SCREEN_OPTIONAL_INPUTS[0]),
             SCREEN_OPTIONAL_INPUTS[0],
         )?;
+        let pot_binary_source = maybe_read_optional_input_bytes(
+            input_dir.join(SCREEN_OPTIONAL_INPUTS[1]),
+            SCREEN_OPTIONAL_INPUTS[1],
+        )?;
 
         let model = ScreenModel::from_sources(
             &request.fixture_id,
@@ -61,6 +65,7 @@ impl ModuleExecutor for ScreenModule {
             &geom_source,
             &ldos_source,
             screen_source.as_deref(),
+            pot_binary_source.as_deref(),
         )?;
         let outputs = artifact_list(&SCREEN_REQUIRED_OUTPUTS);
 
@@ -101,8 +106,9 @@ impl ModuleExecutor for ScreenModule {
 #[cfg(test)]
 mod tests {
     use super::ScreenModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
+    use crate::modules::pot::PotModule;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -173,7 +179,7 @@ nrptx0         251
         );
         assert_eq!(
             artifact_set(&contract.optional_inputs),
-            expected_set(&["screen.inp"])
+            expected_set(&["screen.inp", "pot.bin"])
         );
         assert_eq!(
             artifact_set(&contract.expected_outputs),
@@ -328,6 +334,53 @@ nrptx0         251
     }
 
     #[test]
+    fn execute_optional_pot_binary_changes_screen_response() {
+        let temp = TempDir::new().expect("tempdir should be created");
+
+        let with_pot_binary_root = temp.path().join("with-pot-binary");
+        let without_pot_binary_root = temp.path().join("without-pot-binary");
+
+        let with_pot_binary_input =
+            stage_screen_inputs(&with_pot_binary_root, Some(SCREEN_OVERRIDE_FIXTURE));
+        let without_pot_binary_input =
+            stage_screen_inputs(&without_pot_binary_root, Some(SCREEN_OVERRIDE_FIXTURE));
+
+        materialize_pot_binary_for_screen_fixture(&with_pot_binary_root, &with_pot_binary_input);
+
+        let with_pot_binary_output = with_pot_binary_root.join("out");
+        let without_pot_binary_output = without_pot_binary_root.join("out");
+
+        let with_pot_binary_request = ComputeRequest::new(
+            "FX-SCREEN-001",
+            ComputeModule::Screen,
+            &with_pot_binary_input,
+            &with_pot_binary_output,
+        );
+        let without_pot_binary_request = ComputeRequest::new(
+            "FX-SCREEN-001",
+            ComputeModule::Screen,
+            &without_pot_binary_input,
+            &without_pot_binary_output,
+        );
+
+        ScreenModule
+            .execute(&with_pot_binary_request)
+            .expect("screen run with optional pot.bin should succeed");
+        ScreenModule
+            .execute(&without_pot_binary_request)
+            .expect("screen run without optional pot.bin should succeed");
+
+        let with_pot_binary = fs::read(with_pot_binary_output.join("wscrn.dat"))
+            .expect("wscrn output with optional pot.bin should exist");
+        let without_pot_binary = fs::read(without_pot_binary_output.join("wscrn.dat"))
+            .expect("wscrn output without optional pot.bin should exist");
+        assert_ne!(
+            with_pot_binary, without_pot_binary,
+            "optional pot.bin should influence computed wscrn.dat"
+        );
+    }
+
+    #[test]
     fn execute_rejects_non_screen_module_requests() {
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = stage_screen_inputs(temp.path(), Some(SCREEN_OVERRIDE_FIXTURE));
@@ -404,6 +457,13 @@ nrptx0         251
         }
 
         pot_path
+    }
+
+    fn materialize_pot_binary_for_screen_fixture(root: &Path, input_path: &Path) {
+        let request = ComputeRequest::new("FX-SCREEN-001", ComputeModule::Pot, input_path, root);
+        PotModule
+            .execute(&request)
+            .expect("POT execution should materialize optional pot.bin");
     }
 
     fn expected_set(entries: &[&str]) -> BTreeSet<String> {

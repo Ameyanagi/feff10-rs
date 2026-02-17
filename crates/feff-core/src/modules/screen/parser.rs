@@ -1,7 +1,11 @@
 use super::SCREEN_REQUIRED_INPUTS;
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
+use crate::modules::pot::POT_BINARY_MAGIC;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+const POT_CONTROL_I32_COUNT: usize = 16;
+const POT_CONTROL_F64_COUNT: usize = 6;
 
 #[derive(Debug, Clone)]
 pub(super) struct PotScreenInput {
@@ -10,6 +14,23 @@ pub(super) struct PotScreenInput {
     pub(super) rfms1: f64,
     pub(super) mean_folp: f64,
     pub(super) mean_xion: f64,
+    pub(super) lmaxsc_max: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PotBinaryScreenInput {
+    pub(super) nat: usize,
+    pub(super) nph: usize,
+    pub(super) npot: usize,
+    pub(super) gamach: f64,
+    pub(super) rfms1: f64,
+    pub(super) radius_mean: f64,
+    pub(super) radius_rms: f64,
+    pub(super) radius_max: f64,
+    pub(super) mean_zeff: f64,
+    pub(super) mean_local_density: f64,
+    pub(super) mean_vmt0: f64,
+    pub(super) mean_vxc: f64,
     pub(super) lmaxsc_max: i32,
 }
 
@@ -71,10 +92,7 @@ pub(super) fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<
     if request.module != ComputeModule::Screen {
         return Err(FeffError::input_validation(
             "INPUT.SCREEN_MODULE",
-            format!(
-                "SCREEN module expects SCREEN, got {}",
-                request.module
-            ),
+            format!("SCREEN module expects SCREEN, got {}", request.module),
         ));
     }
 
@@ -132,12 +150,37 @@ pub(super) fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResu
     })
 }
 
+pub(super) fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResult<Vec<u8>> {
+    fs::read(path).map_err(|source| {
+        FeffError::io_system(
+            "IO.SCREEN_INPUT_READ",
+            format!(
+                "failed to read SCREEN input '{}' ({}): {}",
+                path.display(),
+                artifact_name,
+                source
+            ),
+        )
+    })
+}
+
 pub(super) fn maybe_read_optional_input_source(
     path: PathBuf,
     artifact_name: &str,
 ) -> ComputeResult<Option<String>> {
     if path.is_file() {
         return read_input_source(&path, artifact_name).map(Some);
+    }
+
+    Ok(None)
+}
+
+pub(super) fn maybe_read_optional_input_bytes(
+    path: PathBuf,
+    artifact_name: &str,
+) -> ComputeResult<Option<Vec<u8>>> {
+    if path.is_file() {
+        return read_input_bytes(&path, artifact_name).map(Some);
     }
 
     Ok(None)
@@ -231,6 +274,107 @@ pub(super) fn parse_pot_source(fixture_id: &str, source: &str) -> ComputeResult<
         rfms1,
         mean_folp: folp_sum / potential_rows.len() as f64,
         mean_xion: xion_sum / potential_rows.len() as f64,
+        lmaxsc_max,
+    })
+}
+
+pub(super) fn parse_pot_binary_source(
+    fixture_id: &str,
+    bytes: &[u8],
+) -> ComputeResult<PotBinaryScreenInput> {
+    if bytes.is_empty() {
+        return Err(screen_parse_error(fixture_id, "pot.bin is empty"));
+    }
+
+    if !bytes.starts_with(POT_BINARY_MAGIC) {
+        return Err(screen_parse_error(
+            fixture_id,
+            "pot.bin does not use POT true-compute binary format",
+        ));
+    }
+
+    let mut offset = POT_BINARY_MAGIC.len();
+
+    for _ in 0..POT_CONTROL_I32_COUNT {
+        let _ = take_i32(bytes, &mut offset).ok_or_else(|| {
+            screen_parse_error(fixture_id, "pot.bin missing POT control i32 values")
+        })?;
+    }
+
+    let mut control_f64 = [0.0_f64; POT_CONTROL_F64_COUNT];
+    for value in &mut control_f64 {
+        *value = take_f64(bytes, &mut offset).ok_or_else(|| {
+            screen_parse_error(fixture_id, "pot.bin missing POT control f64 values")
+        })?;
+    }
+
+    let nat = take_u32(bytes, &mut offset)
+        .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing nat metadata"))?
+        as usize;
+    let nph = take_u32(bytes, &mut offset)
+        .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing nph metadata"))?
+        as usize;
+    let npot = take_u32(bytes, &mut offset)
+        .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing npot metadata"))?
+        as usize;
+    let radius_mean = take_f64(bytes, &mut offset)
+        .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing radius_mean metadata"))?;
+    let radius_rms = take_f64(bytes, &mut offset)
+        .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing radius_rms metadata"))?;
+    let radius_max = take_f64(bytes, &mut offset)
+        .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing radius_max metadata"))?;
+
+    let mut zeff_sum = 0.0_f64;
+    let mut density_sum = 0.0_f64;
+    let mut vmt0_sum = 0.0_f64;
+    let mut vxc_sum = 0.0_f64;
+    let mut lmaxsc_max = 1_i32;
+    let potential_count = npot.max(1);
+
+    for _ in 0..potential_count {
+        let _ = take_u32(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential index"))?;
+        let _ = take_i32(bytes, &mut offset).ok_or_else(|| {
+            screen_parse_error(fixture_id, "pot.bin missing potential atomic number")
+        })?;
+        let lmaxsc = take_i32(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential lmaxsc"))?;
+        let _ = take_f64(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential xnatph"))?;
+        let _ = take_f64(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential xion"))?;
+        let _ = take_f64(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential folp"))?;
+        let zeff = take_f64(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential zeff"))?;
+        let density = take_f64(bytes, &mut offset).ok_or_else(|| {
+            screen_parse_error(fixture_id, "pot.bin missing potential local_density")
+        })?;
+        let vmt0 = take_f64(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential vmt0"))?;
+        let vxc = take_f64(bytes, &mut offset)
+            .ok_or_else(|| screen_parse_error(fixture_id, "pot.bin missing potential vxc"))?;
+
+        zeff_sum += zeff;
+        density_sum += density.abs();
+        vmt0_sum += vmt0;
+        vxc_sum += vxc;
+        lmaxsc_max = lmaxsc_max.max(lmaxsc.max(1));
+    }
+
+    Ok(PotBinaryScreenInput {
+        nat: nat.max(1),
+        nph: nph.max(1),
+        npot: npot.max(1),
+        gamach: control_f64[0].abs().max(1.0e-6),
+        rfms1: control_f64[5].abs().max(0.1),
+        radius_mean: radius_mean.abs().max(1.0e-6),
+        radius_rms: radius_rms.abs().max(1.0e-6),
+        radius_max: radius_max.abs().max(1.0e-6),
+        mean_zeff: zeff_sum / potential_count as f64,
+        mean_local_density: (density_sum / potential_count as f64).max(1.0e-12),
+        mean_vmt0: vmt0_sum / potential_count as f64,
+        mean_vxc: vxc_sum / potential_count as f64,
         lmaxsc_max,
     })
 }
@@ -546,6 +690,30 @@ fn parse_numeric_token(token: &str) -> Option<f64> {
 
     let normalized = trimmed.replace(['D', 'd'], "E");
     normalized.parse::<f64>().ok()
+}
+
+fn take_u32(bytes: &[u8], offset: &mut usize) -> Option<u32> {
+    let end = offset.checked_add(std::mem::size_of::<u32>())?;
+    let slice = bytes.get(*offset..end)?;
+    let value = u32::from_le_bytes(slice.try_into().ok()?);
+    *offset = end;
+    Some(value)
+}
+
+fn take_i32(bytes: &[u8], offset: &mut usize) -> Option<i32> {
+    let end = offset.checked_add(std::mem::size_of::<i32>())?;
+    let slice = bytes.get(*offset..end)?;
+    let value = i32::from_le_bytes(slice.try_into().ok()?);
+    *offset = end;
+    Some(value)
+}
+
+fn take_f64(bytes: &[u8], offset: &mut usize) -> Option<f64> {
+    let end = offset.checked_add(std::mem::size_of::<f64>())?;
+    let slice = bytes.get(*offset..end)?;
+    let value = f64::from_le_bytes(slice.try_into().ok()?);
+    *offset = end;
+    Some(value)
 }
 
 fn screen_parse_error(fixture_id: &str, message: impl Into<String>) -> FeffError {

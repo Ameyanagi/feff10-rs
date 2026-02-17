@@ -34,6 +34,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - Module-scoped oracle parity should use dedicated fixture IDs (for example `FX-POT-ORACLE-*`) with committed snapshots in `artifacts/fortran-baselines/<fixture>/baseline`; comparing against full workflow baselines causes large missing-artifact noise.
 - `select_serial_fixture` for `feff` should prefer workflow candidates with the largest `modulesCovered` set so RDINP+module parity fixtures do not preempt full serial-chain fixtures.
 - Regression RDINP execution should stage `feff.inp` into actual outputs only when the baseline fixture includes `feff.inp`; unconditional staging breaks suites that intentionally compare module outputs only.
+- For downstream physics modules that can consume POT outputs, parse `pot.bin` (`POTBIN10`) first and keep a deterministic `pot.inp` fallback only for workflows where POT artifacts are not staged.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -355,4 +356,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: POT oracle parity is stable when baselines are fixture-scoped to the `RDINP+POT` artifact contract instead of full workflow archives.
   - Gotchas encountered: mixed header+numeric artifacts (for example `pot.dat`, `convergence.scf`) can fail numeric parser mode; keep policy mode aligned with actual file grammar.
   - Useful context: this repository still has no in-repo `AGENTS.md` under `feff10-rs`, so reusable guidance for this area remains in `scripts/ralph/progress.txt`.
+---
+## 2026-02-18 01:46:52 JST - US-029
+- Replaced SCREEN placeholder shaping logic with POT-driven screening synthesis in `crates/feff-core/src/modules/screen/model.rs` by consuming parsed POT physics summaries (`zeff`, local density, `vmt0`, `vxc`, radial metadata) when available.
+- Added optional `pot.bin` ingestion to SCREEN runtime wiring in `crates/feff-core/src/modules/screen/mod.rs` and implemented true-compute `pot.bin` parsing in `crates/feff-core/src/modules/screen/parser.rs` using `POTBIN10` layout handling.
+- Expanded SCREEN tests to cover the new coupling path (`execute_optional_pot_binary_changes_screen_response`) while preserving existing contracts, deterministic behavior, and optional `screen.inp` handling.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/modules/screen/parser.rs`, `crates/feff-core/src/modules/screen/model.rs`, `crates/feff-core/src/modules/screen/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: SCREEN-like downstream modules should ingest upstream true-compute binaries (`pot.bin`) for physics terms and keep text-deck paths as compatibility fallback only.
+  - Gotchas encountered: `rustfmt` on this workspace requires `--edition 2024` because parser modules use let-chains.
+  - Useful context: there are still no repository-local `AGENTS.md` files under this workspace, so reusable guidance remains centralized in `scripts/ralph/progress.txt`.
 ---
