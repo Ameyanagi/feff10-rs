@@ -9,6 +9,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FOVRG complex-energy kernels should flatten the potential tail to the interstitial (`v_mt`) value before integration and seed irregular channels from spherical Hankel asymptotics plus the relativistic factor `x*a/(1+sqrt(1+x^2))`.
 - FOVRG boundary matching in Rust should derive phase/amplitude from regular `pu/qu` at the interstitial boundary using `j_l/n_l` combinations (FEFF `phamp` style), and track a least-squares regular-to-irregular scale residual as the continuity diagnostic.
 - Potex-style exchange coupling for complex channels should apply exchange shifts only inside the muffin-tin region with radial tapering while leaving the interstitial tail level fixed for asymptotic matching.
+- XSPH FOVRG wiring should solve complex Dirac channels on a sparse energy-node grid and interpolate those phase/cross-section diagnostics onto the exported spectral grid to keep workflow runtimes deterministic and bounded.
 - FEFF special-function parity ports should mirror `besjh.f90` region cutoffs (`Re/|Im| < 1.0`, `< 7.51`) and use targeted `bjnser` seeding plus recursion per region.
 - FEFF Hankel parity follows `besjh.f90` conventions: use `hl = -nl + i*jl` in small/mid regions, and in the asymptotic branch select `exp(±i z)` plus `sjl ± i*cjl` based on the sign of `Im(z)`.
 - Spherical harmonics ports should use the Condon-Shortley convention with `Y_l^{-m} = (-1)^m * conj(Y_l^m)`, and regression tests should include the sum rule `sum_m |Y_lm|^2 = (2l+1)/(4*pi)`.
@@ -420,4 +421,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: boundary matching quality is easiest to monitor with a least-squares regular-to-irregular scale plus normalized residual at the selected interstitial index.
   - Gotchas encountered: running `rustfmt` on `numerics/mod.rs` can re-order imports/re-exports across sibling modules; trim unrelated churn before commit.
   - Useful context: exchange coupling in this kernel currently uses the shared EXCH evaluator (`ExchangePotentialApi`) and couples through finite-density, wave-number-dependent complex shifts, which is a clean bridge for upcoming XSPH solver wiring.
+---
+## 2026-02-18 02:43:38 JST - US-034
+- Replaced placeholder XSPH output shaping in `crates/feff-core/src/modules/xsph/model.rs` with a FOVRG-backed pipeline that runs `solve_complex_energy_dirac` over sparse energy nodes and channel `kappa` values, then interpolates onto the exported spectral grid while preserving the `phase.bin`/`xsect.dat`/`log2.dat` artifact contracts.
+- Added physically shaped complex radial-potential construction from XSPH/POT/GEOM/GLOBAL inputs (plus optional WSCRN screening), including interior interstitial-index selection, flattened muffin-tin tail handling, and exchange coupling through `ComplexExchangeCoupling`.
+- Extended XSPH runtime diagnostics in `log2.dat` with solver metadata (`fovrg-solve-points`, interstitial index/radius, boundary residuals, exchange-shift extrema) and kept deterministic optional-`wscrn.dat` influence on both phase and cross-section artifacts.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/modules/xsph/model.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: XSPH module integration should source phase behavior from boundary-matched complex Dirac solutions and interpolate from sparse node solves instead of evaluating every exported point directly.
+  - Gotchas encountered: selecting the interstitial boundary too close to the radial-grid tail can cause full-channel boundary-matching failure; clamp to an interior fraction of the grid before solving.
+  - Useful context: there are still no repository-local `AGENTS.md` files under this workspace, so reusable module conventions remain centralized in `scripts/ralph/progress.txt`.
 ---
