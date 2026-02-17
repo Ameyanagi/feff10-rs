@@ -8,6 +8,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF Hankel parity follows `besjh.f90` conventions: use `hl = -nl + i*jl` in small/mid regions, and in the asymptotic branch select `exp(±i z)` plus `sjl ± i*cjl` based on the sign of `Im(z)`.
 - Spherical harmonics ports should use the Condon-Shortley convention with `Y_l^{-m} = (-1)^m * conj(Y_l^m)`, and regression tests should include the sum rule `sum_m |Y_lm|^2 = (2l+1)/(4*pi)`.
 - FEFF `cwig3j` ports must preserve its 1-indexed log-factorial table semantics (`al(i) = ln((i-1)!)`); treating it as `ln(i!)` introduces normalization/sign drift.
+- Wigner 6j ports should use Racah summation on doubled quantum numbers with triangle tuples `(j1,j2,j3)`, `(j1,j5,j6)`, `(j4,j2,j6)`, `(j4,j5,j3)`, and evaluate factorial terms in log space for stability.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -61,4 +62,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: Wigner APIs in this codebase should consume doubled quantum numbers (`two_j*`, `two_m*`) to stay aligned with FEFF call sites and avoid repeated half-integer conversions.
   - Gotchas encountered: FEFF’s `cwig3j` factorial lookup is 1-indexed (`al(i)=ln((i-1)!)`); a direct 0-index `ln(i!)` translation causes wrong normalization.
   - Useful context: there are still no repository-local `AGENTS.md` files to update, so reusable numerics guidance continues to live in `scripts/ralph/progress.txt`.
+---
+
+## 2026-02-17 22:33:32 JST - US-006
+- Implemented `wigner_6j(Wigner6jInput)` in `crates/feff-core/src/numerics/special/wigner.rs` using doubled-quantum-number Racah summation with explicit triangle/parity validation and log-factorial evaluation for numerical stability.
+- Re-exported `wigner_6j` from `crates/feff-core/src/numerics/special/mod.rs` and added Wigner 6j unit tests covering selection-rule zeros plus known integer and half-integer reference values.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/special/wigner.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: selecting Racah’s `z` bounds from `max(j1+j2+j3, j1+j5+j6, j4+j2+j6, j4+j5+j3)` to `min(j1+j2+j4+j5, j1+j3+j4+j6, j2+j3+j5+j6)` (in integer units) keeps denominator factorial arguments non-negative.
+  - Gotchas encountered: 6j validity requires both triangle inequalities and integer-sum parity on each of the four coupling triangles; missing the parity checks yields non-physical nonzero outputs for invalid half-integer combinations.
+  - Useful context: there are still no repository-local `AGENTS.md` files, so reusable numerics migration guidance remains centralized in `scripts/ralph/progress.txt`.
 ---

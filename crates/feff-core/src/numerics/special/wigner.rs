@@ -157,6 +157,10 @@ impl LogFactorial {
 
         self.values[factorial_n]
     }
+
+    fn factorial(&mut self, n: usize) -> f64 {
+        self.value(n + 1)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +193,156 @@ impl Wigner6jInput {
     }
 }
 
+/// Computes the Wigner 6j coefficient using doubled quantum numbers.
+///
+/// All `two_j*` values represent `2*j` (e.g., `two_j=3` means `j=3/2`).
+pub fn wigner_6j(input: Wigner6jInput) -> f64 {
+    let Wigner6jInput {
+        two_j1,
+        two_j2,
+        two_j3,
+        two_j4,
+        two_j5,
+        two_j6,
+    } = input;
+
+    let two_js = [two_j1, two_j2, two_j3, two_j4, two_j5, two_j6];
+    if two_js.iter().any(|&value| value < 0) {
+        return 0.0;
+    }
+
+    let triangles = [
+        (two_j1, two_j2, two_j3),
+        (two_j1, two_j5, two_j6),
+        (two_j4, two_j2, two_j6),
+        (two_j4, two_j5, two_j3),
+    ];
+    if triangles
+        .iter()
+        .any(|&(two_a, two_b, two_c)| !is_valid_triangle(two_a, two_b, two_c))
+    {
+        return 0.0;
+    }
+
+    let mut a_twice = [
+        two_j1 + two_j2 + two_j3,
+        two_j1 + two_j5 + two_j6,
+        two_j4 + two_j2 + two_j6,
+        two_j4 + two_j5 + two_j3,
+    ];
+    let mut b_twice = [
+        two_j1 + two_j2 + two_j4 + two_j5,
+        two_j1 + two_j3 + two_j4 + two_j6,
+        two_j2 + two_j3 + two_j5 + two_j6,
+    ];
+
+    if a_twice.iter().any(|value| value.rem_euclid(2) != 0)
+        || b_twice.iter().any(|value| value.rem_euclid(2) != 0)
+    {
+        return 0.0;
+    }
+
+    for value in &mut a_twice {
+        *value /= 2;
+    }
+    for value in &mut b_twice {
+        *value /= 2;
+    }
+
+    let z_min = a_twice.iter().copied().max().unwrap_or(0);
+    let z_max = b_twice.iter().copied().min().unwrap_or(-1);
+    if z_min > z_max {
+        return 0.0;
+    }
+
+    let mut log_factorial = LogFactorial::new();
+    let mut delta_log_sum = 0.0;
+    for (two_a, two_b, two_c) in triangles {
+        let Some(delta_log) = triangle_delta_log(two_a, two_b, two_c, &mut log_factorial) else {
+            return 0.0;
+        };
+        delta_log_sum += delta_log;
+    }
+
+    let mut racah_sum = 0.0;
+    for z in z_min..=z_max {
+        let denominator_terms = [
+            z - a_twice[0],
+            z - a_twice[1],
+            z - a_twice[2],
+            z - a_twice[3],
+            b_twice[0] - z,
+            b_twice[1] - z,
+            b_twice[2] - z,
+        ];
+
+        if denominator_terms.iter().any(|&term| term < 0) {
+            continue;
+        }
+
+        let numerator_log = log_factorial.factorial((z + 1) as usize);
+        let mut denominator_log = 0.0;
+        for term in denominator_terms {
+            denominator_log += log_factorial.factorial(term as usize);
+        }
+
+        let sign = if z.rem_euclid(2) == 0 { 1.0 } else { -1.0 };
+        racah_sum += sign * (numerator_log - denominator_log).exp();
+    }
+
+    delta_log_sum.exp() * racah_sum
+}
+
+fn is_valid_triangle(two_a: i32, two_b: i32, two_c: i32) -> bool {
+    if two_a < 0 || two_b < 0 || two_c < 0 {
+        return false;
+    }
+
+    if two_a + two_b < two_c || two_a + two_c < two_b || two_b + two_c < two_a {
+        return false;
+    }
+
+    if (two_a + two_b + two_c).rem_euclid(2) != 0 {
+        return false;
+    }
+
+    (two_a + two_b - two_c).rem_euclid(2) == 0
+        && (two_a - two_b + two_c).rem_euclid(2) == 0
+        && (-two_a + two_b + two_c).rem_euclid(2) == 0
+}
+
+fn triangle_delta_log(
+    two_a: i32,
+    two_b: i32,
+    two_c: i32,
+    log_factorial: &mut LogFactorial,
+) -> Option<f64> {
+    let numerator_terms = [
+        two_a + two_b - two_c,
+        two_a - two_b + two_c,
+        -two_a + two_b + two_c,
+    ];
+    if numerator_terms
+        .iter()
+        .any(|&term| term < 0 || term.rem_euclid(2) != 0)
+    {
+        return None;
+    }
+
+    let denominator_term = two_a + two_b + two_c + 2;
+    if denominator_term < 0 || denominator_term.rem_euclid(2) != 0 {
+        return None;
+    }
+
+    let mut log_sum = 0.0;
+    for term in numerator_terms {
+        log_sum += log_factorial.factorial((term / 2) as usize);
+    }
+    log_sum -= log_factorial.factorial((denominator_term / 2) as usize);
+
+    Some(0.5 * log_sum)
+}
+
 pub trait WignerSymbolsApi {
     fn wigner_3j(&self, input: Wigner3jInput) -> f64;
     fn wigner_6j(&self, input: Wigner6jInput) -> f64;
@@ -196,7 +350,7 @@ pub trait WignerSymbolsApi {
 
 #[cfg(test)]
 mod tests {
-    use super::{wigner_3j, Wigner3jInput};
+    use super::{wigner_3j, wigner_6j, Wigner3jInput, Wigner6jInput};
     use std::f64::consts::FRAC_1_SQRT_2;
 
     #[test]
@@ -259,6 +413,67 @@ mod tests {
         for (label, input, expected) in cases {
             let actual = wigner_3j(input);
             assert_scalar_close(label, expected, actual, 1.0e-15, 1.0e-14);
+        }
+    }
+
+    #[test]
+    fn wigner_6j_returns_zero_for_selection_rule_violations() {
+        let cases = [
+            Wigner6jInput::new(-1, 2, 1, 2, 1, 2), // negative j
+            Wigner6jInput::new(2, 2, 8, 2, 2, 2),  // triangle inequality violation
+            Wigner6jInput::new(1, 1, 1, 1, 1, 1),  // triangle parity violation
+        ];
+
+        for input in cases {
+            let actual = wigner_6j(input);
+            assert!(
+                actual.abs() <= 1.0e-15,
+                "selection-rule violation should return 0, got {actual:.16e} for {:?}",
+                input
+            );
+        }
+    }
+
+    #[test]
+    fn wigner_6j_matches_tabulated_reference_values() {
+        // Values from Racah/Edmonds closed forms and small-j tabulations.
+        let cases = [
+            ("{0 0 0; 0 0 0}", Wigner6jInput::new(0, 0, 0, 0, 0, 0), 1.0),
+            (
+                "{1 1 1; 1 1 1}",
+                Wigner6jInput::new(2, 2, 2, 2, 2, 2),
+                1.0 / 6.0,
+            ),
+            (
+                "{1 1 1; 1 1 0}",
+                Wigner6jInput::new(2, 2, 2, 2, 2, 0),
+                -1.0 / 3.0,
+            ),
+            (
+                "{1 2 1; 2 1 0}",
+                Wigner6jInput::new(2, 4, 2, 4, 2, 0),
+                1.0 / 15.0_f64.sqrt(),
+            ),
+            (
+                "{1/2 1/2 0; 1/2 1/2 0}",
+                Wigner6jInput::new(1, 1, 0, 1, 1, 0),
+                -0.5,
+            ),
+            (
+                "{1/2 1 1/2; 1 1/2 0}",
+                Wigner6jInput::new(1, 2, 1, 2, 1, 0),
+                1.0 / 6.0_f64.sqrt(),
+            ),
+            (
+                "{1/2 1/2 1; 1/2 1/2 1}",
+                Wigner6jInput::new(1, 1, 2, 1, 1, 2),
+                1.0 / 6.0,
+            ),
+        ];
+
+        for (label, input, expected) in cases {
+            let actual = wigner_6j(input);
+            assert_scalar_close(label, expected, actual, 1.0e-14, 1.0e-13);
         }
     }
 
