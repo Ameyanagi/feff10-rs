@@ -2,6 +2,7 @@ use super::DenseComplexMatrix;
 use num_complex::Complex64;
 
 const SINGULAR_PIVOT_EPSILON: f64 = 1.0e-15;
+const ILL_CONDITIONED_RELATIVE_PIVOT_EPSILON: f64 = 1.0e-12;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum LuError {
@@ -11,6 +12,8 @@ pub enum LuError {
     EmptyMatrix,
     #[error("matrix is singular at pivot index {pivot_index}")]
     SingularMatrix { pivot_index: usize },
+    #[error("matrix is ill-conditioned at pivot index {pivot_index}")]
+    IllConditionedMatrix { pivot_index: usize },
     #[error("right-hand side length mismatch: expected {expected}, got {actual}")]
     RhsLengthMismatch { expected: usize, actual: usize },
 }
@@ -20,6 +23,7 @@ pub struct LuDecomposition {
     lu: DenseComplexMatrix,
     pivots: Vec<usize>,
     pivot_sign: i32,
+    input_norm_infty: f64,
 }
 
 impl LuDecomposition {
@@ -37,6 +41,31 @@ impl LuDecomposition {
 
     pub fn pivot_sign(&self) -> i32 {
         self.pivot_sign
+    }
+
+    pub fn invert(&self) -> Result<DenseComplexMatrix, LuError> {
+        let dimension = self.dimension();
+        let mut inverse = DenseComplexMatrix::zeros(dimension, dimension);
+        let mut basis = vec![Complex64::new(0.0, 0.0); dimension];
+
+        for pivot_index in 0..dimension {
+            let diagonal = self.lu[(pivot_index, pivot_index)];
+            if is_ill_conditioned_pivot(diagonal, self.input_norm_infty) {
+                return Err(LuError::IllConditionedMatrix { pivot_index });
+            }
+        }
+
+        for col in 0..dimension {
+            basis.fill(Complex64::new(0.0, 0.0));
+            basis[col] = Complex64::new(1.0, 0.0);
+
+            let solution = self.solve(&basis)?;
+            for row in 0..dimension {
+                inverse[(row, col)] = solution[row];
+            }
+        }
+
+        Ok(inverse)
     }
 
     pub fn solve(&self, rhs: &[Complex64]) -> Result<Vec<Complex64>, LuError> {
@@ -78,6 +107,7 @@ impl LuDecomposition {
 
 pub fn lu_factorize(matrix: &DenseComplexMatrix) -> Result<LuDecomposition, LuError> {
     let dimension = validate_square_shape(matrix)?;
+    let input_norm_infty = matrix_infinity_norm(matrix);
     let mut lu = matrix.clone();
     let mut pivots: Vec<usize> = (0..dimension).collect();
     let mut pivot_sign = 1;
@@ -118,11 +148,16 @@ pub fn lu_factorize(matrix: &DenseComplexMatrix) -> Result<LuDecomposition, LuEr
         lu,
         pivots,
         pivot_sign,
+        input_norm_infty,
     })
 }
 
 pub fn lu_solve(matrix: &DenseComplexMatrix, rhs: &[Complex64]) -> Result<Vec<Complex64>, LuError> {
     lu_factorize(matrix)?.solve(rhs)
+}
+
+pub fn lu_invert(matrix: &DenseComplexMatrix) -> Result<DenseComplexMatrix, LuError> {
+    lu_factorize(matrix)?.invert()
 }
 
 pub trait LuLinearSolveApi {
@@ -132,6 +167,7 @@ pub trait LuLinearSolveApi {
         matrix: &DenseComplexMatrix,
         rhs: &[Complex64],
     ) -> Result<Vec<Complex64>, LuError>;
+    fn lu_invert(&self, matrix: &DenseComplexMatrix) -> Result<DenseComplexMatrix, LuError>;
 }
 
 fn validate_square_shape(matrix: &DenseComplexMatrix) -> Result<usize, LuError> {
@@ -179,9 +215,25 @@ fn is_effectively_zero(value: Complex64) -> bool {
     value.norm_sqr() <= SINGULAR_PIVOT_EPSILON * SINGULAR_PIVOT_EPSILON
 }
 
+fn is_ill_conditioned_pivot(pivot: Complex64, input_norm_infty: f64) -> bool {
+    pivot.norm() <= input_norm_infty * ILL_CONDITIONED_RELATIVE_PIVOT_EPSILON
+}
+
+fn matrix_infinity_norm(matrix: &DenseComplexMatrix) -> f64 {
+    let mut best_row_sum: f64 = 0.0;
+    for row in 0..matrix.nrows() {
+        let mut row_sum = 0.0;
+        for col in 0..matrix.ncols() {
+            row_sum += matrix[(row, col)].norm();
+        }
+        best_row_sum = best_row_sum.max(row_sum);
+    }
+    best_row_sum
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{lu_factorize, lu_solve, LuError};
+    use super::{lu_factorize, lu_invert, lu_solve, LuError};
     use crate::numerics::special::DenseComplexMatrix;
     use num_complex::Complex64;
 
@@ -280,6 +332,55 @@ mod tests {
         );
     }
 
+    #[test]
+    fn lu_invert_recovers_identity_when_recomposed() {
+        let matrix = dense_matrix(&[
+            vec![
+                Complex64::new(1.5, 0.0),
+                Complex64::new(-2.0, 1.0),
+                Complex64::new(0.5, -0.5),
+            ],
+            vec![
+                Complex64::new(0.75, 2.0),
+                Complex64::new(3.0, -1.0),
+                Complex64::new(-1.0, 0.25),
+            ],
+            vec![
+                Complex64::new(2.0, -0.5),
+                Complex64::new(1.25, 0.0),
+                Complex64::new(2.5, 1.5),
+            ],
+        ]);
+
+        let inverse = lu_invert(&matrix).expect("inverse");
+        let product = multiply(&matrix, &inverse);
+        let identity = identity_matrix(matrix.nrows());
+
+        assert_matrix_close(&identity, &product, 1.0e-10, 1.0e-10);
+    }
+
+    #[test]
+    fn lu_invert_rejects_singular_matrices() {
+        let matrix = dense_matrix(&[
+            vec![Complex64::new(1.0, 0.0), Complex64::new(2.0, 0.0)],
+            vec![Complex64::new(2.0, 0.0), Complex64::new(4.0, 0.0)],
+        ]);
+
+        let error = lu_invert(&matrix).expect_err("singular matrix should fail");
+        assert_eq!(error, LuError::SingularMatrix { pivot_index: 1 });
+    }
+
+    #[test]
+    fn lu_invert_rejects_ill_conditioned_matrices() {
+        let matrix = dense_matrix(&[
+            vec![Complex64::new(1.0, 0.0), Complex64::new(1.0, 0.0)],
+            vec![Complex64::new(1.0, 0.0), Complex64::new(1.0 + 1.0e-14, 0.0)],
+        ]);
+
+        let error = lu_invert(&matrix).expect_err("ill-conditioned matrix should fail");
+        assert_eq!(error, LuError::IllConditionedMatrix { pivot_index: 1 });
+    }
+
     fn dense_matrix(rows: &[Vec<Complex64>]) -> DenseComplexMatrix {
         let nrows = rows.len();
         let ncols = rows.first().map_or(0, |row| row.len());
@@ -351,6 +452,14 @@ mod tests {
             }
         }
         output
+    }
+
+    fn identity_matrix(size: usize) -> DenseComplexMatrix {
+        let mut identity = DenseComplexMatrix::zeros(size, size);
+        for index in 0..size {
+            identity[(index, index)] = Complex64::new(1.0, 0.0);
+        }
+        identity
     }
 
     fn matvec(matrix: &DenseComplexMatrix, vector: &[Complex64]) -> Vec<Complex64> {

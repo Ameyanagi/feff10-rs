@@ -10,6 +10,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF `cwig3j` ports must preserve its 1-indexed log-factorial table semantics (`al(i) = ln((i-1)!)`); treating it as `ln(i!)` introduces normalization/sign drift.
 - Wigner 6j ports should use Racah summation on doubled quantum numbers with triangle tuples `(j1,j2,j3)`, `(j1,j5,j6)`, `(j4,j2,j6)`, `(j4,j5,j3)`, and evaluate factorial terms in log space for stability.
 - Dense LU kernels should pack `L` and `U` into a single `DenseComplexMatrix` with a permutation vector of source-row indices; solving requires applying that row permutation to `rhs` before forward/back substitution.
+- Matrix inversion helpers should reuse `LuDecomposition::solve` over identity basis vectors and reject tiny LU pivots relative to `||A||_inf` to fail fast on ill-conditioned inputs.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -85,4 +86,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: storing pivot metadata as source-row indices (`pivots[row]`) keeps `P*A = L*U` reconstruction and `rhs` permutation straightforward for reuse in inversion helpers.
   - Gotchas encountered: mutating and reading the same `faer::Mat` element in one expression can trigger borrow conflicts; compute updated values in temporaries before assignment.
   - Useful context: there are still no repository-local `AGENTS.md` files under this workspace, so reusable LU guidance was captured in this progress log.
+---
+
+## 2026-02-17 22:43:38 JST - US-008
+- Implemented dense matrix inversion for `DenseComplexMatrix` in `crates/feff-core/src/numerics/special/linalg.rs` via `LuDecomposition::invert` and `lu_invert`, reusing LU solve against identity basis vectors.
+- Added an explicit ill-conditioning guard (`LuError::IllConditionedMatrix`) based on LU diagonal pivot magnitude relative to `||A||_inf`, plus `lu_invert` exposure through `crates/feff-core/src/numerics/special/mod.rs`.
+- Added inversion regression tests for recomposition-to-identity and failure-path coverage for singular and ill-conditioned matrices.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/special/linalg.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: inversion should be layered on top of existing LU decomposition/solve instead of duplicating elimination logic.
+  - Gotchas encountered: near-singular matrices can pass raw LU singular thresholds; adding a relative pivot check avoids unstable inverse outputs.
+  - Useful context: there are still no repository-local `AGENTS.md` files in this workspace, so reusable numerics notes remain in `scripts/ralph/progress.txt`.
 ---
