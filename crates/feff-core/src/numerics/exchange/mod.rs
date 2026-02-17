@@ -1,3 +1,4 @@
+use crate::common::constants::{FA, PI, THIRD, TWO_THIRDS};
 use num_complex::Complex64;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -70,10 +71,6 @@ pub fn evaluate_exchange_potential(input: ExchangeEvaluationInput) -> ExchangeEv
     ExchangePotential.evaluate(input)
 }
 
-const PI: f64 = std::f64::consts::PI;
-const THIRD: f64 = 1.0 / 3.0;
-const TWO_THIRDS: f64 = 2.0 / 3.0;
-const FA: f64 = 1.919_158_292_677_512_8;
 const HL_ALPHA: f64 = 4.0 / 3.0;
 const HL_MIN_X: f64 = 1.000_01;
 const DEFAULT_RS: f64 = 10.0;
@@ -442,7 +439,8 @@ fn rcfl(mrs: usize, rs_power: usize, coefficient: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{evaluate_exchange_potential, ExchangeEvaluationInput, ExchangeModel};
+    use super::{ExchangeEvaluationInput, ExchangeModel, evaluate_exchange_potential};
+    use crate::common::constants::PI;
 
     #[test]
     fn maps_feff_ixc_to_exchange_models() {
@@ -485,7 +483,7 @@ mod tests {
         ];
 
         for &(rs, xk, expected_real, expected_imaginary) in samples {
-            let density = 3.0 / (4.0 * std::f64::consts::PI * rs.powi(3));
+            let density = density_from_rs(rs);
             let evaluated = evaluate_exchange_potential(ExchangeEvaluationInput::new(
                 ExchangeModel::HedinLundqvist,
                 density,
@@ -515,7 +513,7 @@ mod tests {
         ];
 
         for &(rs, xk, expected_real) in samples {
-            let density = 3.0 / (4.0 * std::f64::consts::PI * rs.powi(3));
+            let density = density_from_rs(rs);
             let evaluated = evaluate_exchange_potential(ExchangeEvaluationInput::new(
                 ExchangeModel::DiracHara,
                 density,
@@ -541,7 +539,7 @@ mod tests {
         ];
 
         for &(rs, expected_real) in samples {
-            let density = 3.0 / (4.0 * std::f64::consts::PI * rs.powi(3));
+            let density = density_from_rs(rs);
             let evaluated = evaluate_exchange_potential(ExchangeEvaluationInput::new(
                 ExchangeModel::VonBarthHedin,
                 density,
@@ -570,7 +568,7 @@ mod tests {
         ];
 
         for &(rs, expected_real) in samples {
-            let density = 3.0 / (4.0 * std::f64::consts::PI * rs.powi(3));
+            let density = density_from_rs(rs);
             let evaluated = evaluate_exchange_potential(ExchangeEvaluationInput::new(
                 ExchangeModel::PerdewZunger,
                 density,
@@ -607,5 +605,9 @@ mod tests {
         );
         assert_eq!(vbh.imaginary, 0.0);
         assert_eq!(pz.imaginary, 0.0);
+    }
+
+    fn density_from_rs(rs: f64) -> f64 {
+        3.0 / (4.0 * PI * rs.powi(3))
     }
 }

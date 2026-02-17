@@ -1,5 +1,5 @@
+use crate::common::constants::PI;
 use num_complex::Complex64;
-use std::f64::consts::PI;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct SphericalHarmonicsInput {
@@ -106,9 +106,9 @@ fn factorial_ratio(degree: usize, order: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{spherical_y, y_lm, SphericalHarmonicsInput};
+    use super::{SphericalHarmonicsInput, spherical_y, y_lm};
+    use crate::common::constants::PI;
     use num_complex::Complex64;
-    use std::f64::consts::PI;
 
     #[test]
     fn y_lm_matches_representative_known_values() {

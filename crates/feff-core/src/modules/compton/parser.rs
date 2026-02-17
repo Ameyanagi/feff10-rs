@@ -1,7 +1,7 @@
 use super::{COMPTON_REQUIRED_INPUTS, POT_BINARY_MAGIC, POT_CONTROL_I32_COUNT, POT_CONTROL_F64_COUNT};
+use crate::common::constants::{PI, PI2};
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use crate::modules::fms::FMS_GG_BINARY_MAGIC;
-use std::f64::consts::PI;
 use std::fs;
 use std::path::Path;
 
@@ -41,7 +41,7 @@ impl Default for ComptonControlInput {
             nz: 32,
             nzp: 128,
             smax: 0.0,
-            phimax: 2.0 * PI,
+            phimax: PI2,
             zmax: 0.0,
             zpmax: 10.0,
             emit_jzzp: true,
