@@ -224,6 +224,68 @@
       }
     },
     {
+      "id": "FX-XSPH-ORACLE-001",
+      "title": "XSPH oracle parity fixture from XANES Cu workflow example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "XSPH"
+      ],
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Includes optional wscrn.dat to lock screened XSPH parity behavior."
+      }
+    },
+    {
+      "id": "FX-XSPH-ORACLE-002",
+      "title": "XSPH oracle parity fixture from EXAFS Cu workflow example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "XSPH"
+      ],
+      "inputDirectory": "feff10/examples/EXAFS/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Omits optional wscrn.dat to keep unscreened XSPH parity behavior under regression."
+      }
+    },
+    {
       "id": "FX-PATH-001",
       "title": "PATH compatibility fixture from EXAFS Cu example",
       "fixtureType": "module",

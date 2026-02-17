@@ -1,0 +1,21 @@
+XSPH true-compute runtime
+fixture: FX-XSPH-ORACLE-002
+input-artifacts: xsph.inp geom.dat global.inp pot.bin
+optional-input-wscrn: absent
+output-artifacts: phase.bin xsect.dat log2.dat
+nat: 79 nph: 1 atoms: 79
+global-token-count: 45 global-mean: 2.2221999998E3 global-rms: 1.4907119853E4 global-max-abs: 1.0000000000E5
+pot-nat: 140 pot-nph: 2 npot: 17
+pot-radius-max: 1.8881333333E0
+lmaxph-max: 3 n-poles: 100
+phase-channels: 3
+spectral-points: 256
+fovrg-solve-points: 24
+interstitial-index: 1011
+interstitial-radius:      0.00452
+energy-start:      0.06667
+energy-step:     21.34200
+xsnorm-base: 4.7383139328E1
+boundary-residual-mean: 5.3056367850E-1
+boundary-residual-max: 5.3070028591E-1
+exchange-shift-max: 1.8562677560E-4

@@ -37,6 +37,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF ATOM total-energy output uses `etotal.f90` sign convention `E_tot = sum(occ_i*e_i) - (E_coul + E_exch) + E_mag + E_ret`; keep this assembly rule explicit when wiring SCF-derived energy terms into downstream POT outputs.
 - Module-scoped oracle parity should use dedicated fixture IDs (for example `FX-POT-ORACLE-*`) with committed snapshots in `artifacts/fortran-baselines/<fixture>/baseline`; comparing against full workflow baselines causes large missing-artifact noise.
 - Oracle capture always seeds top-level fixture inputs into `<fixture>/outputs` before runner overrides; keep oracle fixture baseline snapshots aligned to that seeded file set (or pre-stage matching files in `actual`) to avoid false missing-artifact regressions.
+- XSPH `log2.dat` embeds the runtime `fixture:` identifier; regenerate oracle baselines through the oracle/regression flow (with target fixture IDs) rather than standalone `feff-cli xsph`, which defaults to `FX-XSPH-001`.
 - `select_serial_fixture` for `feff` should prefer workflow candidates with the largest `modulesCovered` set so RDINP+module parity fixtures do not preempt full serial-chain fixtures.
 - Regression RDINP execution should stage `feff.inp` into actual outputs only when the baseline fixture includes `feff.inp`; unconditional staging breaks suites that intentionally compare module outputs only.
 - For downstream physics modules that can consume POT outputs, parse `pot.bin` (`POTBIN10`) first and keep a deterministic `pot.inp` fallback only for workflows where POT artifacts are not staged.
@@ -432,4 +433,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: XSPH module integration should source phase behavior from boundary-matched complex Dirac solutions and interpolate from sparse node solves instead of evaluating every exported point directly.
   - Gotchas encountered: selecting the interstitial boundary too close to the radial-grid tail can cause full-channel boundary-matching failure; clamp to an interior fraction of the grid before solving.
   - Useful context: there are still no repository-local `AGENTS.md` files under this workspace, so reusable module conventions remain centralized in `scripts/ralph/progress.txt`.
+---
+## 2026-02-18 02:56:41 JST - US-035
+- Added dedicated XSPH oracle fixtures in `tasks/golden-fixture-manifest.json`: `FX-XSPH-ORACLE-001` (XANES Cu with optional `wscrn.dat`) and `FX-XSPH-ORACLE-002` (EXAFS Cu without `wscrn.dat`), both scoped to `XSPH` module parity checks.
+- Added XSPH policy categories in `tasks/numeric-tolerance-policy.json`: `xsph_phase_binary` (`exact_text` for `phase.bin`), `xsph_cross_section_numeric` (`numeric_tolerance` for `xsect.dat`), and `xsph_runtime_reports` (`exact_text` for `log2.dat`).
+- Replaced the mismatch-oriented XSPH oracle CLI test with a passing parity gate in `crates/feff-cli/tests/regression_cli.rs` (`oracle_command_runs_xsph_parity_for_required_fixtures_and_applies_policy_modes`) and asserted category resolution for `phase.bin`, `xsect.dat`, and `log2.dat`.
+- Added committed XSPH oracle baseline snapshots under `artifacts/fortran-baselines/FX-XSPH-ORACLE-001/baseline/` and `artifacts/fortran-baselines/FX-XSPH-ORACLE-002/baseline/`.
+- Verified quality gates with `cargo check`, `cargo test -p feff-core`, and `cargo test -p feff-cli`.
+- Files changed: `tasks/golden-fixture-manifest.json`, `tasks/numeric-tolerance-policy.json`, `crates/feff-cli/tests/regression_cli.rs`, `artifacts/fortran-baselines/FX-XSPH-ORACLE-001/baseline/*`, `artifacts/fortran-baselines/FX-XSPH-ORACLE-002/baseline/*`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: module oracle fixtures are most stable when baseline directories only include the staged module inputs plus module-owned outputs, not full workflow archives.
+  - Gotchas encountered: standalone `feff-cli xsph` uses default fixture ID `FX-XSPH-001`, which causes `log2.dat` fixture-header drift for other fixture IDs; generate baselines via the oracle/regression flow to preserve target fixture IDs.
+  - Useful context: XSPH oracle parity here is anchored on deterministic committed snapshots for `phase.bin`/`xsect.dat`/`log2.dat` with optional-`wscrn.dat` coverage split across two fixtures.
 ---

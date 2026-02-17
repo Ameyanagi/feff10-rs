@@ -1411,7 +1411,7 @@ fn oracle_command_runs_crpa_parity_and_reports_tolerance_and_contract_failures()
 }
 
 #[test]
-fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cases() {
+fn oracle_command_runs_xsph_parity_for_required_fixtures_and_applies_policy_modes() {
     if !command_available("jq") {
         eprintln!("Skipping XSPH oracle CLI test because jq is unavailable in PATH.");
         return;
@@ -1419,8 +1419,8 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
 
     let temp = TempDir::new().expect("tempdir should be created");
     let fixtures = [
-        ("FX-XSPH-001", "feff10/examples/XANES/Cu"),
-        ("FX-WORKFLOW-XAS-001", "feff10/examples/XANES/Cu"),
+        ("FX-XSPH-ORACLE-001", "feff10/examples/XANES/Cu", true),
+        ("FX-XSPH-ORACLE-002", "feff10/examples/EXAFS/Cu", false),
     ];
     let workspace_root = workspace_root();
     let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
@@ -1431,14 +1431,14 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
     );
 
     let manifest_path = temp.path().join("manifest.json");
-    let policy_path = temp.path().join("policy.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
     let oracle_root = temp.path().join("oracle-root");
     let actual_root = temp.path().join("actual-root");
     let report_path = temp.path().join("report/oracle-xsph.json");
 
     let fixture_entries = fixtures
         .iter()
-        .map(|(fixture_id, input_directory)| {
+        .map(|(fixture_id, input_directory, _)| {
             let fixture_input_dir = workspace_root.join(input_directory);
             format!(
                 r#"
@@ -1464,32 +1464,10 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
         fixture_entries
     );
     write_file(&manifest_path, &manifest);
-    write_file(
-        &policy_path,
-        r##"
-        {
-          "defaultMode": "exact_text",
-          "numericParsing": {
-            "commentPrefixes": ["#"]
-          },
-          "categories": [
-            {
-              "id": "xsph_cross_section_numeric",
-              "mode": "numeric_tolerance",
-              "fileGlobs": ["**/xsect.dat"],
-              "tolerance": {
-                "absTol": 1e-8,
-                "relTol": 1e-6,
-                "relativeFloor": 1e-12
-              }
-            }
-          ]
-        }
-        "##,
-    );
 
-    for (fixture_id, _) in fixtures {
+    for (fixture_id, _, include_wscrn) in fixtures {
         let staged_output_dir = actual_root.join(fixture_id).join("actual");
+        stage_workspace_fixture_file(fixture_id, "feff.inp", &staged_output_dir.join("feff.inp"));
         stage_workspace_fixture_file(fixture_id, "xsph.inp", &staged_output_dir.join("xsph.inp"));
         stage_workspace_fixture_file(fixture_id, "geom.dat", &staged_output_dir.join("geom.dat"));
         stage_workspace_fixture_file(
@@ -1499,7 +1477,7 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
         );
         stage_workspace_fixture_file(fixture_id, "pot.bin", &staged_output_dir.join("pot.bin"));
 
-        if fixture_id == "FX-XSPH-001" {
+        if include_wscrn {
             stage_workspace_fixture_file(
                 fixture_id,
                 "wscrn.dat",
@@ -1507,21 +1485,22 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
             );
         }
     }
+
     assert!(
         actual_root
-            .join("FX-XSPH-001")
+            .join("FX-XSPH-ORACLE-001")
             .join("actual")
             .join("wscrn.dat")
             .is_file(),
-        "setup should include optional wscrn.dat for FX-XSPH-001"
+        "setup should include optional wscrn.dat for FX-XSPH-ORACLE-001"
     );
     assert!(
         !actual_root
-            .join("FX-WORKFLOW-XAS-001")
+            .join("FX-XSPH-ORACLE-002")
             .join("actual")
             .join("wscrn.dat")
             .is_file(),
-        "setup should omit optional wscrn.dat for FX-WORKFLOW-XAS-001"
+        "setup should omit optional wscrn.dat for FX-XSPH-ORACLE-002"
     );
 
     let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
@@ -1543,25 +1522,24 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
         ],
     );
 
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "XSPH oracle parity should report mismatches against captured outputs, stderr: {}",
+    assert!(
+        output.status.success(),
+        "XSPH oracle parity should pass against committed baselines, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Mismatches:"),
-        "XSPH oracle summary should include mismatch totals, stdout: {}",
+        stdout.contains("Regression status: PASS"),
+        "XSPH oracle summary should include pass status, stdout: {}",
         stdout
     );
-    for (fixture_id, _) in fixtures {
-        assert!(
-            stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
-            "XSPH oracle summary should include fixture-level mismatch details for '{}', stdout: {}",
-            fixture_id,
-            stdout
-        );
+    assert!(
+        stdout.contains("Mismatches: 0 fixture(s), 0 artifact(s)"),
+        "XSPH oracle summary should report zero mismatches, stdout: {}",
+        stdout
+    );
+
+    for (fixture_id, _, _) in fixtures {
         assert!(
             actual_root
                 .join(fixture_id)
@@ -1590,20 +1568,22 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
             fixture_id
         );
     }
+
     assert!(
         report_path.is_file(),
         "XSPH oracle parity should emit a report"
     );
-
     let parsed: Value =
         serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
             .expect("report JSON should parse");
-    assert_eq!(parsed["mismatch_fixture_count"], Value::from(2));
+    assert_eq!(parsed["passed"], Value::Bool(true));
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(0));
+    assert_eq!(parsed["mismatch_artifact_count"], Value::from(0));
 
     let fixture_reports = parsed["fixtures"]
         .as_array()
         .expect("fixtures report should be an array");
-    for (fixture_id, _) in fixtures {
+    for (fixture_id, _, _) in fixtures {
         let fixture_report = fixture_reports
             .iter()
             .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
@@ -1624,13 +1604,13 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
         assert_eq!(
             phase_report["comparison"]["mode"],
             Value::from("exact_text"),
-            "phase.bin should remain an exact-text/binary comparison artifact for fixture '{}'",
+            "phase.bin should use exact_text mode for fixture '{}'",
             fixture_id
         );
         assert_eq!(
-            phase_report["comparison"]["metrics"]["kind"],
-            Value::from("exact_text"),
-            "phase.bin should report exact_text metrics for fixture '{}'",
+            phase_report["comparison"]["matched_category"],
+            Value::from("xsph_phase_binary"),
+            "phase.bin should resolve xsph_phase_binary category for fixture '{}'",
             fixture_id
         );
 
@@ -1646,19 +1626,19 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
         assert_eq!(
             xsect_report["comparison"]["mode"],
             Value::from("numeric_tolerance"),
-            "xsect.dat should be compared using numeric_tolerance mode for fixture '{}'",
+            "xsect.dat should use numeric_tolerance mode for fixture '{}'",
             fixture_id
         );
         assert_eq!(
             xsect_report["comparison"]["matched_category"],
             Value::from("xsph_cross_section_numeric"),
-            "xsect.dat should resolve the XSPH numeric category for fixture '{}'",
+            "xsect.dat should resolve xsph_cross_section_numeric category for fixture '{}'",
             fixture_id
         );
         assert_eq!(
             xsect_report["comparison"]["metrics"]["kind"],
             Value::from("numeric_tolerance"),
-            "xsect.dat comparison should emit numeric tolerance metrics for fixture '{}'",
+            "xsect.dat comparison should report numeric tolerance metrics for fixture '{}'",
             fixture_id
         );
         assert!(
@@ -1668,27 +1648,29 @@ fn oracle_command_runs_xsph_parity_for_required_fixtures_with_optional_wscrn_cas
             "xsect.dat tolerance metrics should include compared values for fixture '{}'",
             fixture_id
         );
-    }
 
-    let mismatch_fixtures = parsed["mismatch_fixtures"]
-        .as_array()
-        .expect("mismatch_fixtures should be an array");
-    let missing_optional_override_fixture = mismatch_fixtures
-        .iter()
-        .find(|fixture| fixture["fixture_id"].as_str() == Some("FX-WORKFLOW-XAS-001"))
-        .expect("mismatch_fixtures should include FX-WORKFLOW-XAS-001");
-    let missing_optional_override_artifacts = missing_optional_override_fixture["artifacts"]
-        .as_array()
-        .expect("fixture artifact list should be an array");
-    let missing_wscrn_report = missing_optional_override_artifacts
-        .iter()
-        .find(|artifact| artifact["artifact_path"].as_str() == Some("wscrn.dat"))
-        .expect("missing optional wscrn.dat should be reported deterministically");
-    assert_eq!(
-        missing_wscrn_report["reason"],
-        Value::from("Missing actual artifact"),
-        "optional wscrn.dat absence should map to deterministic report reason"
-    );
+        let log2_report = artifact_reports
+            .iter()
+            .find(|artifact| artifact["artifact_path"].as_str() == Some("log2.dat"))
+            .unwrap_or_else(|| {
+                panic!(
+                    "fixture '{}' should include log2.dat comparison",
+                    fixture_id
+                )
+            });
+        assert_eq!(
+            log2_report["comparison"]["mode"],
+            Value::from("exact_text"),
+            "log2.dat should use exact_text mode for fixture '{}'",
+            fixture_id
+        );
+        assert_eq!(
+            log2_report["comparison"]["matched_category"],
+            Value::from("xsph_runtime_reports"),
+            "log2.dat should resolve xsph_runtime_reports category for fixture '{}'",
+            fixture_id
+        );
+    }
 }
 
 #[test]
