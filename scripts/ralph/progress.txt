@@ -4,6 +4,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 ## Codebase Patterns
 - Add shared third-party dependencies in workspace `Cargo.toml` and consume them in crates with `<dependency>.workspace = true`.
 - For new numerics domains, add `pub mod <domain>;` to `crates/feff-core/src/numerics/mod.rs` and re-export public APIs from `crates/feff-core/src/numerics/<domain>/mod.rs`.
+- FEFF special-function parity ports should mirror `besjh.f90` region cutoffs (`Re/|Im| < 1.0`, `< 7.51`) and use targeted `bjnser` seeding plus recursion per region.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -13,4 +14,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: `feff-core` dependency declarations follow workspace indirection (`*.workspace = true`) rather than pinning versions per crate.
   - Gotchas encountered: running `cargo fmt` from workspace root can touch many unrelated files; use targeted `rustfmt` for scoped story diffs.
   - Useful context: the new numerics home for upcoming Fortran parity kernels is `crates/feff-core/src/numerics/special/`, with APIs re-exported from `special/mod.rs`.
+---
+
+## 2026-02-17 22:07:37 JST - US-002
+- Implemented FEFF-style complex spherical Bessel `j_l(z)` in `crates/feff-core/src/numerics/special/bessel.rs` with `bjnser`-style series evaluation for small arguments, downward recursion for the mid-range branch, and asymptotic polynomial basis/recurrence for large arguments.
+- Added a public `spherical_j(order, argument)` API and re-exported it from `crates/feff-core/src/numerics/special/mod.rs`.
+- Added unit tests covering `l=0..8` against independent complex reference vectors (small/mid/large argument regimes) with explicit absolute/relative tolerance assertions.
+- Files changed: `crates/feff-core/src/numerics/special/bessel.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FEFF parity for `j_l` depends on preserving `besjh.f90` branch boundaries and using `bjnser` seeds before recursion in the mid-range branch.
+  - Gotchas encountered: `besjh` expects `Re(z) >= 0`; this port enforces the same precondition to avoid unsupported branch behavior drifting from Fortran.
+  - Useful context: no repository-local `AGENTS.md` exists under this workspace, so reusable implementation notes were consolidated in this Ralph progress log.
 ---
