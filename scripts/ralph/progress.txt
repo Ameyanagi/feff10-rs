@@ -27,6 +27,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF edge defaults should use `common::edge::{hole_code_from_edge_spec, core_hole_lifetime_ev}` so RDINP-generated `ihole` and `gamach` remain aligned with `setedg`/`setgam` behavior.
 - Keep COMMON regression baselines in `tasks/common-regression-fixtures.json` and validate constants/config/getorb/edge APIs together from `crates/feff-core/tests/common_regression.rs`.
 - ATOM radial SCF updates should use shell density `sigma(r)=4*pi*r^2*rho(r)`: normalize `sigma` to target charge via radial trapezoid integration, then build muffin-tin Coulomb potentials from cumulative/tail integrals and anchor `V(r_mt)=0` with a constant outer tail.
+- ATOM SCF orchestration should flow through `solve_atom_scf` in `crates/feff-core/src/numerics/radial.rs`: define orbitals via `AtomScfOrbitalSpec`, solve radial Dirac states each iteration, and mix `V_new - V_old` residuals with the built-in limited-memory Broyden mixer (seeded by `BoundStateSolverState::mixing_parameter`).
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -300,4 +301,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: ATOM density updates should normalize shell density (`4*pi*r^2*rho`) to occupancy targets before any potential update, so downstream SCF steps start from charge-consistent radial profiles.
   - Gotchas encountered: serializing orbital profile kinds with numeric shell labels needs explicit serde rename attributes (for example `hydrogenic_1s`) rather than relying on `rename_all` casing transforms.
   - Useful context: this workspace still has no repository-local `AGENTS.md`, so reusable ATOM SCF guidance remains captured in `scripts/ralph/progress.txt`.
+---
+## 2026-02-18 00:58:40 JST - US-025
+- Implemented ATOM SCF orchestration in `crates/feff-core/src/numerics/radial.rs` with new public APIs (`AtomScfOrbitalSpec`, `AtomScfInput`, `AtomScfIteration`, `AtomScfResult`) and `solve_atom_scf`, including iteration control, residual/charge convergence checks, and limited-memory Broyden mixing of muffin-tin potential residuals.
+- Extended `AtomScfKernelError` with SCF-loop-specific validation and failure variants, added Dirac-orbital solve plumbing per iteration, and exported new SCF APIs through `crates/feff-core/src/numerics/mod.rs`.
+- Added radial unit tests verifying SCF convergence behavior and iteration-cap handling (`atom_scf_loop_converges_for_hydrogenic_reference_case`, `atom_scf_loop_reports_iteration_cap_when_not_converged`).
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/radial.rs`, `crates/feff-core/src/numerics/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: SCF loop convergence in this codebase should jointly track potential residual RMS (`V_new - V_old`) and charge-normalization delta, then expose per-iteration metrics for downstream diagnostics.
+  - Gotchas encountered: unconstrained SCF updates can drive the Dirac subsolver outside easy bracketing ranges; regression tests are more stable when seeded from the known hydrogenic reference setup used by existing radial Dirac tests.
+  - Useful context: there are still no repository-local `AGENTS.md` files in this workspace, so reusable module guidance remains centralized in `scripts/ralph/progress.txt`.
 ---

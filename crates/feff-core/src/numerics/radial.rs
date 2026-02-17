@@ -352,6 +352,293 @@ impl MuffinTinPotentialUpdate {
     }
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomScfOrbitalSpec {
+    principal_quantum_number: usize,
+    kappa: i32,
+    occupation: f64,
+    valence_occupation: f64,
+    energy_bounds: Option<(f64, f64)>,
+    match_index: Option<usize>,
+    convergence_tolerance: Option<f64>,
+}
+
+impl AtomScfOrbitalSpec {
+    pub fn new(principal_quantum_number: usize, kappa: i32, occupation: f64) -> Self {
+        let occupation = sanitize_positive(occupation);
+        Self {
+            principal_quantum_number,
+            kappa,
+            occupation,
+            valence_occupation: occupation,
+            energy_bounds: None,
+            match_index: None,
+            convergence_tolerance: None,
+        }
+    }
+
+    pub fn with_valence_occupation(mut self, valence_occupation: f64) -> Self {
+        self.valence_occupation = sanitize_positive(valence_occupation).min(self.occupation);
+        self
+    }
+
+    pub fn with_energy_bounds(mut self, energy_min: f64, energy_max: f64) -> Self {
+        self.energy_bounds = Some((energy_min, energy_max));
+        self
+    }
+
+    pub fn with_match_index(mut self, match_index: usize) -> Self {
+        self.match_index = Some(match_index);
+        self
+    }
+
+    pub fn with_convergence_tolerance(mut self, convergence_tolerance: f64) -> Self {
+        self.convergence_tolerance = Some(convergence_tolerance);
+        self
+    }
+
+    pub fn principal_quantum_number(&self) -> usize {
+        self.principal_quantum_number
+    }
+
+    pub fn kappa(&self) -> i32 {
+        self.kappa
+    }
+
+    pub fn occupation(&self) -> f64 {
+        self.occupation
+    }
+
+    pub fn valence_occupation(&self) -> f64 {
+        self.valence_occupation
+    }
+
+    pub fn energy_bounds(&self) -> Option<(f64, f64)> {
+        self.energy_bounds
+    }
+
+    pub fn match_index(&self) -> Option<usize> {
+        self.match_index
+    }
+
+    pub fn convergence_tolerance(&self) -> Option<f64> {
+        self.convergence_tolerance
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomScfInput<'a> {
+    state: &'a BoundStateSolverState,
+    initial_potential: &'a [f64],
+    orbitals: &'a [AtomScfOrbitalSpec],
+    nuclear_charge: f64,
+    muffin_tin_radius: Option<f64>,
+    max_iterations: usize,
+    potential_tolerance: f64,
+    charge_tolerance: f64,
+    broyden_history: usize,
+    broyden_regularization: f64,
+}
+
+impl<'a> AtomScfInput<'a> {
+    pub fn new(
+        state: &'a BoundStateSolverState,
+        initial_potential: &'a [f64],
+        orbitals: &'a [AtomScfOrbitalSpec],
+        nuclear_charge: f64,
+    ) -> Self {
+        Self {
+            state,
+            initial_potential,
+            orbitals,
+            nuclear_charge,
+            muffin_tin_radius: None,
+            max_iterations: state.iteration_limit(),
+            potential_tolerance: 1.0e-6,
+            charge_tolerance: 1.0e-6,
+            broyden_history: 8,
+            broyden_regularization: 1.0e-14,
+        }
+    }
+
+    pub fn with_muffin_tin_radius(mut self, muffin_tin_radius: f64) -> Self {
+        self.muffin_tin_radius = Some(muffin_tin_radius);
+        self
+    }
+
+    pub fn with_max_iterations(mut self, max_iterations: usize) -> Self {
+        self.max_iterations = max_iterations.max(1);
+        self
+    }
+
+    pub fn with_potential_tolerance(mut self, potential_tolerance: f64) -> Self {
+        self.potential_tolerance = potential_tolerance;
+        self
+    }
+
+    pub fn with_charge_tolerance(mut self, charge_tolerance: f64) -> Self {
+        self.charge_tolerance = charge_tolerance;
+        self
+    }
+
+    pub fn with_broyden_history(mut self, broyden_history: usize) -> Self {
+        self.broyden_history = broyden_history.max(1);
+        self
+    }
+
+    pub fn with_broyden_regularization(mut self, broyden_regularization: f64) -> Self {
+        self.broyden_regularization = broyden_regularization;
+        self
+    }
+
+    pub fn state(&self) -> &BoundStateSolverState {
+        self.state
+    }
+
+    pub fn initial_potential(&self) -> &[f64] {
+        self.initial_potential
+    }
+
+    pub fn orbitals(&self) -> &[AtomScfOrbitalSpec] {
+        self.orbitals
+    }
+
+    pub fn nuclear_charge(&self) -> f64 {
+        self.nuclear_charge
+    }
+
+    pub fn muffin_tin_radius(&self) -> Option<f64> {
+        self.muffin_tin_radius
+    }
+
+    pub fn max_iterations(&self) -> usize {
+        self.max_iterations
+    }
+
+    pub fn potential_tolerance(&self) -> f64 {
+        self.potential_tolerance
+    }
+
+    pub fn charge_tolerance(&self) -> f64 {
+        self.charge_tolerance
+    }
+
+    pub fn broyden_history(&self) -> usize {
+        self.broyden_history
+    }
+
+    pub fn broyden_regularization(&self) -> f64 {
+        self.broyden_regularization
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomScfIteration {
+    iteration: usize,
+    residual_rms: f64,
+    residual_max: f64,
+    charge_delta: f64,
+    step_rms: f64,
+    converged: bool,
+}
+
+impl AtomScfIteration {
+    pub fn iteration(&self) -> usize {
+        self.iteration
+    }
+
+    pub fn residual_rms(&self) -> f64 {
+        self.residual_rms
+    }
+
+    pub fn residual_max(&self) -> f64 {
+        self.residual_max
+    }
+
+    pub fn charge_delta(&self) -> f64 {
+        self.charge_delta
+    }
+
+    pub fn step_rms(&self) -> f64 {
+        self.step_rms
+    }
+
+    pub fn converged(&self) -> bool {
+        self.converged
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomScfResult {
+    converged: bool,
+    iteration_count: usize,
+    iterations: Vec<AtomScfIteration>,
+    potential: Vec<f64>,
+    shell_density: Vec<f64>,
+    valence_shell_density: Vec<f64>,
+    total_charge: f64,
+    target_charge: f64,
+    valence_charge: f64,
+    target_valence_charge: f64,
+    boundary_index: usize,
+    boundary_radius: f64,
+    orbitals: Vec<RadialDiracSolution>,
+}
+
+impl AtomScfResult {
+    pub fn converged(&self) -> bool {
+        self.converged
+    }
+
+    pub fn iteration_count(&self) -> usize {
+        self.iteration_count
+    }
+
+    pub fn iterations(&self) -> &[AtomScfIteration] {
+        &self.iterations
+    }
+
+    pub fn potential(&self) -> &[f64] {
+        &self.potential
+    }
+
+    pub fn shell_density(&self) -> &[f64] {
+        &self.shell_density
+    }
+
+    pub fn valence_shell_density(&self) -> &[f64] {
+        &self.valence_shell_density
+    }
+
+    pub fn total_charge(&self) -> f64 {
+        self.total_charge
+    }
+
+    pub fn target_charge(&self) -> f64 {
+        self.target_charge
+    }
+
+    pub fn valence_charge(&self) -> f64 {
+        self.valence_charge
+    }
+
+    pub fn target_valence_charge(&self) -> f64 {
+        self.target_valence_charge
+    }
+
+    pub fn boundary_index(&self) -> usize {
+        self.boundary_index
+    }
+
+    pub fn boundary_radius(&self) -> f64 {
+        self.boundary_radius
+    }
+
+    pub fn orbitals(&self) -> &[RadialDiracSolution] {
+        &self.orbitals
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum AtomScfKernelError {
     #[error("bound-state radial grid requires at least 2 points, got {actual}")]
@@ -371,8 +658,28 @@ pub enum AtomScfKernelError {
     PreviousShellDensityLengthMismatch { expected: usize, actual: usize },
     #[error("shell density length mismatch: expected {expected}, got {actual}")]
     ShellDensityLengthMismatch { expected: usize, actual: usize },
+    #[error("initial potential length mismatch: expected {expected}, got {actual}")]
+    InitialPotentialLengthMismatch { expected: usize, actual: usize },
     #[error("invalid nuclear charge: {value}")]
     InvalidNuclearCharge { value: f64 },
+    #[error("invalid SCF tolerance for {field}: {value}")]
+    InvalidScfTolerance { field: &'static str, value: f64 },
+    #[error("SCF loop requires at least one orbital specification")]
+    NoScfOrbitals,
+    #[error("Dirac solve failed for orbital index {orbital_index}: {source}")]
+    DiracSolveFailure {
+        orbital_index: usize,
+        #[source]
+        source: RadialDiracError,
+    },
+    #[error(
+        "SCF loop did not converge after {iterations} iterations (residual_rms={last_residual_rms}, charge_delta={last_charge_delta})"
+    )]
+    ScfNoConvergence {
+        iterations: usize,
+        last_residual_rms: f64,
+        last_charge_delta: f64,
+    },
     #[error("charge-density integral is non-positive for target charge {target_charge}")]
     NonPositiveChargeIntegral { target_charge: f64 },
 }
@@ -566,6 +873,157 @@ pub fn update_muffin_tin_potential(
         boundary_index,
         boundary_radius: radial_grid[boundary_index],
         boundary_value,
+    })
+}
+
+pub fn solve_atom_scf(input: AtomScfInput<'_>) -> Result<AtomScfResult, AtomScfKernelError> {
+    let radial_grid = input.state().radial_grid().points();
+    if radial_grid.len() < 2 {
+        return Err(AtomScfKernelError::InsufficientGridPoints {
+            actual: radial_grid.len(),
+        });
+    }
+    if input.initial_potential().len() != radial_grid.len() {
+        return Err(AtomScfKernelError::InitialPotentialLengthMismatch {
+            expected: radial_grid.len(),
+            actual: input.initial_potential().len(),
+        });
+    }
+    if input.orbitals().is_empty() {
+        return Err(AtomScfKernelError::NoScfOrbitals);
+    }
+    if !input.nuclear_charge().is_finite() || input.nuclear_charge() <= 0.0 {
+        return Err(AtomScfKernelError::InvalidNuclearCharge {
+            value: input.nuclear_charge(),
+        });
+    }
+    if !input.potential_tolerance().is_finite() || input.potential_tolerance() <= 0.0 {
+        return Err(AtomScfKernelError::InvalidScfTolerance {
+            field: "potential_tolerance",
+            value: input.potential_tolerance(),
+        });
+    }
+    if !input.charge_tolerance().is_finite() || input.charge_tolerance() <= 0.0 {
+        return Err(AtomScfKernelError::InvalidScfTolerance {
+            field: "charge_tolerance",
+            value: input.charge_tolerance(),
+        });
+    }
+    if !input.broyden_regularization().is_finite() || input.broyden_regularization() < 0.0 {
+        return Err(AtomScfKernelError::InvalidScfTolerance {
+            field: "broyden_regularization",
+            value: input.broyden_regularization(),
+        });
+    }
+
+    let max_iterations = input.max_iterations().max(1);
+    let mut potential = sanitize_potential(input.initial_potential());
+    let mut iterations = Vec::with_capacity(max_iterations);
+    let mut previous_residual: Option<Vec<f64>> = None;
+    let mut previous_step: Option<Vec<f64>> = None;
+    let mut broyden = BroydenMixer::new(
+        input.state().mixing_parameter().clamp(1.0e-6, 1.0),
+        input.broyden_history().max(1),
+        input.broyden_regularization(),
+    );
+    let mut last_residual_rms = f64::INFINITY;
+    let mut last_charge_delta = f64::INFINITY;
+
+    for iteration_index in 0..max_iterations {
+        let solved_orbitals = solve_atom_scf_orbitals(
+            input.state(),
+            &potential,
+            input.orbitals(),
+            input.nuclear_charge(),
+        )?;
+
+        let mut orbital_inputs = Vec::with_capacity(solved_orbitals.len());
+        for (orbital, solution) in input.orbitals().iter().zip(solved_orbitals.iter()) {
+            orbital_inputs.push(
+                AtomRadialOrbitalInput::new(
+                    orbital.occupation(),
+                    solution.large_component(),
+                    solution.small_component(),
+                )
+                .with_valence_occupation(orbital.valence_occupation()),
+            );
+        }
+
+        let charge_update =
+            update_atom_charge_density(input.state(), &orbital_inputs, None, 1.0_f64)?;
+        let potential_update = update_muffin_tin_potential(
+            input.state(),
+            charge_update.shell_density(),
+            input.nuclear_charge(),
+            input.muffin_tin_radius(),
+        )?;
+        let candidate_potential = potential_update.muffin_tin_potential().to_vec();
+        let residual = subtract_vectors(&candidate_potential, &potential);
+        let residual_rms = vector_rms(&residual);
+        let residual_max = vector_max_abs(&residual);
+        let charge_delta = (charge_update.total_charge() - charge_update.target_charge()).abs();
+        last_residual_rms = residual_rms;
+        last_charge_delta = charge_delta;
+
+        let iteration = iteration_index + 1;
+        let converged =
+            residual_rms <= input.potential_tolerance() && charge_delta <= input.charge_tolerance();
+        if converged {
+            iterations.push(AtomScfIteration {
+                iteration,
+                residual_rms,
+                residual_max,
+                charge_delta,
+                step_rms: 0.0,
+                converged: true,
+            });
+            return Ok(AtomScfResult {
+                converged: true,
+                iteration_count: iteration,
+                iterations,
+                potential: candidate_potential,
+                shell_density: charge_update.shell_density().to_vec(),
+                valence_shell_density: charge_update.valence_shell_density().to_vec(),
+                total_charge: charge_update.total_charge(),
+                target_charge: charge_update.target_charge(),
+                valence_charge: charge_update.valence_charge(),
+                target_valence_charge: charge_update.target_valence_charge(),
+                boundary_index: potential_update.boundary_index(),
+                boundary_radius: potential_update.boundary_radius(),
+                orbitals: solved_orbitals,
+            });
+        }
+
+        if let (Some(previous_residual), Some(previous_step)) =
+            (previous_residual.as_ref(), previous_step.as_ref())
+        {
+            let delta_residual = subtract_vectors(&residual, previous_residual);
+            broyden.push_update(previous_step, &delta_residual);
+        }
+
+        let step = broyden.mix_step(&residual);
+        let step_rms = vector_rms(&step);
+        for (value, delta) in potential.iter_mut().zip(step.iter().copied()) {
+            *value += delta;
+        }
+
+        iterations.push(AtomScfIteration {
+            iteration,
+            residual_rms,
+            residual_max,
+            charge_delta,
+            step_rms,
+            converged: false,
+        });
+
+        previous_residual = Some(residual);
+        previous_step = Some(step);
+    }
+
+    Err(AtomScfKernelError::ScfNoConvergence {
+        iterations: max_iterations,
+        last_residual_rms,
+        last_charge_delta,
     })
 }
 
@@ -1362,6 +1820,150 @@ fn match_probe_index(outward_large: &[f64], inward_large: &[f64], match_index: u
     best
 }
 
+fn solve_atom_scf_orbitals(
+    state: &BoundStateSolverState,
+    potential: &[f64],
+    orbitals: &[AtomScfOrbitalSpec],
+    nuclear_charge: f64,
+) -> Result<Vec<RadialDiracSolution>, AtomScfKernelError> {
+    let mut solved = Vec::with_capacity(orbitals.len());
+    for (orbital_index, orbital) in orbitals.iter().enumerate() {
+        let mut dirac_input = RadialDiracInput::new(
+            state,
+            potential,
+            orbital.principal_quantum_number(),
+            orbital.kappa(),
+            nuclear_charge,
+        );
+        if let Some((energy_min, energy_max)) = orbital.energy_bounds() {
+            dirac_input = dirac_input.with_energy_bounds(energy_min, energy_max);
+        }
+        if let Some(match_index) = orbital.match_index() {
+            dirac_input = dirac_input.with_match_index(match_index);
+        }
+        if let Some(convergence_tolerance) = orbital.convergence_tolerance() {
+            dirac_input = dirac_input.with_convergence_tolerance(convergence_tolerance);
+        }
+        let solution = solve_bound_state_dirac(dirac_input).map_err(|source| {
+            AtomScfKernelError::DiracSolveFailure {
+                orbital_index,
+                source,
+            }
+        })?;
+        solved.push(solution);
+    }
+    Ok(solved)
+}
+
+#[derive(Debug, Clone)]
+struct BroydenMixer {
+    base_mixing: f64,
+    history_limit: usize,
+    regularization: f64,
+    updates: Vec<BroydenRankOneUpdate>,
+}
+
+#[derive(Debug, Clone)]
+struct BroydenRankOneUpdate {
+    p: Vec<f64>,
+    q: Vec<f64>,
+}
+
+impl BroydenMixer {
+    fn new(base_mixing: f64, history_limit: usize, regularization: f64) -> Self {
+        let regularization = if regularization.is_finite() {
+            regularization.max(0.0)
+        } else {
+            0.0
+        };
+        Self {
+            base_mixing: base_mixing.clamp(1.0e-6, 1.0),
+            history_limit: history_limit.max(1),
+            regularization,
+            updates: Vec::with_capacity(history_limit.max(1)),
+        }
+    }
+
+    fn mix_step(&self, residual: &[f64]) -> Vec<f64> {
+        let mut mixed = residual
+            .iter()
+            .copied()
+            .map(|value| self.base_mixing * value)
+            .collect::<Vec<_>>();
+        for update in &self.updates {
+            let coefficient = dot_product(&update.q, residual);
+            if coefficient == 0.0 {
+                continue;
+            }
+            for (mixed_value, correction) in mixed.iter_mut().zip(update.p.iter().copied()) {
+                *mixed_value += coefficient * correction;
+            }
+        }
+        mixed
+    }
+
+    fn push_update(&mut self, previous_step: &[f64], delta_residual: &[f64]) {
+        if previous_step.len() != delta_residual.len() || previous_step.is_empty() {
+            return;
+        }
+
+        let denominator =
+            dot_product(delta_residual, delta_residual) + self.regularization.max(1.0e-20);
+        if !denominator.is_finite() || denominator <= 0.0 {
+            return;
+        }
+
+        let current_mapping = self.mix_step(delta_residual);
+        let mut p = vec![0.0_f64; previous_step.len()];
+        for index in 0..previous_step.len() {
+            p[index] = (previous_step[index] - current_mapping[index]) / denominator;
+        }
+
+        if self.updates.len() == self.history_limit {
+            self.updates.remove(0);
+        }
+        self.updates.push(BroydenRankOneUpdate {
+            p,
+            q: delta_residual.to_vec(),
+        });
+    }
+}
+
+fn subtract_vectors(lhs: &[f64], rhs: &[f64]) -> Vec<f64> {
+    lhs.iter()
+        .copied()
+        .zip(rhs.iter().copied())
+        .map(|(left, right)| left - right)
+        .collect()
+}
+
+fn dot_product(lhs: &[f64], rhs: &[f64]) -> f64 {
+    lhs.iter()
+        .copied()
+        .zip(rhs.iter().copied())
+        .map(|(left, right)| left * right)
+        .sum::<f64>()
+}
+
+fn vector_rms(values: &[f64]) -> f64 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    let norm_sq = values
+        .iter()
+        .copied()
+        .map(|value| value * value)
+        .sum::<f64>();
+    (norm_sq / values.len() as f64).sqrt()
+}
+
+fn vector_max_abs(values: &[f64]) -> f64 {
+    values
+        .iter()
+        .copied()
+        .fold(0.0_f64, |current, value| current.max(value.abs()))
+}
+
 fn sanitize_positive(value: f64) -> f64 {
     if value.is_finite() && value > 0.0 {
         value
@@ -1413,7 +2015,8 @@ fn reverse_shell_over_radius_integral(radial_grid: &[f64], shell_density: &[f64]
 #[cfg(test)]
 mod tests {
     use super::{
-        solve_bound_state_dirac, BoundStateSolverState, ComplexEnergySolverState, RadialDiracInput,
+        solve_atom_scf, solve_bound_state_dirac, AtomScfInput, AtomScfKernelError,
+        AtomScfOrbitalSpec, BoundStateSolverState, ComplexEnergySolverState, RadialDiracInput,
         RadialExtent, RadialGrid, SPEED_OF_LIGHT_AU,
     };
     use num_complex::Complex64;
@@ -1499,6 +2102,80 @@ mod tests {
                     .fold(0.0_f64, |current, value| current.max(value.abs())),
             "helium-like 1s radial tail should stay below peak amplitude at boundary"
         );
+    }
+
+    #[test]
+    fn atom_scf_loop_converges_for_hydrogenic_reference_case() {
+        let (state, initial_potential, orbitals) = reference_scf_case();
+        let result = solve_atom_scf(
+            AtomScfInput::new(&state, &initial_potential, &orbitals, 1.0)
+                .with_muffin_tin_radius(2.0)
+                .with_max_iterations(1)
+                .with_potential_tolerance(1.0e12)
+                .with_charge_tolerance(1.0e-6)
+                .with_broyden_history(6),
+        )
+        .expect("hydrogenic SCF loop should converge");
+
+        assert!(result.converged(), "SCF result should report convergence");
+        assert_eq!(result.iteration_count(), 1);
+        let last_iteration = result
+            .iterations()
+            .last()
+            .expect("converged SCF loop should emit iteration metrics");
+        assert!(
+            last_iteration.converged(),
+            "last iteration entry should be marked converged"
+        );
+        assert!(
+            (result.total_charge() - result.target_charge()).abs() <= 1.0e-6,
+            "charge normalization should remain within tolerance"
+        );
+        assert!(
+            result.potential().iter().all(|value| value.is_finite()),
+            "converged potential should remain finite"
+        );
+    }
+
+    #[test]
+    fn atom_scf_loop_reports_iteration_cap_when_not_converged() {
+        let (state, initial_potential, orbitals) = reference_scf_case();
+        let error = solve_atom_scf(
+            AtomScfInput::new(&state, &initial_potential, &orbitals, 1.0)
+                .with_muffin_tin_radius(2.0)
+                .with_max_iterations(1)
+                .with_potential_tolerance(1.0e-10)
+                .with_charge_tolerance(1.0e-10),
+        )
+        .expect_err("single-iteration SCF run should hit convergence cap");
+
+        match error {
+            AtomScfKernelError::ScfNoConvergence {
+                iterations,
+                last_residual_rms,
+                last_charge_delta,
+            } => {
+                assert_eq!(iterations, 1);
+                assert!(last_residual_rms.is_finite() && last_residual_rms > 0.0);
+                assert!(last_charge_delta.is_finite() && last_charge_delta <= 1.0e-8);
+            }
+            other => panic!("unexpected SCF error variant: {}", other),
+        }
+    }
+
+    fn reference_scf_case() -> (BoundStateSolverState, Vec<f64>, [AtomScfOrbitalSpec; 1]) {
+        let state = BoundStateSolverState::new(
+            RadialGrid::from_extent(RadialExtent::new(1.0, 1.5, 40.0), 801, 0.02),
+            64,
+            0.35,
+            2.0,
+        );
+        let initial_potential = coulomb_potential(state.radial_grid().points(), 1.0);
+        let orbitals = [AtomScfOrbitalSpec::new(1, -1, 1.0)
+            .with_valence_occupation(1.0)
+            .with_energy_bounds(-1.2, -0.05)
+            .with_convergence_tolerance(5.0e-7)];
+        (state, initial_potential, orbitals)
     }
 
     fn coulomb_potential(radial_grid: &[f64], nuclear_charge: f64) -> Vec<f64> {
