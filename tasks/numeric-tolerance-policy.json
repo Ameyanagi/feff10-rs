@@ -66,6 +66,23 @@
       }
     },
     {
+      "id": "pot_diagnostic_tables",
+      "description": "POT diagnostic tables with mixed text headers and numeric rows.",
+      "mode": "exact_text",
+      "fileGlobs": [
+        "**/pot.dat"
+      ]
+    },
+    {
+      "id": "pot_convergence_reports",
+      "description": "POT convergence traces with mixed text headers and numeric iteration rows.",
+      "mode": "exact_text",
+      "fileGlobs": [
+        "**/convergence.scf",
+        "**/convergence.scf.fine"
+      ]
+    },
+    {
       "id": "path_listing_reports",
       "description": "PATH listing reports contain non-numeric headers and must remain text-stable.",
       "mode": "exact_text",

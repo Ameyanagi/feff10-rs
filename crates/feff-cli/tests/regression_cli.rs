@@ -537,8 +537,8 @@ fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes
 
     let temp = TempDir::new().expect("tempdir should be created");
     let fixtures = [
-        ("FX-POT-001", "feff10/examples/EXAFS/Cu"),
-        ("FX-WORKFLOW-XAS-001", "feff10/examples/XANES/Cu"),
+        ("FX-POT-ORACLE-001", "feff10/examples/EXAFS/Cu"),
+        ("FX-POT-ORACLE-002", "feff10/examples/XANES/Cu"),
     ];
     let workspace_root = workspace_root();
     let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
@@ -582,16 +582,6 @@ fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes
     );
     write_file(&manifest_path, &manifest);
 
-    for (fixture_id, _) in fixtures {
-        let staged_output_dir = actual_root.join(fixture_id).join("actual");
-        stage_workspace_fixture_file(fixture_id, "xmu.dat", &staged_output_dir.join("xmu.dat"));
-        stage_workspace_fixture_file(
-            fixture_id,
-            "paths.dat",
-            &staged_output_dir.join("paths.dat"),
-        );
-    }
-
     let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_command = format!(
@@ -612,26 +602,24 @@ fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes
         ],
     );
 
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "oracle POT parity should report mismatches against captured Fortran outputs, stderr: {}",
+    assert!(
+        output.status.success(),
+        "oracle POT parity should pass against committed POT oracle baselines, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(
-        stdout.contains("Mismatches:"),
-        "oracle summary should include mismatch totals, stdout: {}",
+        stdout.contains("Regression status: PASS"),
+        "oracle summary should include pass status, stdout: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("Mismatches: 0 fixture(s), 0 artifact(s)"),
+        "oracle summary should report zero mismatches, stdout: {}",
         stdout
     );
 
     for (fixture_id, _) in fixtures {
-        assert!(
-            stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
-            "oracle summary should include fixture-level mismatch details for '{}', stdout: {}",
-            fixture_id,
-            stdout
-        );
         assert!(
             actual_root
                 .join(fixture_id)
@@ -668,7 +656,9 @@ fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes
     let parsed: Value =
         serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
             .expect("report JSON should parse");
-    assert_eq!(parsed["mismatch_fixture_count"], Value::from(2));
+    assert_eq!(parsed["passed"], Value::Bool(true));
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(0));
+    assert_eq!(parsed["mismatch_artifact_count"], Value::from(0));
 
     let fixture_reports = parsed["fixtures"]
         .as_array()
@@ -682,44 +672,44 @@ fn oracle_command_runs_pot_parity_for_required_fixtures_and_applies_policy_modes
             .as_array()
             .expect("fixture artifact reports should be an array");
 
-        let xmu_report = artifact_reports
+        let pot_report = artifact_reports
             .iter()
-            .find(|artifact| artifact["artifact_path"].as_str() == Some("xmu.dat"))
+            .find(|artifact| artifact["artifact_path"].as_str() == Some("pot.dat"))
             .unwrap_or_else(|| {
-                panic!("fixture '{}' should include xmu.dat comparison", fixture_id)
+                panic!("fixture '{}' should include pot.dat comparison", fixture_id)
             });
         assert_eq!(
-            xmu_report["comparison"]["mode"],
-            Value::from("numeric_tolerance"),
-            "xmu.dat should use numeric_tolerance policy mode for fixture '{}'",
+            pot_report["comparison"]["mode"],
+            Value::from("exact_text"),
+            "pot.dat should use exact_text policy mode for fixture '{}'",
             fixture_id
         );
         assert_eq!(
-            xmu_report["comparison"]["matched_category"],
-            Value::from("columnar_spectra"),
-            "xmu.dat should resolve columnar_spectra category for fixture '{}'",
+            pot_report["comparison"]["matched_category"],
+            Value::from("pot_diagnostic_tables"),
+            "pot.dat should resolve pot_diagnostic_tables category for fixture '{}'",
             fixture_id
         );
 
-        let paths_report = artifact_reports
+        let convergence_report = artifact_reports
             .iter()
-            .find(|artifact| artifact["artifact_path"].as_str() == Some("paths.dat"))
+            .find(|artifact| artifact["artifact_path"].as_str() == Some("convergence.scf"))
             .unwrap_or_else(|| {
                 panic!(
-                    "fixture '{}' should include paths.dat comparison",
+                    "fixture '{}' should include convergence.scf comparison",
                     fixture_id
                 )
             });
         assert_eq!(
-            paths_report["comparison"]["mode"],
+            convergence_report["comparison"]["mode"],
             Value::from("exact_text"),
-            "paths.dat should use exact_text policy mode for fixture '{}'",
+            "convergence.scf should use exact_text policy mode for fixture '{}'",
             fixture_id
         );
         assert_eq!(
-            paths_report["comparison"]["matched_category"],
-            Value::from("path_listing_reports"),
-            "paths.dat should resolve path_listing_reports category for fixture '{}'",
+            convergence_report["comparison"]["matched_category"],
+            Value::from("pot_convergence_reports"),
+            "convergence.scf should resolve pot_convergence_reports category for fixture '{}'",
             fixture_id
         );
     }

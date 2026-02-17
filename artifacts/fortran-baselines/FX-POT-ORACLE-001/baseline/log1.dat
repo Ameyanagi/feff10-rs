@@ -1,0 +1,11 @@
+POT true-compute runtime
+ fixture: FX-POT-ORACLE-001
+ title: Cu crystal
+ input-artifacts: pot.inp geom.dat
+ output-artifacts: pot.bin pot.dat log1.dat convergence.scf convergence.scf.fine
+ atom-count: 79
+ potential-count: 2
+ radius-mean:       4.51465
+ radius-max:       5.70791
+ average-zeff:      29.00000
+ scf-control: nmix=1 nohole=-1 nscmt=0 rfms1=     -1.00000 ca1=      0.00000

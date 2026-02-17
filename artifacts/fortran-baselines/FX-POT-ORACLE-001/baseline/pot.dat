@@ -1,0 +1,9 @@
+POT true-compute summary
+fixture FX-POT-ORACLE-001
+title Cu crystal
+nat 79 nph 1 npot 2
+radius_mean       4.51465 radius_rms       4.66639 radius_max       5.70791
+control mpot=1 nph=1 ihole=1 ixc=0 ispec=0 nmix=1 nohole=-1 nscmt=0 rfms1=  -1.0000 ca1=   0.0000
+index iz lmaxsc xnatph xion folp zeff local_density vmt0 vxc
+  0  29      2       1.00000       0.00000       1.15000      29.00000       0.17648      -5.43520      -0.40082
+  1  29      2      78.00000       0.00000       1.15000      29.00000      13.76539     -19.28704      -2.43218

@@ -31,6 +31,9 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - POT model physics updates should route through COMMON + ATOM + EXCH in `crates/feff-core/src/modules/pot/model.rs`: seed orbitals from `common::config::getorb_for_atomic_number`, attempt SCF-derived metrics first, and keep a deterministic EXCH-backed fallback path for fixture grids where radial Dirac solves do not converge.
 - FEFF `s02at.f90` parity depends on its in-place determinant flow (`determ(m1,morb)` followed by `determ(m1,morb-1)` on the mutated matrix) plus the 8x8 per-kappa subshell cap and `elimin` branch for non-terminal core holes.
 - FEFF ATOM total-energy output uses `etotal.f90` sign convention `E_tot = sum(occ_i*e_i) - (E_coul + E_exch) + E_mag + E_ret`; keep this assembly rule explicit when wiring SCF-derived energy terms into downstream POT outputs.
+- Module-scoped oracle parity should use dedicated fixture IDs (for example `FX-POT-ORACLE-*`) with committed snapshots in `artifacts/fortran-baselines/<fixture>/baseline`; comparing against full workflow baselines causes large missing-artifact noise.
+- `select_serial_fixture` for `feff` should prefer workflow candidates with the largest `modulesCovered` set so RDINP+module parity fixtures do not preempt full serial-chain fixtures.
+- Regression RDINP execution should stage `feff.inp` into actual outputs only when the baseline fixture includes `feff.inp`; unconditional staging breaks suites that intentionally compare module outputs only.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -337,4 +340,19 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: compute expensive POT physics once during model construction and reuse cached metrics across `pot.bin`, `pot.dat`, and log renderers to keep module execution deterministic and fast.
   - Gotchas encountered: radial Dirac solves can fail on low-resolution POT fixture grids for high-`Z` species; preserve a deterministic fallback path rather than hard-failing POT artifact generation.
   - Useful context: POT convergence report shaping now incorporates averaged SCF residual/charge seeds from computed potential physics when available.
+---
+## 2026-02-18 01:38:26 JST - US-028
+- Added dedicated POT oracle parity fixtures (`FX-POT-ORACLE-001`, `FX-POT-ORACLE-002`) to `tasks/golden-fixture-manifest.json` with `RDINP+POT` coverage for EXAFS/XANES Cu inputs.
+- Added POT artifact policy entries in `tasks/numeric-tolerance-policy.json` for `pot.dat` and `convergence.scf*` (`pot_diagnostic_tables`, `pot_convergence_reports`) and wired CLI oracle assertions to these categories.
+- Added committed POT oracle baseline snapshots under `artifacts/fortran-baselines/FX-POT-ORACLE-001/baseline/` and `artifacts/fortran-baselines/FX-POT-ORACLE-002/baseline/` (25 artifacts each).
+- Updated `crates/feff-core/src/modules/regression.rs` to stage `feff.inp` in actual outputs only when the baseline fixture includes `feff.inp`, preventing false missing-baseline failures in module-only parity suites.
+- Updated `crates/feff-cli/src/cli/helpers.rs` serial fixture selection to prioritize candidates with broader `modulesCovered` breadth before ID sort, preventing `feff` workflow selection regressions after adding module-scoped oracle fixtures.
+- Updated `crates/feff-cli/tests/regression_cli.rs` POT oracle test to assert a passing oracle run and policy-category resolution on POT-specific artifacts.
+- Verified a focused oracle pass with:
+  - `cargo run -p feff-cli -- oracle --manifest <pot-only-manifest> --policy tasks/numeric-tolerance-policy.json --capture-runner "GITHUB_WORKSPACE='<workspace>' '<workspace>/scripts/fortran/ci-oracle-capture-runner.sh'" --run-rdinp --run-pot`
+- Files changed: `tasks/golden-fixture-manifest.json`, `tasks/numeric-tolerance-policy.json`, `artifacts/fortran-baselines/FX-POT-ORACLE-001/baseline/*`, `artifacts/fortran-baselines/FX-POT-ORACLE-002/baseline/*`, `crates/feff-core/src/modules/regression.rs`, `crates/feff-cli/src/cli/helpers.rs`, `crates/feff-cli/tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: POT oracle parity is stable when baselines are fixture-scoped to the `RDINP+POT` artifact contract instead of full workflow archives.
+  - Gotchas encountered: mixed header+numeric artifacts (for example `pot.dat`, `convergence.scf`) can fail numeric parser mode; keep policy mode aligned with actual file grammar.
+  - Useful context: this repository still has no in-repo `AGENTS.md` under `feff10-rs`, so reusable guidance for this area remains in `scripts/ralph/progress.txt`.
 ---

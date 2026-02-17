@@ -158,7 +158,12 @@ pub(super) fn select_serial_fixture(context: &CliContext) -> ComputeResult<CliMa
         return Ok(matched.clone());
     }
 
-    candidates.sort_by(|a, b| a.id.cmp(&b.id));
+    candidates.sort_by(|a, b| {
+        b.modules_covered
+            .len()
+            .cmp(&a.modules_covered.len())
+            .then_with(|| a.id.cmp(&b.id))
+    });
     Ok(candidates[0].clone())
 }
 
@@ -456,4 +461,3 @@ pub(super) fn run_oracle_capture(workspace_root: &Path, config: &OracleCommandCo
         format!("oracle capture step failed with {}", status_text),
     ))
 }
-

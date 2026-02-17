@@ -418,6 +418,18 @@ pub enum RegressionRunnerError {
         fixture_id: String,
         source: FeffError,
     },
+    #[error(
+        "failed to stage fixture input '{}' for fixture '{}' into '{}': {source}",
+        input_path.display(),
+        fixture_id,
+        output_path.display()
+    )]
+    StageFixtureInput {
+        fixture_id: String,
+        input_path: PathBuf,
+        output_path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("failed to read directory '{}': {source}", path.display())]
     ReadDirectory {
         path: PathBuf,
@@ -470,6 +482,9 @@ impl From<RegressionRunnerError> for FeffError {
             RegressionRunnerError::Dmdw { source, .. } => source,
             RegressionRunnerError::Path { source, .. } => source,
             RegressionRunnerError::Fms { source, .. } => source,
+            RegressionRunnerError::StageFixtureInput { .. } => {
+                FeffError::io_system("IO.REGRESSION_FILESYSTEM", message)
+            }
             RegressionRunnerError::ReadDirectory { .. }
             | RegressionRunnerError::ReportDirectory { .. }
             | RegressionRunnerError::WriteReport { .. } => {
@@ -576,8 +591,8 @@ fn run_rdinp_if_enabled(
     let request = ComputeRequest::new(
         fixture.id.clone(),
         ComputeModule::Rdinp,
-        input_path,
-        output_dir,
+        input_path.clone(),
+        output_dir.clone(),
     );
 
     RdinpModule.execute(&request).map_err(|source| {
@@ -586,6 +601,25 @@ fn run_rdinp_if_enabled(
             source,
         }
     })?;
+
+    // Mirror feff.inp only when the baseline side includes it; some fixture suites compare
+    // module outputs only and intentionally omit source input decks.
+    let baseline_input_path = config
+        .baseline_root
+        .join(&fixture.id)
+        .join(&config.baseline_subdir)
+        .join("feff.inp");
+    if baseline_input_path.is_file() {
+        let staged_input_path = output_dir.join("feff.inp");
+        fs::copy(&input_path, &staged_input_path).map_err(|source| {
+            RegressionRunnerError::StageFixtureInput {
+                fixture_id: fixture.id.clone(),
+                input_path: input_path.clone(),
+                output_path: staged_input_path.clone(),
+                source,
+            }
+        })?;
+    }
 
     Ok(())
 }
