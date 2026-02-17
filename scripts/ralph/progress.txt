@@ -28,6 +28,7 @@
 - When asserting numeric-tolerance comparisons for artifacts with comment/header lines (for example `xsect.dat`), include `numericParsing.commentPrefixes` in the policy override so comparison results are emitted instead of parse-error `comparison: null` entries.
 - For module control decks that include numeric literals in label text (for example `mband : ... if = 1`), parse by keyword marker plus the following value row instead of flattening all numeric tokens across the file.
 - For parity suites that call `run_regression` with module pre-compare hooks enabled, stage each module's required input artifacts into `actual-root/<fixture>/actual` even when baseline outputs are seeded from generated true-compute artifacts.
+- For LDOS oracle parity coverage, stage `ldos.inp`, `geom.dat`, `pot.bin`, and `reciprocal.inp` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-ldos`, and assert failed `ldos*.dat` comparisons report `comparison.mode=numeric_tolerance` with `matched_category=density_tables` and numeric tolerance metrics.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -340,4 +341,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: For `run_regression` stories that enable module pre-compare hooks, stage each module's required inputs into `actual-root/<fixture>/actual` even when comparison baselines are seeded from generated true-compute outputs.
   - Gotchas encountered: `FX-LDOS-001` source `feff.inp` does not satisfy current RDINP parser expectations (`INPUT.RDINP_ATOMS`), so LDOS parity tests must stage module-declared inputs directly instead of forcing an RDINP pre-stage path.
   - Useful context: RDINP-generated `ldos.inp` can omit `neldos`; LDOS runtime parsing now accepts both 5-field and 6-field `mldos` control rows to stay compatible with staged RDINP artifacts.
+---
+## [2026-02-17 10:47:50 JST] - US-028
+- Added LDOS oracle CLI parity coverage in `tests/regression_cli.rs` by running `feff10-rs oracle` with `--run-ldos` for `FX-LDOS-001` using the repository capture runner.
+- Staged LDOS required runtime inputs (`ldos.inp`, `geom.dat`, `pot.bin`, `reciprocal.inp`) under `actual-root/FX-LDOS-001/actual` and asserted true-compute LDOS output generation (`ldos00.dat`, `logdos.dat`) plus fixture-level mismatch reporting.
+- Added deterministic report assertions for failed LDOS density-table comparisons, requiring `comparison.mode = numeric_tolerance`, `matched_category = density_tables`, and numeric tolerance metrics on failed `ldos*.dat` artifact comparisons.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: LDOS oracle parity assertions should target failed `ldos*.dat` entries to verify tolerance-mode/category routing and numeric metric emission together.
+  - Gotchas encountered: `FX-LDOS-001` can parse and run with staged module inputs alone, so oracle parity tests should stage declared LDOS inputs directly rather than chaining RDINP hooks.
+  - Useful context: There are still no repository-local `AGENTS.md` files in this project tree, so reusable conventions are captured in `scripts/ralph/progress.txt`.
 ---

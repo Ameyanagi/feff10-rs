@@ -1919,6 +1919,169 @@ fn oracle_command_runs_band_parity_with_capture_prerequisite_handling() {
 }
 
 #[test]
+fn oracle_command_runs_ldos_parity_with_density_table_tolerance_metrics() {
+    if !command_available("jq") {
+        eprintln!("Skipping LDOS oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-LDOS-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-ldos.json");
+    let fixture_input_dir = workspace_root.join("feff10/examples/HUBBARD/CeO2");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["LDOS"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(fixture_id, "ldos.inp", &staged_output_dir.join("ldos.inp"));
+    stage_workspace_fixture_file(fixture_id, "geom.dat", &staged_output_dir.join("geom.dat"));
+    stage_workspace_fixture_file(fixture_id, "pot.bin", &staged_output_dir.join("pot.bin"));
+    stage_workspace_fixture_file(
+        fixture_id,
+        "reciprocal.inp",
+        &staged_output_dir.join("reciprocal.inp"),
+    );
+    write_file(
+        &staged_output_dir.join("ldos.inp"),
+        "mldos, lfms2, ixc, ispin, minv, neldos\n\
+   1   0   0   0   0      41\n\
+rfms2, emin, emax, eimag, rgrd\n\
+      8.00000    -22.00000     20.00000      0.10000      0.05000\n\
+rdirec, toler1, toler2\n\
+     16.00000      0.00100      0.00100\n\
+ lmaxph(0:nph)\n\
+   1   3   1\n",
+    );
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-ldos",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "LDOS oracle parity should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Fixture FX-LDOS-001 mismatches"),
+        "LDOS oracle summary should include fixture mismatch details, stdout: {}",
+        stdout
+    );
+    assert!(
+        actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("ldos00.dat")
+            .is_file(),
+        "run-ldos should materialize ldos00.dat"
+    );
+    assert!(
+        actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("logdos.dat")
+            .is_file(),
+        "run-ldos should materialize logdos.dat"
+    );
+    assert!(
+        report_path.is_file(),
+        "LDOS oracle parity should emit a report"
+    );
+
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let fixture_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-LDOS-001");
+    let artifact_reports = fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+
+    let failed_ldos_table_report = artifact_reports
+        .iter()
+        .find(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| path.starts_with("ldos") && path.ends_with(".dat"))
+                && artifact["passed"] == Value::Bool(false)
+        })
+        .expect("expected at least one failed ldos*.dat comparison");
+    assert_eq!(
+        failed_ldos_table_report["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "failed ldos*.dat artifacts should use numeric_tolerance mode"
+    );
+    assert_eq!(
+        failed_ldos_table_report["comparison"]["matched_category"],
+        Value::from("density_tables"),
+        "failed ldos*.dat artifacts should resolve density_tables policy category"
+    );
+    assert_eq!(
+        failed_ldos_table_report["comparison"]["metrics"]["kind"],
+        Value::from("numeric_tolerance"),
+        "failed ldos*.dat artifacts should include numeric tolerance metrics"
+    );
+    assert!(
+        failed_ldos_table_report["comparison"]["metrics"]["compared_values"]
+            .as_u64()
+            .is_some_and(|count| count > 0),
+        "failed ldos*.dat tolerance metrics should include compared values"
+    );
+}
+
+#[test]
 fn oracle_command_run_screen_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");
