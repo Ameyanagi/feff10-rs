@@ -2,9 +2,7 @@ mod model;
 mod parser;
 
 use super::ModuleExecutor;
-use crate::domain::{
-    ComputeArtifact, ComputeRequest, ComputeResult, FeffError,
-};
+use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use crate::parser::parse_input_deck;
 use std::fs;
 
@@ -160,10 +158,7 @@ pub struct RdinpContract {
 pub struct RdinpModule;
 
 impl RdinpModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<RdinpContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<RdinpContract> {
         let model = model_for_request(request)?;
         Ok(RdinpContract {
             required_inputs: artifact_list(&RDINP_REQUIRED_INPUTS),
@@ -219,7 +214,7 @@ fn model_for_request(request: &ComputeRequest) -> ComputeResult<RdinpModel> {
 #[cfg(test)]
 mod tests {
     use super::{RdinpModule, model::expected_outputs_for_screen_card};
-    use crate::domain::{FeffErrorCategory, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::fs;
     use std::path::{Path, PathBuf};
@@ -326,6 +321,83 @@ mod tests {
                 generated
             );
         }
+    }
+
+    #[test]
+    fn execute_uses_edge_card_for_hole_code_and_lifetime_defaults() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join("feff.inp");
+        let output_dir = temp.path().join("actual");
+        fs::write(
+            &input_path,
+            "TITLE Cu L3\nEDGE L3\nPOTENTIALS\n0 29 Cu\n1 29 Cu\nATOMS\n0.0 0.0 0.0 0 Cu\n1.0 0.0 0.0 1 Cu\nEND\n",
+        )
+        .expect("input should be written");
+
+        let request = ComputeRequest::new(
+            "FX-RDINP-L3",
+            ComputeModule::Rdinp,
+            &input_path,
+            &output_dir,
+        );
+        let scaffold = RdinpModule;
+        scaffold
+            .execute(&request)
+            .expect("RDINP execution should succeed");
+
+        let pot_inp = fs::read_to_string(output_dir.join("pot.inp")).expect("pot.inp");
+        let header_line = pot_inp
+            .lines()
+            .nth(1)
+            .expect("pot header numeric row should exist");
+        let header_values: Vec<i32> = header_line
+            .split_whitespace()
+            .map(|value| {
+                value
+                    .parse::<i32>()
+                    .expect("pot header values should be integers")
+            })
+            .collect();
+        assert_eq!(header_values[3], 4, "EDGE L3 should map to ihole=4");
+
+        let gamma_line = pot_inp
+            .lines()
+            .skip_while(|line| !line.to_ascii_lowercase().contains("gamach"))
+            .nth(1)
+            .expect("pot gamma numeric row should exist");
+        let pot_gamach = gamma_line
+            .split_whitespace()
+            .next()
+            .expect("pot gamma row should contain gamach")
+            .parse::<f64>()
+            .expect("pot gamach should parse");
+        assert!(
+            (pot_gamach - 0.59604).abs() <= 1.0e-5,
+            "pot gamach should match setgam L3 value"
+        );
+
+        let xsph_inp = fs::read_to_string(output_dir.join("xsph.inp")).expect("xsph.inp");
+        let xsph_rgrd_line = xsph_inp
+            .lines()
+            .skip_while(|line| !line.to_ascii_lowercase().contains("rgrd, rfms2, gamach"))
+            .nth(1)
+            .expect("xsph gamma numeric row should exist");
+        let xsph_values: Vec<f64> = xsph_rgrd_line
+            .split_whitespace()
+            .map(|value| {
+                value
+                    .parse::<f64>()
+                    .expect("xsph numeric value should parse")
+            })
+            .collect();
+        assert!(
+            (xsph_values[2] - 0.59604).abs() <= 1.0e-5,
+            "xsph gamach should match setgam L3 value"
+        );
+
+        let log_dat = fs::read_to_string(output_dir.join("log.dat")).expect("log.dat");
+        assert!(log_dat.contains("Core hole lifetime set to"));
+        assert!(log_dat.contains("0.59603872469304"));
     }
 
     #[test]

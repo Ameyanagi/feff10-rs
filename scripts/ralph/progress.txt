@@ -22,6 +22,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF COMMON physical constants should be centralized in `crates/feff-core/src/common/constants.rs`; import them from `crate::common::constants` (for example `PI`, `PI2`, `FA`) instead of repeating local literals.
 - For large FEFF COMMON tables, store raw constants in `crates/feff-core/src/common/config_data.rs` and keep module code on typed lookups from `crates/feff-core/src/common/config.rs` so physics kernels do not index giant arrays directly.
 - FEFF `getorb`-style extraction in Rust should preserve 1-based orbital table indices (`1..=40`) and provide a kappa projection lookup equivalent to Fortran `iorb(-5:4)` over occupied orbitals.
+- FEFF edge defaults should use `common::edge::{hole_code_from_edge_spec, core_hole_lifetime_ev}` so RDINP-generated `ihole` and `gamach` remain aligned with `setedg`/`setgam` behavior.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -237,4 +238,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: model FEFF orbital extraction on occupied-state compaction plus a kappa-indexed projection lookup, not on raw full-table scans in downstream physics modules.
   - Gotchas encountered: this environment exposes `python3` but not `python`; use `jq` or `python3` for PRD/progress automation scripts.
   - Useful context: K/L/M shell selection can be derived directly from `nnum` (`n=1/2/3`) while preserving FEFF orbital index ordering for deterministic edge-related lookups.
+---
+
+## 2026-02-18 00:10:38 JST - US-020
+- Implemented FEFF `isedge`/`setedg`/`setgam` equivalents in a new COMMON helper module `crates/feff-core/src/common/edge.rs`, including edge label/code mapping (`0..40`) and core-hole lifetime interpolation tables with O-shell fallback behavior.
+- Wired RDINP output generation to use the new helpers so `pot.inp`/`xsph.inp` `ihole` and `gamach` defaults track input `EDGE`/`HOLE` selection (defaulting to K edge when unspecified) and absorber atomic number.
+- Added fixture-driven regression coverage for K/L1/L2/L3 broadening parity in `tasks/common-edge-lifetime-fixtures.json` and `crates/feff-core/tests/common_edge_lifetime_regression.rs`, plus an RDINP integration test asserting L3 propagation into emitted artifacts.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/common/mod.rs`, `crates/feff-core/src/common/edge.rs`, `crates/feff-core/src/modules/rdinp/model.rs`, `crates/feff-core/src/modules/rdinp/mod.rs`, `crates/feff-core/tests/common_edge_lifetime_regression.rs`, `tasks/common-edge-lifetime-fixtures.json`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: keep edge parsing and core-hole lifetime logic centralized in `common::edge` and reuse it in RDINP-like emitters instead of hardcoding K-edge constants.
+  - Gotchas encountered: FEFF `setgam.f90` tables are initialized from single-precision literals; preserving parity in Rust requires matching that precision (store constants as `f32`, then convert) before log interpolation.
+  - Useful context: RDINP parity tests (`rdinp_parity.rs`) are exact-text for scaffold files, so dynamic `gamach` formatting must remain stable for existing K-edge fixtures.
 ---

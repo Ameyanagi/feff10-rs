@@ -1,0 +1,68 @@
+{
+  "edgeLifetimeCases": [
+    {
+      "id": "FX-COMMON-EDGE-001",
+      "atomicNumber": 26,
+      "edge": "K",
+      "expectedGamachEv": 1.30892650125676,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-002",
+      "atomicNumber": 26,
+      "edge": "L1",
+      "expectedGamachEv": 4.58583902936148,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-003",
+      "atomicNumber": 26,
+      "edge": "L2",
+      "expectedGamachEv": 0.895648705359171,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-004",
+      "atomicNumber": 26,
+      "edge": "L3",
+      "expectedGamachEv": 0.417011361516226,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-005",
+      "atomicNumber": 29,
+      "edge": "K",
+      "expectedGamachEv": 1.72918818490579,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-006",
+      "atomicNumber": 29,
+      "edge": "L1",
+      "expectedGamachEv": 5.2801373216517,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-007",
+      "atomicNumber": 29,
+      "edge": "L2",
+      "expectedGamachEv": 1.16175713929351,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-008",
+      "atomicNumber": 29,
+      "edge": "L3",
+      "expectedGamachEv": 0.596038724693039,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    }
+  ]
+}

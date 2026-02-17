@@ -1,13 +1,14 @@
 use super::parser::{
-    AtomSite, PotentialEntry, card_value, deck_edge_label, deck_title, has_card,
-    parse_atoms, parse_potentials, required_card_value, sort_atoms_by_distance, first_card,
+    AtomSite, PotentialEntry, card_value, deck_edge_label, deck_title, first_card, has_card,
+    parse_atoms, parse_potentials, required_card_value, sort_atoms_by_distance,
 };
 use super::{
-    RDINP_BASE_OUTPUTS_PREFIX, RDINP_BASE_OUTPUTS_SUFFIX, RDINP_OPTIONAL_SCREEN_OUTPUT,
     BAND_INP_TEMPLATE, COMPTON_INP_TEMPLATE, CRPA_INP_TEMPLATE, DMDW_INP_TEMPLATE,
-    EELS_INP_TEMPLATE, FULLSPECTRUM_INP_TEMPLATE, GENFMT_INP_TEMPLATE,
-    GLOBAL_INP_TEMPLATE, RECIPROCAL_INP_TEMPLATE, RIXS_INP_TEMPLATE,
+    EELS_INP_TEMPLATE, FULLSPECTRUM_INP_TEMPLATE, GENFMT_INP_TEMPLATE, GLOBAL_INP_TEMPLATE,
+    RDINP_BASE_OUTPUTS_PREFIX, RDINP_BASE_OUTPUTS_SUFFIX, RDINP_OPTIONAL_SCREEN_OUTPUT,
+    RECIPROCAL_INP_TEMPLATE, RIXS_INP_TEMPLATE,
 };
+use crate::common::edge::{core_hole_lifetime_ev, hole_code_from_edge_spec};
 use crate::domain::{ComputeArtifact, ComputeResult, FeffError, InputDeck};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 
@@ -19,6 +20,8 @@ pub(super) struct RdinpModel {
     has_xanes: bool,
     ispec: i32,
     nohole: i32,
+    ihole: i32,
+    gamach: f64,
     nscmt: i32,
     ca1: f64,
     rfms: f64,
@@ -93,6 +96,8 @@ impl RdinpModel {
             None => -1,
         };
 
+        let ihole = hole_code_from_input(deck)?;
+        let gamach = core_hole_lifetime_ev(absorber_atomic_number(&potentials), ihole);
         let nscmt = if has_xanes { 30 } else { 0 };
         let ca1 = if has_card(deck, "SCF") { 0.2 } else { 0.0 };
         let title = deck_title(deck);
@@ -110,6 +115,8 @@ impl RdinpModel {
             has_xanes,
             ispec,
             nohole,
+            ihole,
+            gamach,
             nscmt,
             ca1,
             rfms,
@@ -208,7 +215,7 @@ impl RdinpModel {
         content.push_str("mpot, nph, ntitle, ihole, ipr1, iafolp, ixc,ispec\n");
         content.push_str(&format!(
             "{:>4}{:>4}{:>4}{:>4}{:>4}{:>4}{:>4}{:>4}\n",
-            1, nph, 1, 1, 0, 0, 0, self.ispec
+            1, nph, 1, self.ihole, 0, 0, 0, self.ispec
         ));
         content.push_str("nmix, nohole, jumprm, inters, nscmt, icoul, lfms1, iunf\n");
         content.push_str(&format!(
@@ -219,7 +226,7 @@ impl RdinpModel {
         content.push_str("gamach, rgrd, ca1, ecv, totvol, rfms1\n");
         content.push_str(&format!(
             "{}{}{}{}{}{}\n",
-            format_f64_13(1.72919),
+            format_f64_13(self.gamach),
             format_f64_13(0.05),
             format_f64_13(self.ca1),
             format_f64_13(-40.0),
@@ -315,7 +322,7 @@ impl RdinpModel {
             "{}{}{}{}{}{}{}{}\n",
             format_f64_13(0.05),
             format_f64_13(self.rfms),
-            format_f64_13(1.72919),
+            format_f64_13(self.gamach),
             format_f64_13(0.07),
             format_f64_13(self.xkmax),
             format_f64_13(0.0),
@@ -475,7 +482,10 @@ impl RdinpModel {
         } else {
             content.push_str(" FEFF 9.5.1\n");
         }
-        content.push_str(" Core hole lifetime set to    1.72918818490579      eV.\n");
+        content.push_str(&format!(
+            " Core hole lifetime set to{:>20.14}      eV.\n",
+            self.gamach
+        ));
         content.push_str(&format!(" {}\n", self.title));
         content
     }
@@ -529,6 +539,37 @@ fn render_lmaxph_line(nph: i32) -> String {
 
 fn format_f64_13(value: f64) -> String {
     format_fixed_f64(value, 13, 5)
+}
+
+fn absorber_atomic_number(potentials: &[PotentialEntry]) -> i32 {
+    potentials
+        .iter()
+        .find(|entry| entry.ipot == 0)
+        .or_else(|| potentials.first())
+        .map(|entry| entry.atomic_number)
+        .unwrap_or(0)
+}
+
+fn hole_code_from_input(deck: &InputDeck) -> ComputeResult<i32> {
+    if let Some(edge) = first_card(deck, "EDGE").and_then(|card| card.values.first()) {
+        return parse_hole_code_token(edge, "EDGE");
+    }
+    if let Some(hole) = first_card(deck, "HOLE").and_then(|card| card.values.first()) {
+        return parse_hole_code_token(hole, "HOLE");
+    }
+    Ok(1)
+}
+
+fn parse_hole_code_token(token: &str, source_card: &str) -> ComputeResult<i32> {
+    hole_code_from_edge_spec(token).ok_or_else(|| {
+        FeffError::input_validation(
+            "INPUT.RDINP_EDGE",
+            format!(
+                "unrecognized {} value '{}': expected edge label (K, L1, ...) or hole code (0..40)",
+                source_card, token
+            ),
+        )
+    })
 }
 
 pub(super) fn expected_outputs_for_screen_card(has_screen_card: bool) -> Vec<ComputeArtifact> {
