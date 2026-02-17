@@ -16,6 +16,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF `conv.f90` parity requires an extrapolated final interval with `dx = max(last_step, 50*broadening)` and a small-`|t|` polynomial branch for `conv1` when `|t| < 0.1`.
 - Keep numerics cross-domain regression baselines in `tasks/math-regression-fixtures.json` and load them from integration tests so Bessel/harmonics/Wigner/linalg/integration/convolution checks share one fixture source.
 - Exchange-model plumbing should map FEFF `ixc` through `numerics::exchange::ExchangeModel::from_feff_ixc` and invoke `ExchangePotentialApi::evaluate` in POT/XSPH compute paths while preserving existing placeholder output formulas until model kernels are ported.
+- FEFF EXCH parity ports should convert electron density to `rs = (3/(4*pi*rho))^(1/3)` (fallback `rs=10` for non-positive density) and clamp normalized momentum `x=k/kf` to at least `1.00001` before evaluating `rhl`/`edp` formulas.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -162,4 +163,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: keep FEFF `ixc` parsing in module-specific parsers (`pot`/`xsph`) and convert to shared numerics model enums at model-construction boundaries.
   - Gotchas encountered: this story intentionally leaves the exchange evaluator returning zero placeholders to avoid output drift before model-specific kernel ports (`US-014`/`US-015`).
   - Useful context: no repository-local `AGENTS.md` files exist in this workspace, so reusable module conventions remain documented in `scripts/ralph/progress.txt`.
+---
+
+## 2026-02-17 23:29:01 JST - US-014
+- Implemented FEFF-parity Hedin-Lundqvist and Dirac-Hara evaluators in `crates/feff-core/src/numerics/exchange/mod.rs` by porting `rhl.f90`/`imhl.f90`/`edp.f90` logic (including Quinn damping, cubic-root branch handling, and FEFF interpolation coefficient tables).
+- Updated `ExchangePotentialApi::evaluate` to execute model-specific kernels for `HedinLundqvist` and `DiracHara` while leaving `VonBarthHedin`/`PerdewZunger` as zero placeholders until `US-015`.
+- Added unit tests with explicit FEFF reference samples for both HL and DH model outputs (real/imaginary components) and verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/exchange/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: when porting Fortran multi-dimensional coefficient tables (`rcfl`/`rcfr`), preserve original column-major data ordering and index explicitly rather than transposing literals.
+  - Gotchas encountered: round-tripping `rs` through density conversion introduces small floating-point drift, so FEFF reference assertions should use realistic tolerances (order `1e-7`) instead of ultra-tight equality.
+  - Useful context: FEFF EXCH reference vectors can be regenerated locally by compiling `m_constants.f90`, `m_par.f90`, `EXCH/{cubic,ffq,imhl,rhl,edp}.f90`, and `SELF/quinn.f90` in a small harness.
 ---
