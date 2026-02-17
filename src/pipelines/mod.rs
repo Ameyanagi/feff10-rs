@@ -58,6 +58,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Pot
             | PipelineModule::Screen
             | PipelineModule::SelfEnergy
+            | PipelineModule::Eels
             | PipelineModule::Crpa
             | PipelineModule::Xsph
             | PipelineModule::Path
@@ -99,6 +100,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Pot => RuntimePotExecutor.execute_runtime(request),
         PipelineModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
         PipelineModule::SelfEnergy => RuntimeSelfExecutor.execute_runtime(request),
+        PipelineModule::Eels => RuntimeEelsExecutor.execute_runtime(request),
         PipelineModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
         PipelineModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
         PipelineModule::Path => RuntimePathExecutor.execute_runtime(request),
@@ -145,6 +147,15 @@ struct RuntimeSelfExecutor;
 impl RuntimePipelineExecutor for RuntimeSelfExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         self_energy::SelfEnergyPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeEelsExecutor;
+
+impl RuntimePipelineExecutor for RuntimeEelsExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        eels::EelsPipelineScaffold.execute(request)
     }
 }
 
@@ -404,6 +415,7 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Pot));
         assert!(runtime_compute_engine_available(PipelineModule::Screen));
         assert!(runtime_compute_engine_available(PipelineModule::SelfEnergy));
+        assert!(runtime_compute_engine_available(PipelineModule::Eels));
         assert!(runtime_compute_engine_available(PipelineModule::Crpa));
         assert!(runtime_compute_engine_available(PipelineModule::Xsph));
         assert!(runtime_compute_engine_available(PipelineModule::Path));
@@ -559,6 +571,38 @@ mod tests {
                 .iter()
                 .any(|artifact| artifact.relative_path == Path::new("xmu.dat")),
             "SELF runtime should emit rewritten spectrum outputs"
+        );
+    }
+
+    #[test]
+    fn runtime_dispatch_executes_eels_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("eels.inp"), EELS_INPUT_FIXTURE)
+            .expect("eels input should be written");
+        std::fs::write(input_dir.join("xmu.dat"), EELS_XMU_INPUT_FIXTURE)
+            .expect("xmu input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-EELS-001",
+            PipelineModule::Eels,
+            input_dir.join("eels.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Eels, &request)
+            .expect("EELS runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("eels.dat")),
+            "EELS runtime should emit eels.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logeels.dat")),
+            "EELS runtime should emit logeels.dat"
         );
     }
 
@@ -1040,6 +1084,34 @@ NULL
     8979.411  -16.765  -1.406  1.46870E-02  1.79897E-02 -3.30270E-03
     8980.979  -15.197  -1.252  2.93137E-02  3.59321E-02 -6.61845E-03
     8982.398  -13.778  -1.093  3.93900E-02  4.92748E-02 -9.88483E-03
+";
+
+    const EELS_INPUT_FIXTURE: &str = "calculate ELNES?
+   1
+average? relativistic? cross-terms? Which input?
+   0   1   1   1   4
+polarizations to be used ; min step max
+   1   1   9
+beam energy in eV
+ 300000.00000
+beam direction in arbitrary units
+      0.00000      1.00000      0.00000
+collection and convergence semiangle in rad
+      0.00240      0.00000
+qmesh - radial and angular grid size
+   5   3
+detector positions - two angles in rad
+      0.00000      0.00000
+calculate magic angle if magic=1
+   0
+energy for magic angle - eV above threshold
+      0.00000
+";
+
+    const EELS_XMU_INPUT_FIXTURE: &str = "# omega e k mu mu0 chi
+8979.411 -16.773 -1.540 5.56205E-06 6.25832E-06 -6.96262E-07
+8980.979 -15.204 -1.400 6.61771E-06 7.52318E-06 -9.05473E-07
+8982.398 -13.786 -1.260 7.99662E-06 9.19560E-06 -1.19897E-06
 ";
 
     const CRPA_INPUT_FIXTURE: &str = " do_CRPA           1

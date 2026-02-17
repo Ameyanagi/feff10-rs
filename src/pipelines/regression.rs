@@ -2482,7 +2482,7 @@ mod tests {
         assert!(!report.passed);
 
         let output_dir = actual_root.join("FX-EELS-001").join("actual");
-        let has_eels_output = ["eels.dat", "logeels.dat", "magic.dat", "reference_eels.dat"]
+        let has_eels_output = ["eels.dat", "logeels.dat", "magic.dat"]
             .iter()
             .any(|artifact| output_dir.join(artifact).is_file());
         assert!(has_eels_output, "EELS output should exist");

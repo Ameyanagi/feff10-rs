@@ -384,6 +384,28 @@ fn sfconv_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn eels_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_eels_input(temp.path().join("eels.inp"));
+    stage_eels_spectrum_input(temp.path().join("xmu.dat"));
+
+    let eels = run_cli_command(temp.path(), &["eels"]);
+    assert!(
+        eels.status.success(),
+        "eels should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&eels.stderr)
+    );
+    assert!(
+        temp.path().join("eels.dat").is_file(),
+        "eels should emit eels.dat"
+    );
+    assert!(
+        temp.path().join("logeels.dat").is_file(),
+        "eels should emit logeels.dat"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
@@ -616,6 +638,58 @@ fn stage_self_spectrum_input(destination: PathBuf) {
     fs::write(
         &destination,
         "# fallback xmu\n1.0 0.0 0.0 0.01\n2.0 0.0 0.0 0.02\n3.0 0.0 0.0 0.03\n",
+    )
+    .expect("xmu input should be staged");
+}
+
+fn stage_eels_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-EELS-001")
+        .join("baseline")
+        .join("eels.inp");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("eels input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("eels input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "calculate ELNES?\n   1\naverage? relativistic? cross-terms? Which input?\n   0   1   1   1   4\npolarizations to be used ; min step max\n   1   1   9\nbeam energy in eV\n 300000.00000\nbeam direction in arbitrary units\n      0.00000      1.00000      0.00000\ncollection and convergence semiangle in rad\n      0.00240      0.00000\nqmesh - radial and angular grid size\n   5   3\ndetector positions - two angles in rad\n      0.00000      0.00000\ncalculate magic angle if magic=1\n   0\nenergy for magic angle - eV above threshold\n      0.00000\n",
+    )
+    .expect("eels input should be staged");
+}
+
+fn stage_eels_spectrum_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-EELS-001")
+        .join("baseline")
+        .join("xmu.dat");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("xmu input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("xmu input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "# omega e k mu mu0 chi\n8979.411 -16.773 -1.540 5.56205E-06 6.25832E-06 -6.96262E-07\n8980.979 -15.204 -1.400 6.61771E-06 7.52318E-06 -9.05473E-07\n8982.398 -13.786 -1.260 7.99662E-06 9.19560E-06 -1.19897E-06\n",
     )
     .expect("xmu input should be staged");
 }

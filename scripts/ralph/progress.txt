@@ -17,6 +17,7 @@
 - For oracle parity on fixtures with `baselineStatus=requires_fortran_capture` and unresolved `REFERENCE/*.inp` entry files (for example `FX-BAND-001`), pass `--capture-allow-missing-entry-files` and assert capture `metadata.txt` records `missing_entry_files`.
 - For oracle parity tests that must cover optional module inputs, stage required artifacts directly into `actual-root/<fixture>/actual` and run only the target module hook (for example, `--run-screen`) so optional-file present/absent variants are deterministic.
 - For true-compute modules with optional inputs, keep the output artifact contract stable and encode optional-input presence/absence in deterministic output metadata so parity and CLI tests can assert both input variants without changing expected output filenames.
+- For EELS true-compute flows, treat `magic.dat` as optional output enabled by either `eels.inp` magic flag or staged `magic.inp`, and keep baseline seeding plus staged actual inputs on the same optional-input variant for deterministic regression/oracle coverage.
 - For single-fixture oracle parity tests that must prove both tolerance reporting and contract-failure diagnostics, use a story-specific policy override for one artifact and stage one synthetic actual-only artifact to assert deterministic `Missing baseline artifact` reasons.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - For multi-fixture oracle parity stories, assert `mismatch_fixtures` per required fixture (not only aggregate mismatch counts) so artifact-level reason coverage remains deterministic.
@@ -458,4 +459,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: SELF oracle parity can be validated by staging `sfconv.inp` plus one spectrum file and asserting rewritten spectrum bytes (`loss.dat`) rather than only existence checks.
   - Gotchas encountered: `FX-SELF-001` entry files such as `loss.dat` are not present in `inputDirectory`; without a manifest `baselineSources` reference archive path, oracle capture fails before comparisons run.
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 12:14:32 JST] - US-037
+- Replaced `src/pipelines/eels.rs` baseline materialization with a true-compute EELS pipeline that parses staged `eels.inp` and `xmu.dat` (plus optional `magic.inp`) and deterministically computes `eels.dat` and `logeels.dat`, with optional `magic.dat` generation, without runtime reads from `artifacts/fortran-baselines`.
+- Enabled EELS as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring) and added runtime dispatch coverage plus CLI module-command coverage for successful `eels` execution.
+- Reworked EELS parity coverage in `tests/eels_parity.rs` to the true-compute pattern (required artifact checks, deterministic repeated runs, optional `magic.inp` behavior checks, and regression baselines seeded from generated outputs), and updated README runtime/regression docs to describe `--run-eels` as true-compute execution.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/pipelines/eels.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `tests/eels_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: EELS output contract is dynamic on optional magic controls; `magic.dat` should be expected when either `eels.inp` enables magic or `magic.inp` is staged.
+  - Gotchas encountered: Existing regression helper tests staged minimal `eels.inp` control rows, so EELS parsing must keep deterministic defaults for omitted optional control rows instead of requiring full-deck parity formatting.
+  - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---
