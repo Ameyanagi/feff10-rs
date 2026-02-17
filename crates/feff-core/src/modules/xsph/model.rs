@@ -9,6 +9,8 @@ use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, wri
 use crate::numerics::exchange::{
     ExchangeEvaluationInput, ExchangeModel, ExchangePotential, ExchangePotentialApi,
 };
+use crate::numerics::{ComplexEnergySolverState, RadialExtent, RadialGrid};
+use num_complex::Complex64;
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -21,6 +23,7 @@ pub(super) struct XsphModel {
     wscrn: Option<WscrnXsphInput>,
     exchange_model: ExchangeModel,
     exchange_api: ExchangePotential,
+    complex_state: ComplexEnergySolverState,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -47,21 +50,44 @@ impl XsphModel {
     ) -> ComputeResult<Self> {
         let control = parse_xsph_source(fixture_id, xsph_source)?;
         let exchange_model = ExchangeModel::from_feff_ixc(control.ixc);
+        let geom = parse_geom_source(fixture_id, geom_source)?;
+        let global = parse_global_source(fixture_id, global_source)?;
+        let pot = parse_pot_source(fixture_id, pot_bytes)?;
+        let wscrn = wscrn_source
+            .map(|source| parse_wscrn_source(fixture_id, source))
+            .transpose()?;
+        let radial_point_count = wscrn
+            .map(|input| input.radial_points)
+            .unwrap_or((geom.atom_count.max(4) * 16).clamp(64, 4096))
+            .clamp(64, 4096);
+        let radial_grid = RadialGrid::from_extent(
+            RadialExtent::new(geom.radius_mean, geom.radius_rms, geom.radius_max),
+            radial_point_count,
+            control.xkstep.abs().max(1.0e-4),
+        );
+        let complex_state = ComplexEnergySolverState::new(
+            radial_grid,
+            Complex64::new(-(control.gamach + pot.gamach), control.xkmax),
+            control.xkmax,
+            (control.lmaxph_max + control.nph).max(1) as usize,
+        );
+
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             control,
-            geom: parse_geom_source(fixture_id, geom_source)?,
-            global: parse_global_source(fixture_id, global_source)?,
-            pot: parse_pot_source(fixture_id, pot_bytes)?,
-            wscrn: wscrn_source
-                .map(|source| parse_wscrn_source(fixture_id, source))
-                .transpose()?,
+            geom,
+            global,
+            pot,
+            wscrn,
             exchange_model,
             exchange_api: ExchangePotential,
+            complex_state,
         })
     }
 
     fn output_config(&self) -> XsphOutputConfig {
+        let radial_extent = self.complex_state.radial_grid().extent();
+        let complex_energy = self.complex_state.energy();
         let _exchange = self.exchange_api.evaluate(ExchangeEvaluationInput::new(
             self.exchange_model,
             self.pot.charge_scale,
@@ -69,9 +95,7 @@ impl XsphModel {
             self.control.xkmax,
         ));
 
-        let phase_channels = (self.control.lmaxph_max + self.control.nph)
-            .max(2)
-            .clamp(2, 16) as usize;
+        let phase_channels = self.complex_state.channel_count_hint().clamp(2, 16);
 
         let spectral_points = (((self.geom.nat.max(1) as f64).sqrt() * 10.0).round() as usize
             + (self.control.n_poles.max(8) as usize / 2)
@@ -88,8 +112,8 @@ impl XsphModel {
                 .map(|wscrn| wscrn.radial_points as f64 * 1.0e-6)
                 .unwrap_or(0.0);
 
-        let energy_start = -(self.control.gamach + self.pot.gamach) * 6.0
-            - self.geom.radius_mean * 2.0
+        let energy_start = complex_energy.re * 6.0
+            - radial_extent.mean * 2.0
             - self.global.max_abs.min(50.0) * 0.01;
         let energy_step = (self.control.xkstep.max(1.0e-4) * 3.5).max(1.0e-4);
 
@@ -100,23 +124,23 @@ impl XsphModel {
             + screening_shift)
             .clamp(-std::f64::consts::PI, std::f64::consts::PI);
 
-        let phase_scale = (1.0 + self.control.rfms2 + self.pot.rfms + self.geom.radius_rms)
+        let phase_scale = (1.0 + self.control.rfms2 + self.pot.rfms + radial_extent.rms)
             .ln()
             .max(0.1)
             + self.pot.radius_rms * 0.005;
 
         let damping = 1.0
-            / (self.control.xkmax
+            / (self.complex_state.max_wave_number()
                 + self.pot.radius_max
-                + self.geom.radius_mean
-                + 0.5 * self.geom.radius_max
+                + radial_extent.mean
+                + 0.5 * radial_extent.max
                 + 2.0)
                 .max(1.0);
 
         let xsnorm = ((self.global.rms + self.pot.charge_scale + self.pot.radius_mean).abs()
             * 1.0e-3
             * (1.0 + 0.02 * self.control.ispec.abs() as f64)
-            * (1.0 + 0.01 * self.geom.radius_max)
+            * (1.0 + 0.01 * radial_extent.max)
             * (1.0 + 0.01 * self.pot.npot as f64))
             .max(1.0e-6);
 

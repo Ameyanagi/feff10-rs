@@ -6,6 +6,7 @@ use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, wri
 use crate::numerics::exchange::{
     ExchangeEvaluationInput, ExchangeModel, ExchangePotential, ExchangePotentialApi,
 };
+use crate::numerics::{BoundStateSolverState, RadialGrid};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -17,6 +18,7 @@ pub(super) struct PotModel {
     geometry: GeomModel,
     exchange_model: ExchangeModel,
     exchange_api: ExchangePotential,
+    bound_state: BoundStateSolverState,
 }
 
 impl PotModel {
@@ -28,6 +30,22 @@ impl PotModel {
         let (title, control, potentials) = parse_pot_input(fixture_id, pot_source)?;
         let geometry = parse_geom_input(fixture_id, geom_source)?;
         let exchange_model = ExchangeModel::from_feff_ixc(control.ixc);
+        let sampled_radii = geometry
+            .atoms
+            .iter()
+            .map(|atom| (atom.x * atom.x + atom.y * atom.y + atom.z * atom.z).sqrt())
+            .collect::<Vec<_>>();
+        let radial_grid = RadialGrid::from_sampled_radii(
+            &sampled_radii,
+            (geometry.atoms.len().max(4) * 16).clamp(64, 4096),
+            control.rgrd.abs().max(1.0e-4),
+        );
+        let bound_state = BoundStateSolverState::new(
+            radial_grid,
+            control.nmix.unsigned_abs() as usize,
+            control.ca1,
+            control.rfms1,
+        );
         Ok(Self {
             fixture_id: fixture_id.to_string(),
             title,
@@ -36,6 +54,7 @@ impl PotModel {
             geometry,
             exchange_model,
             exchange_api: ExchangePotential,
+            bound_state,
         })
     }
 
@@ -255,7 +274,7 @@ impl PotModel {
 
     fn render_convergence(&self, fine: bool) -> String {
         let label = if fine { "fine" } else { "coarse" };
-        let base_iterations = self.control.nmix.unsigned_abs() as usize;
+        let base_iterations = self.bound_state.iteration_limit();
         let iterations = if fine {
             base_iterations.clamp(6, 20)
         } else {
@@ -263,10 +282,10 @@ impl PotModel {
         };
         let damping = if fine { 0.62_f64 } else { 0.48_f64 };
         let base_residual = 0.32_f64
-            + self.control.ca1.abs() * 0.45_f64
-            + self.control.rfms1.abs() * 0.02_f64
+            + self.bound_state.mixing_parameter() * 0.45_f64
+            + self.bound_state.muffin_tin_radius() * 0.02_f64
             + (self.geometry.nat as f64) * 1.0e-4_f64;
-        let mixing = (self.control.ca1.abs() + 0.15_f64).clamp(0.10_f64, 0.95_f64);
+        let mixing = (self.bound_state.mixing_parameter() + 0.15_f64).clamp(0.10_f64, 0.95_f64);
 
         let mut lines = Vec::new();
         lines.push(format!("iteration residual delta_mu mixing ({})", label));
@@ -322,27 +341,8 @@ impl PotModel {
     }
 
     fn radius_stats(&self) -> (f64, f64, f64) {
-        let radii = self
-            .geometry
-            .atoms
-            .iter()
-            .map(|atom| (atom.x * atom.x + atom.y * atom.y + atom.z * atom.z).sqrt())
-            .collect::<Vec<_>>();
-        if radii.is_empty() {
-            return (0.0_f64, 0.0_f64, 0.0_f64);
-        }
-
-        let sum = radii.iter().sum::<f64>();
-        let sum_sq = radii.iter().map(|value| value * value).sum::<f64>();
-        let mean = sum / radii.len() as f64;
-        let rms = (sum_sq / radii.len() as f64).sqrt();
-        let max = radii
-            .iter()
-            .copied()
-            .fold(f64::NEG_INFINITY, |accumulator, value| {
-                accumulator.max(value)
-            });
-        (mean, rms, max)
+        let extent = self.bound_state.radial_grid().extent();
+        (extent.mean, extent.rms, extent.max)
     }
 
     fn average_zeff(&self) -> f64 {
