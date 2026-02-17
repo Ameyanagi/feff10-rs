@@ -23,6 +23,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - For large FEFF COMMON tables, store raw constants in `crates/feff-core/src/common/config_data.rs` and keep module code on typed lookups from `crates/feff-core/src/common/config.rs` so physics kernels do not index giant arrays directly.
 - FEFF `getorb`-style extraction in Rust should preserve 1-based orbital table indices (`1..=40`) and provide a kappa projection lookup equivalent to Fortran `iorb(-5:4)` over occupied orbitals.
 - FEFF edge defaults should use `common::edge::{hole_code_from_edge_spec, core_hole_lifetime_ev}` so RDINP-generated `ihole` and `gamach` remain aligned with `setedg`/`setgam` behavior.
+- Keep COMMON regression baselines in `tasks/common-regression-fixtures.json` and validate constants/config/getorb/edge APIs together from `crates/feff-core/tests/common_regression.rs`.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -250,4 +251,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: keep edge parsing and core-hole lifetime logic centralized in `common::edge` and reuse it in RDINP-like emitters instead of hardcoding K-edge constants.
   - Gotchas encountered: FEFF `setgam.f90` tables are initialized from single-precision literals; preserving parity in Rust requires matching that precision (store constants as `f32`, then convert) before log interpolation.
   - Useful context: RDINP parity tests (`rdinp_parity.rs`) are exact-text for scaffold files, so dynamic `gamach` formatting must remain stable for existing K-edge fixtures.
+---
+
+## 2026-02-18 00:18:04 JST - US-021
+- Added consolidated COMMON regression fixtures in `tasks/common-regression-fixtures.json` covering constants, configuration lookup, orbital extraction/shell queries, and edge/lifetime helper cases.
+- Added `crates/feff-core/tests/common_regression.rs` to load those fixtures and validate COMMON APIs through `feff_core::common::{constants, config, edge}` public interfaces.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `tasks/common-regression-fixtures.json`, `crates/feff-core/tests/common_regression.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: keep COMMON regression baselines centralized in `tasks/common-regression-fixtures.json` and assert them from one integration suite (`crates/feff-core/tests/common_regression.rs`) to catch cross-helper drift.
+  - Gotchas encountered: this repository has no local `AGENTS.md` files, so reusable module guidance must be recorded in `scripts/ralph/progress.txt`.
+  - Useful context: fixture enums (`recipe`, `shell`, `constant`) deserialize cleanly with serde `rename_all`, keeping JSON fixtures readable while mapping to typed COMMON APIs.
 ---

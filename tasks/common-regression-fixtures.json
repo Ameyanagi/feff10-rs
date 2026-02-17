@@ -1,0 +1,292 @@
+{
+  "constantCases": [
+    {
+      "id": "FX-COMMON-CONST-001",
+      "constant": "pi",
+      "expected": 3.141592653589793,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-002",
+      "constant": "pi2",
+      "expected": 6.283185307179586,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-003",
+      "constant": "fa",
+      "expected": 1.9191582926775128,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-004",
+      "constant": "bohr",
+      "expected": 0.529177249,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-005",
+      "constant": "ryd",
+      "expected": 13.605698,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-006",
+      "constant": "hart",
+      "expected": 27.211396,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-007",
+      "constant": "alpinv",
+      "expected": 137.03598956,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-008",
+      "constant": "alphfs",
+      "expected": 0.0072973530764497375,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    },
+    {
+      "id": "FX-COMMON-CONST-009",
+      "constant": "raddeg",
+      "expected": 57.29577951308232,
+      "absTol": 1e-15,
+      "relTol": 1e-15
+    }
+  ],
+  "configurationCases": [
+    {
+      "id": "FX-COMMON-CONFIG-001",
+      "atomicNumber": 6,
+      "recipe": "feff9",
+      "expectedSymbol": "C",
+      "expectedTotalOccupation": 6.0,
+      "expectedTotalValence": 4.0,
+      "expectedOccupiedOrbitalCount": 4,
+      "expectedSpinSum": 1.0,
+      "expectedFirstOccupations": [
+        2.0,
+        1.0,
+        2.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "expectedFirstValence": [
+        0.0,
+        1.0,
+        2.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-CONFIG-002",
+      "atomicNumber": 29,
+      "recipe": "feff9",
+      "expectedSymbol": "Cu",
+      "expectedTotalOccupation": 29.0,
+      "expectedTotalValence": 11.0,
+      "expectedOccupiedOrbitalCount": 10,
+      "expectedFirstOccupations": [
+        2.0,
+        2.0,
+        2.0,
+        4.0,
+        2.0,
+        2.0,
+        4.0,
+        4.0,
+        6.0,
+        1.0,
+        0.0,
+        0.0
+      ],
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-CONFIG-003",
+      "atomicNumber": 92,
+      "recipe": "feff7",
+      "expectedSymbol": "U",
+      "expectedTotalOccupation": 92.0,
+      "expectedSpinSum": 0.0,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    }
+  ],
+  "orbitalCases": [
+    {
+      "id": "FX-COMMON-ORBITAL-001",
+      "atomicNumber": 6,
+      "recipe": "feff9",
+      "shell": "l",
+      "expectedOrbitalIndices": [
+        2,
+        3,
+        4
+      ],
+      "expectedOccupations": [
+        1.0,
+        2.0,
+        1.0
+      ],
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-ORBITAL-002",
+      "atomicNumber": 29,
+      "recipe": "feff9",
+      "shell": "k",
+      "expectedOrbitalIndices": [
+        1
+      ],
+      "expectedOccupations": [
+        2.0
+      ],
+      "projectionExpectations": [
+        {
+          "kappa": -3,
+          "expectedOrbitalIndex": 9
+        },
+        {
+          "kappa": -1,
+          "expectedOrbitalIndex": 10
+        },
+        {
+          "kappa": 1,
+          "expectedOrbitalIndex": 6
+        },
+        {
+          "kappa": 4,
+          "expectedOrbitalIndex": null
+        },
+        {
+          "kappa": 5,
+          "expectedOrbitalIndex": null
+        }
+      ],
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-ORBITAL-003",
+      "atomicNumber": 36,
+      "recipe": "feff9",
+      "shell": "m",
+      "expectedOrbitalIndices": [
+        5,
+        6,
+        7,
+        8,
+        9
+      ],
+      "expectedOccupations": [
+        2.0,
+        2.0,
+        4.0,
+        4.0,
+        6.0
+      ],
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    }
+  ],
+  "edgeLifetimeCases": [
+    {
+      "id": "FX-COMMON-EDGE-001",
+      "atomicNumber": 26,
+      "edgeSpec": "K",
+      "expectedHoleCode": 1,
+      "expectedEdgeLabel": "K",
+      "expectedGamachEv": 1.30892650125676,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-002",
+      "atomicNumber": 26,
+      "edgeSpec": "L1",
+      "expectedHoleCode": 2,
+      "expectedEdgeLabel": "L1",
+      "expectedGamachEv": 4.58583902936148,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-003",
+      "atomicNumber": 26,
+      "edgeSpec": "L2",
+      "expectedHoleCode": 3,
+      "expectedEdgeLabel": "L2",
+      "expectedGamachEv": 0.895648705359171,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-004",
+      "atomicNumber": 26,
+      "edgeSpec": "l3",
+      "expectedHoleCode": 4,
+      "expectedEdgeLabel": "L3",
+      "expectedGamachEv": 0.417011361516226,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-005",
+      "atomicNumber": 29,
+      "edgeSpec": "1",
+      "expectedHoleCode": 1,
+      "expectedEdgeLabel": "K",
+      "expectedGamachEv": 1.72918818490579,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-006",
+      "atomicNumber": 29,
+      "edgeSpec": "L1",
+      "expectedHoleCode": 2,
+      "expectedEdgeLabel": "L1",
+      "expectedGamachEv": 5.2801373216517,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-007",
+      "atomicNumber": 29,
+      "edgeSpec": "L2",
+      "expectedHoleCode": 3,
+      "expectedEdgeLabel": "L2",
+      "expectedGamachEv": 1.16175713929351,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "FX-COMMON-EDGE-008",
+      "atomicNumber": 29,
+      "edgeSpec": "4",
+      "expectedHoleCode": 4,
+      "expectedEdgeLabel": "L3",
+      "expectedGamachEv": 0.596038724693039,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    }
+  ]
+}
