@@ -21,6 +21,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF local VBH/PZ exchange evaluators are real-only `rs` functions; keep `imaginary = 0` and use unpolarized `xmag = 1.0` parity when porting `vbh.f90` and `m_pz.f90`.
 - FEFF COMMON physical constants should be centralized in `crates/feff-core/src/common/constants.rs`; import them from `crate::common::constants` (for example `PI`, `PI2`, `FA`) instead of repeating local literals.
 - For large FEFF COMMON tables, store raw constants in `crates/feff-core/src/common/config_data.rs` and keep module code on typed lookups from `crates/feff-core/src/common/config.rs` so physics kernels do not index giant arrays directly.
+- FEFF `getorb`-style extraction in Rust should preserve 1-based orbital table indices (`1..=40`) and provide a kappa projection lookup equivalent to Fortran `iorb(-5:4)` over occupied orbitals.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -224,4 +225,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: expose COMMON datasets through a narrow API (`common/config.rs`) and keep large static tables isolated (`common/config_data.rs`) to simplify downstream module integration.
   - Gotchas encountered: running `rustfmt` on module roots can reformat sibling files; use targeted file lists and confirm `git status` before committing.
   - Useful context: there are still no repository-local `AGENTS.md` files, so reusable migration guidance remains centralized in `scripts/ralph/progress.txt`.
+---
+
+## 2026-02-18 00:00:08 JST - US-019
+- Implemented `getorb`-equivalent orbital extraction helpers in `crates/feff-core/src/common/config.rs`: `getorb_for_atomic_number`, `orbital_metadata`, `orbital_occupancy_for_atomic_number`, and shell-targeted lookup via `shell_orbitals_for_atomic_number`.
+- Added FEFF orbital/shell domain types (`ElectronShell`, `OrbitalMetadata`, `OrbitalOccupancy`, `OrbitalExtraction`) including a kappa projection accessor equivalent to Fortran `iorb(-5:4)` for occupied states.
+- Added unit tests covering representative K/L/M shell lookups and projection behavior (`common::config::tests::{getorb_metadata_reports_quantum_numbers_and_shell,getorb_shell_lookup_supports_k_l_and_m_shell_queries,getorb_projection_lookup_matches_last_occupied_kappa_orbitals}`).
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/common/config.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: model FEFF orbital extraction on occupied-state compaction plus a kappa-indexed projection lookup, not on raw full-table scans in downstream physics modules.
+  - Gotchas encountered: this environment exposes `python3` but not `python`; use `jq` or `python3` for PRD/progress automation scripts.
+  - Useful context: K/L/M shell selection can be derived directly from `nnum` (`n=1/2/3`) while preserving FEFF orbital index ordering for deterministic edge-related lookups.
 ---

@@ -15,6 +15,92 @@ pub enum ConfigurationRecipe {
     Feff7,
 }
 
+const MIN_KAPPA_PROJECTION: i32 = -5;
+const MAX_KAPPA_PROJECTION: i32 = 4;
+const KAPPA_PROJECTION_SLOTS: usize = 10;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ElectronShell {
+    K,
+    L,
+    M,
+    N,
+    O,
+    P,
+    Q,
+    R,
+}
+
+impl ElectronShell {
+    pub const fn principal_quantum_number(self) -> i32 {
+        match self {
+            Self::K => 1,
+            Self::L => 2,
+            Self::M => 3,
+            Self::N => 4,
+            Self::O => 5,
+            Self::P => 6,
+            Self::Q => 7,
+            Self::R => 8,
+        }
+    }
+
+    pub const fn from_principal_quantum_number(value: i32) -> Option<Self> {
+        match value {
+            1 => Some(Self::K),
+            2 => Some(Self::L),
+            3 => Some(Self::M),
+            4 => Some(Self::N),
+            5 => Some(Self::O),
+            6 => Some(Self::P),
+            7 => Some(Self::Q),
+            8 => Some(Self::R),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct OrbitalMetadata {
+    pub orbital_index: usize,
+    pub principal_quantum_number: i32,
+    pub kappa_quantum_number: i32,
+    pub shell: ElectronShell,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct OrbitalOccupancy {
+    pub metadata: OrbitalMetadata,
+    pub occupation: f64,
+    pub valence_occupation: f64,
+    pub spin_occupation: f64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct OrbitalExtraction {
+    orbitals: Vec<OrbitalOccupancy>,
+    projection_last_occupied_orbital: [Option<usize>; KAPPA_PROJECTION_SLOTS],
+}
+
+impl OrbitalExtraction {
+    pub fn orbitals(&self) -> &[OrbitalOccupancy] {
+        &self.orbitals
+    }
+
+    pub fn orbitals_in_shell(&self, shell: ElectronShell) -> Vec<OrbitalOccupancy> {
+        self.orbitals
+            .iter()
+            .copied()
+            .filter(|orbital| orbital.metadata.shell == shell)
+            .collect()
+    }
+
+    pub fn projection_orbital_index_for_kappa(&self, kappa_quantum_number: i32) -> Option<usize> {
+        let index = projection_index_for_kappa(kappa_quantum_number)?;
+        self.projection_last_occupied_orbital[index]
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ElectronicConfiguration {
     occupations: &'static [f64; ORBITAL_COUNT],
@@ -83,6 +169,83 @@ pub fn feff7_for_atomic_number(atomic_number: usize) -> Option<ElectronicConfigu
     configuration_for_atomic_number(atomic_number, ConfigurationRecipe::Feff7)
 }
 
+pub fn orbital_metadata(orbital_index: usize) -> Option<OrbitalMetadata> {
+    if orbital_index == 0 || orbital_index > ORBITAL_COUNT {
+        return None;
+    }
+
+    let table_index = orbital_index - 1;
+    let principal_quantum_number = ORBITAL_NNUM[table_index];
+    let shell = ElectronShell::from_principal_quantum_number(principal_quantum_number)?;
+
+    Some(OrbitalMetadata {
+        orbital_index,
+        principal_quantum_number,
+        kappa_quantum_number: ORBITAL_KAPPA[table_index],
+        shell,
+    })
+}
+
+pub fn orbital_occupancy_for_atomic_number(
+    atomic_number: usize,
+    recipe: ConfigurationRecipe,
+    orbital_index: usize,
+) -> Option<OrbitalOccupancy> {
+    let configuration = configuration_for_atomic_number(atomic_number, recipe)?;
+    let metadata = orbital_metadata(orbital_index)?;
+    let table_index = orbital_index - 1;
+
+    Some(OrbitalOccupancy {
+        metadata,
+        occupation: configuration.occupations()[table_index],
+        valence_occupation: configuration.valence()[table_index],
+        spin_occupation: configuration.spin()[table_index],
+    })
+}
+
+pub fn getorb_for_atomic_number(
+    atomic_number: usize,
+    recipe: ConfigurationRecipe,
+) -> Option<OrbitalExtraction> {
+    let configuration = configuration_for_atomic_number(atomic_number, recipe)?;
+    let mut orbitals = Vec::new();
+    let mut projection_last_occupied_orbital = [None; KAPPA_PROJECTION_SLOTS];
+
+    for orbital_index in 1..=ORBITAL_COUNT {
+        let table_index = orbital_index - 1;
+        let occupation = configuration.occupations()[table_index];
+        if occupation <= 0.0 {
+            continue;
+        }
+
+        let metadata = orbital_metadata(orbital_index)?;
+        if let Some(index) = projection_index_for_kappa(metadata.kappa_quantum_number) {
+            projection_last_occupied_orbital[index] = Some(orbital_index);
+        }
+
+        orbitals.push(OrbitalOccupancy {
+            metadata,
+            occupation,
+            valence_occupation: configuration.valence()[table_index],
+            spin_occupation: configuration.spin()[table_index],
+        });
+    }
+
+    Some(OrbitalExtraction {
+        orbitals,
+        projection_last_occupied_orbital,
+    })
+}
+
+pub fn shell_orbitals_for_atomic_number(
+    atomic_number: usize,
+    recipe: ConfigurationRecipe,
+    shell: ElectronShell,
+) -> Option<Vec<OrbitalOccupancy>> {
+    let extraction = getorb_for_atomic_number(atomic_number, recipe)?;
+    Some(extraction.orbitals_in_shell(shell))
+}
+
 pub fn element_symbol(atomic_number: usize) -> Option<&'static str> {
     let index = index_for_atomic_number(atomic_number)?;
     Some(ELEMENT_SYMBOLS[index])
@@ -120,13 +283,22 @@ const fn index_for_atomic_number(atomic_number: usize) -> Option<usize> {
     }
 }
 
+const fn projection_index_for_kappa(kappa_quantum_number: i32) -> Option<usize> {
+    if kappa_quantum_number < MIN_KAPPA_PROJECTION || kappa_quantum_number > MAX_KAPPA_PROJECTION {
+        None
+    } else {
+        Some((kappa_quantum_number - MIN_KAPPA_PROJECTION) as usize)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
         atomic_number_for_symbol, configuration_for_atomic_number, element_symbol,
-        feff7_for_atomic_number, feff9_for_atomic_number, noble_gas_atomic_numbers,
-        orbital_kappa_quantum_numbers, orbital_principal_quantum_numbers, ConfigurationRecipe,
-        MAX_ATOMIC_NUMBER, ORBITAL_COUNT,
+        feff7_for_atomic_number, feff9_for_atomic_number, getorb_for_atomic_number,
+        noble_gas_atomic_numbers, orbital_kappa_quantum_numbers, orbital_metadata,
+        orbital_principal_quantum_numbers, shell_orbitals_for_atomic_number, ConfigurationRecipe,
+        ElectronShell, MAX_ATOMIC_NUMBER, ORBITAL_COUNT,
     };
 
     #[test]
@@ -198,5 +370,68 @@ mod tests {
         assert_eq!(kappa[0], -1);
         assert_eq!(nnum[39], 5);
         assert_eq!(kappa[39], -5);
+    }
+
+    #[test]
+    fn getorb_metadata_reports_quantum_numbers_and_shell() {
+        let one_s = orbital_metadata(1).expect("1s metadata should be available");
+        assert_eq!(one_s.principal_quantum_number, 1);
+        assert_eq!(one_s.kappa_quantum_number, -1);
+        assert_eq!(one_s.shell, ElectronShell::K);
+
+        let five_g = orbital_metadata(39).expect("5g7/2 metadata should be available");
+        assert_eq!(five_g.principal_quantum_number, 5);
+        assert_eq!(five_g.kappa_quantum_number, 4);
+        assert_eq!(five_g.shell, ElectronShell::O);
+    }
+
+    #[test]
+    fn getorb_shell_lookup_supports_k_l_and_m_shell_queries() {
+        let carbon_l_shell =
+            shell_orbitals_for_atomic_number(6, ConfigurationRecipe::Feff9, ElectronShell::L)
+                .expect("carbon L-shell lookup should succeed");
+        let carbon_l_indices: Vec<usize> = carbon_l_shell
+            .iter()
+            .map(|orbital| orbital.metadata.orbital_index)
+            .collect();
+        let carbon_l_occupancies: Vec<f64> = carbon_l_shell
+            .iter()
+            .map(|orbital| orbital.occupation)
+            .collect();
+        assert_eq!(carbon_l_indices, vec![2, 3, 4]);
+        assert_eq!(carbon_l_occupancies, vec![1.0, 2.0, 1.0]);
+
+        let copper_k_shell =
+            shell_orbitals_for_atomic_number(29, ConfigurationRecipe::Feff9, ElectronShell::K)
+                .expect("copper K-shell lookup should succeed");
+        assert_eq!(copper_k_shell.len(), 1);
+        assert_eq!(copper_k_shell[0].metadata.orbital_index, 1);
+        assert_eq!(copper_k_shell[0].occupation, 2.0);
+
+        let krypton_m_shell =
+            shell_orbitals_for_atomic_number(36, ConfigurationRecipe::Feff9, ElectronShell::M)
+                .expect("krypton M-shell lookup should succeed");
+        let krypton_m_indices: Vec<usize> = krypton_m_shell
+            .iter()
+            .map(|orbital| orbital.metadata.orbital_index)
+            .collect();
+        let krypton_m_occupancies: Vec<f64> = krypton_m_shell
+            .iter()
+            .map(|orbital| orbital.occupation)
+            .collect();
+        assert_eq!(krypton_m_indices, vec![5, 6, 7, 8, 9]);
+        assert_eq!(krypton_m_occupancies, vec![2.0, 2.0, 4.0, 4.0, 6.0]);
+    }
+
+    #[test]
+    fn getorb_projection_lookup_matches_last_occupied_kappa_orbitals() {
+        let extraction = getorb_for_atomic_number(29, ConfigurationRecipe::Feff9)
+            .expect("copper extraction should succeed");
+
+        assert_eq!(extraction.projection_orbital_index_for_kappa(-3), Some(9));
+        assert_eq!(extraction.projection_orbital_index_for_kappa(-1), Some(10));
+        assert_eq!(extraction.projection_orbital_index_for_kappa(1), Some(6));
+        assert_eq!(extraction.projection_orbital_index_for_kappa(4), None);
+        assert_eq!(extraction.projection_orbital_index_for_kappa(5), None);
     }
 }
