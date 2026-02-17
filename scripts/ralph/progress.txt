@@ -4,7 +4,7 @@
 - On macOS arm64, run Rust quality gates with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures in test binaries.
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
 - During staged producer/consumer rewrites, stamp new producer binaries with a stable magic header (for POT: `POTBIN10`) and let downstream validation scaffolds accept that header while they still baseline-copy outputs.
-- Keep `phase.bin` compatibility through the `XSPHBIN1` header: true-compute consumers (PATH/FMS) parse header metadata, while remaining baseline-backed consumers (for now BAND) should still accept that header.
+- Keep `phase.bin` compatibility through the `XSPHBIN1` header: true-compute consumers (PATH/FMS/BAND) parse header metadata, while remaining baseline-backed consumers should continue accepting either canonical bytes or XSPH-magic headers during staged rewrites.
 - For PATH true-compute/parity coverage, run `RDINP -> POT -> XSPH -> PATH` and seed parity baselines from generated outputs so `paths.dat`, `paths.bin`, `crit.dat`, and `log4.dat` stay deterministic without baseline-copy runtime behavior.
 - For FMS true-compute/parity coverage, run `RDINP -> POT -> XSPH -> FMS` and seed parity baselines from generated outputs so `gg.bin` and `log3.dat` stay deterministic without baseline-copy runtime behavior.
 - For PATH oracle parity coverage, stage `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-path`, and assert `paths.dat` resolves `comparison.mode=exact_text` with `matched_category=path_listing_reports`.
@@ -25,6 +25,7 @@
 - RDINP-generated `ldos.inp` can omit the legacy `neldos` field in the `mldos` control row; parsers for downstream compute modules should accept both 5-field and 6-field forms and apply a deterministic fallback when `neldos` is absent.
 - If a fixture entry deck cannot satisfy RDINP parser contracts, module true-compute/parity tests should stage the module's declared input artifacts directly from fixture baselines instead of forcing RDINP pre-staging.
 - When asserting numeric-tolerance comparisons for artifacts with comment/header lines (for example `xsect.dat`), include `numericParsing.commentPrefixes` in the policy override so comparison results are emitted instead of parse-error `comparison: null` entries.
+- For module control decks that include numeric literals in label text (for example `mband : ... if = 1`), parse by keyword marker plus the following value row instead of flattening all numeric tokens across the file.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -303,4 +304,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: FMS oracle parity can be validated with module-local staged inputs plus `--run-fms`, without chaining RDINP/POT/XSPH hooks in the oracle flow.
   - Gotchas encountered: The capture runner command still requires `GITHUB_WORKSPACE=<repo-root>` in temp-directory oracle tests, or fixture baseline lookup fails before comparisons run.
   - Useful context: This repository still has no in-tree `AGENTS.md`; reusable module/testing conventions should continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 10:21:28 JST] - US-025
+- Replaced `src/pipelines/band.rs` baseline materialization with a true-compute BAND pipeline that parses staged `band.inp`, `geom.dat`, `global.inp`, and `phase.bin` (including `XSPHBIN1` inputs) and deterministically computes `bandstructure.dat` and `logband.dat` without runtime baseline reads.
+- Enabled BAND as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring) and added runtime dispatch coverage plus CLI module-command coverage for successful `band` execution.
+- Reworked BAND parity coverage in `tests/band_parity.rs` to the true-compute pattern (required artifact checks, deterministic repeated runs, and regression baselines seeded from generated outputs) and updated regression/README assertions to the new BAND output contract.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/pipelines/band.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `tests/band_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: BAND control inputs are safer to parse by marker-plus-following-row because `band.inp` label lines can contain numeric literals that are not values.
+  - Gotchas encountered: `FX-BAND-001` baseline snapshots can omit `band.inp`, so BAND tests/fixtures should stage a deterministic fallback deck when that artifact is absent.
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions were captured in `scripts/ralph/progress.txt`.
 ---

@@ -2025,10 +2025,13 @@ mod tests {
         assert!(!report.passed);
 
         let output_dir = actual_root.join("FX-BAND-001").join("actual");
-        let has_band_output = ["bandstructure.dat", "logband.dat", "list.dat", "log5.dat"]
-            .iter()
-            .any(|artifact| output_dir.join(artifact).is_file());
-        assert!(has_band_output, "BAND output should exist");
+        for artifact in ["bandstructure.dat", "logband.dat"] {
+            assert!(
+                output_dir.join(artifact).is_file(),
+                "BAND output '{}' should exist",
+                artifact
+            );
+        }
     }
 
     #[test]

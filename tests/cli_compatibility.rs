@@ -209,6 +209,30 @@ fn crpa_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn band_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_band_input(temp.path().join("band.inp"));
+    stage_baseline_artifact("FX-BAND-001", "geom.dat", temp.path().join("geom.dat"));
+    stage_baseline_artifact("FX-BAND-001", "global.inp", temp.path().join("global.inp"));
+    stage_baseline_artifact("FX-BAND-001", "phase.bin", temp.path().join("phase.bin"));
+
+    let band = run_cli_command(temp.path(), &["band"]);
+    assert!(
+        band.status.success(),
+        "band should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&band.stderr)
+    );
+    assert!(
+        temp.path().join("bandstructure.dat").is_file(),
+        "band should emit bandstructure.dat"
+    );
+    assert!(
+        temp.path().join("logband.dat").is_file(),
+        "band should emit logband.dat"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
@@ -343,6 +367,32 @@ fn stage_baseline_artifact(fixture_id: &str, artifact: &str, destination: PathBu
         fs::create_dir_all(parent).expect("destination parent should exist");
     }
     fs::write(&destination, source_bytes).expect("baseline artifact should be staged");
+}
+
+fn stage_band_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-BAND-001")
+        .join("baseline")
+        .join("band.inp");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("band input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("band input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "mband : calculate bands if = 1\n   1\nemin, emax, estep : energy mesh\n    -8.00000      6.00000      0.05000\nnkp : # points in k-path\n 121\nikpath : type of k-path\n   2\nfreeprop :  empty lattice if = T\n F\n",
+    )
+    .expect("band input should be staged");
 }
 
 fn workspace_root() -> PathBuf {

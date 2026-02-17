@@ -61,6 +61,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Xsph
             | PipelineModule::Path
             | PipelineModule::Fms
+            | PipelineModule::Band
     )
 }
 
@@ -96,6 +97,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
         PipelineModule::Path => RuntimePathExecutor.execute_runtime(request),
         PipelineModule::Fms => RuntimeFmsExecutor.execute_runtime(request),
+        PipelineModule::Band => RuntimeBandExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -160,6 +162,15 @@ struct RuntimeFmsExecutor;
 impl RuntimePipelineExecutor for RuntimeFmsExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         fms::FmsPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeBandExecutor;
+
+impl RuntimePipelineExecutor for RuntimeBandExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        band::BandPipelineScaffold.execute(request)
     }
 }
 
@@ -341,12 +352,13 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Xsph));
         assert!(runtime_compute_engine_available(PipelineModule::Path));
         assert!(runtime_compute_engine_available(PipelineModule::Fms));
+        assert!(runtime_compute_engine_available(PipelineModule::Band));
     }
 
     #[test]
     fn runtime_dispatch_rejects_modules_without_compute_engines() {
-        let request = PipelineRequest::new("FX-BAND-001", PipelineModule::Band, "band.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Band, &request)
+        let request = PipelineRequest::new("FX-LDOS-001", PipelineModule::Ldos, "ldos.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Ldos, &request)
             .expect_err("unsupported runtime module should fail");
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -626,8 +638,44 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_band_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("band.inp"), BAND_INPUT_FIXTURE)
+            .expect("band input should be written");
+        std::fs::write(input_dir.join("geom.dat"), GEOM_INPUT_FIXTURE)
+            .expect("geom input should be written");
+        std::fs::write(input_dir.join("global.inp"), GLOBAL_INPUT_FIXTURE)
+            .expect("global input should be written");
+        std::fs::write(input_dir.join("phase.bin"), phase_fixture_bytes())
+            .expect("phase input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-BAND-001",
+            PipelineModule::Band,
+            input_dir.join("band.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Band, &request)
+            .expect("BAND runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("bandstructure.dat")),
+            "BAND runtime should emit bandstructure.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logband.dat")),
+            "BAND runtime should emit logband.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
-        let error = runtime_engine_unavailable_error(PipelineModule::Band);
+        let error = runtime_engine_unavailable_error(PipelineModule::Ldos);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -685,6 +733,18 @@ tk, thetad, sig2g
    3   3
  the number of decomposi
    -1
+";
+
+    const BAND_INPUT_FIXTURE: &str = "mband : calculate bands if = 1
+   1
+emin, emax, estep : energy mesh
+     -8.00000      6.00000      0.05000
+nkp : # points in k-path
+ 120
+ikpath : type of k-path
+   2
+freeprop :  empty lattice if = T
+ F
 ";
 
     const GLOBAL_INPUT_FIXTURE: &str = " nabs, iphabs - CFAVERAGE data
