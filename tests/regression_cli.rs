@@ -2786,6 +2786,219 @@ fn oracle_command_runs_dmdw_parity_with_input_contract_and_comparison_diagnostic
 }
 
 #[test]
+fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
+    if !command_available("jq") {
+        eprintln!("Skipping SELF oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-SELF-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/MPSE/Cu_OPCONS");
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-self.json");
+    let baseline_archive = fixture_input_dir.join("REFERENCE.zip");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["SELF"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp", "loss.dat", "REFERENCE/sfconv.inp"],
+              "baselineSources": [
+                {{
+                  "kind": "reference_archive",
+                  "path": "{baseline_archive}"
+                }}
+              ]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\"),
+        baseline_archive = baseline_archive.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file(
+        fixture_id,
+        "sfconv.inp",
+        &staged_output_dir.join("sfconv.inp"),
+    );
+    stage_workspace_fixture_file(fixture_id, "exc.dat", &staged_output_dir.join("exc.dat"));
+
+    let staged_loss_source =
+        "# staged SELF spectrum input\n  1.0000000   0.1200000\n  2.0000000   0.2400000\n";
+    write_file(&staged_output_dir.join("loss.dat"), staged_loss_source);
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-self",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "SELF oracle parity should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Fixture FX-SELF-001 mismatches"),
+        "SELF oracle summary should include fixture mismatch details, stdout: {}",
+        stdout
+    );
+
+    let expected_outputs = [
+        "selfenergy.dat",
+        "sigma.dat",
+        "specfunct.dat",
+        "logsfconv.dat",
+        "sig2FEFF.dat",
+        "mpse.dat",
+        "opconsCu.dat",
+        "loss.dat",
+    ];
+    for artifact in expected_outputs {
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join(artifact)
+                .is_file(),
+            "run-self should materialize '{}' for '{}'",
+            artifact,
+            fixture_id
+        );
+    }
+
+    let rewritten_spectrum =
+        fs::read_to_string(actual_root.join(fixture_id).join("actual").join("loss.dat"))
+            .expect("rewritten loss.dat should be readable");
+    assert!(
+        rewritten_spectrum.contains("# SELF true-compute rewritten spectrum"),
+        "rewritten loss.dat should include deterministic SELF rewritten-spectrum header"
+    );
+    assert!(
+        rewritten_spectrum.contains("# source: loss.dat"),
+        "rewritten loss.dat should record its source artifact"
+    );
+    assert_ne!(
+        rewritten_spectrum, staged_loss_source,
+        "run-self should rewrite staged spectrum content instead of leaving staged input bytes"
+    );
+
+    let log_source = fs::read_to_string(
+        actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("logsfconv.dat"),
+    )
+    .expect("logsfconv.dat should be readable");
+    assert!(
+        log_source.contains("SELF true-compute log"),
+        "SELF log should include deterministic log header"
+    );
+    assert!(
+        log_source.contains("outputs = "),
+        "SELF log should enumerate emitted artifacts"
+    );
+    assert!(
+        log_source.contains("logsfconv.dat"),
+        "SELF log output set should include log artifact names"
+    );
+    assert!(
+        log_source.contains("loss.dat"),
+        "SELF log output set should include rewritten spectrum artifact names"
+    );
+
+    assert!(
+        report_path.is_file(),
+        "SELF oracle parity should emit a report"
+    );
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let fixture_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-SELF-001");
+    let artifact_reports = fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+    for artifact in expected_outputs {
+        assert!(
+            artifact_reports
+                .iter()
+                .any(|report| report["artifact_path"].as_str() == Some(artifact)),
+            "SELF fixture report should include '{}' artifact entry",
+            artifact
+        );
+    }
+
+    let mismatch_fixtures = parsed["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let mismatch_fixture = mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("mismatch_fixtures should include SELF fixture");
+    let mismatch_artifacts = mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("fixture mismatch artifact list should be an array");
+    assert!(
+        !mismatch_artifacts.is_empty(),
+        "SELF mismatch report should include artifact details"
+    );
+    assert!(
+        mismatch_artifacts.iter().all(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| !path.is_empty())
+                && artifact["reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty())
+        }),
+        "SELF mismatch artifacts should include deterministic path and reason fields"
+    );
+}
+
+#[test]
 fn oracle_command_run_dmdw_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping DMDW oracle CLI test because jq is unavailable in PATH.");

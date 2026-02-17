@@ -13,6 +13,7 @@
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
+- For oracle parity fixtures whose required entry files live only in `REFERENCE.zip` (not `inputDirectory`), include a `baselineSources` `reference_archive` path in the manifest so capture can resolve those entries deterministically.
 - For oracle parity on fixtures with `baselineStatus=requires_fortran_capture` and unresolved `REFERENCE/*.inp` entry files (for example `FX-BAND-001`), pass `--capture-allow-missing-entry-files` and assert capture `metadata.txt` records `missing_entry_files`.
 - For oracle parity tests that must cover optional module inputs, stage required artifacts directly into `actual-root/<fixture>/actual` and run only the target module hook (for example, `--run-screen`) so optional-file present/absent variants are deterministic.
 - For true-compute modules with optional inputs, keep the output artifact contract stable and encode optional-input presence/absence in deterministic output metadata so parity and CLI tests can assert both input variants without changing expected output filenames.
@@ -444,4 +445,17 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: SELF output expectations are dynamic by staged spectrum set, so parity tests should derive expected artifacts as `SELF_REQUIRED_OUTPUTS + staged_spectrum_filenames`.
   - Gotchas encountered: SELF module command coverage must stage at least one spectrum file alongside `sfconv.inp`; otherwise runtime fails deterministically with `INPUT.SELF_SPECTRUM_INPUT`.
   - Useful context: There are still no repository-local `AGENTS.md` files in this project tree, so reusable conventions remain documented in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 12:01:55 JST] - US-036
+- Added SELF oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-SELF-001` by running `feff10-rs oracle` with `--run-self` and CI capture-runner plumbing.
+- Added manifest `baselineSources` archive wiring for `FX-SELF-001` so oracle capture resolves entry files that exist only in `REFERENCE.zip`, then staged SELF runtime inputs (`sfconv.inp`, `exc.dat`, and spectrum input `loss.dat`) into `actual-root/<fixture>/actual`.
+- Asserted SELF oracle output contract materialization, including required artifacts (`selfenergy.dat`, `sigma.dat`, `specfunct.dat`, `logsfconv.dat`, `sig2FEFF.dat`, `mpse.dat`, `opconsCu.dat`) and rewritten staged spectrum output (`loss.dat`) with deterministic rewritten-spectrum/log markers.
+- Added report assertions that fixture artifact entries include the SELF output set and that mismatch reports contain deterministic artifact path/reason diagnostics.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-036` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: SELF oracle parity can be validated by staging `sfconv.inp` plus one spectrum file and asserting rewritten spectrum bytes (`loss.dat`) rather than only existence checks.
+  - Gotchas encountered: `FX-SELF-001` entry files such as `loss.dat` are not present in `inputDirectory`; without a manifest `baselineSources` reference archive path, oracle capture fails before comparisons run.
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---
