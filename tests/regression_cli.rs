@@ -3514,6 +3514,255 @@ fn oracle_command_runs_fullspectrum_parity_with_capture_prerequisites_and_full_o
 }
 
 #[test]
+fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes() {
+    if !command_available("jq") {
+        eprintln!("Skipping RIXS oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixture_id = "FX-RIXS-001";
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let fixture_input_dir = workspace_root.join("feff10/examples/RIXS");
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-rixs.json");
+    let reference_herfd = fixture_input_dir.join("referenceherfd.dat");
+    let reference_herfd_sat = fixture_input_dir.join("referenceherfd-sat.dat");
+    let reference_rixs_et = fixture_input_dir.join("referencerixsET.dat");
+
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["RIXS"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"],
+              "baselineStatus": "reference_files_available",
+              "baselineSources": [
+                {{
+                  "kind": "reference_file",
+                  "path": "{reference_herfd}"
+                }},
+                {{
+                  "kind": "reference_file",
+                  "path": "{reference_herfd_sat}"
+                }},
+                {{
+                  "kind": "reference_file",
+                  "path": "{reference_rixs_et}"
+                }}
+              ]
+            }}
+          ]
+        }}
+        "#,
+        fixture_id = fixture_id,
+        input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\"),
+        reference_herfd = reference_herfd.to_string_lossy().replace('\\', "\\\\"),
+        reference_herfd_sat = reference_herfd_sat.to_string_lossy().replace('\\', "\\\\"),
+        reference_rixs_et = reference_rixs_et.to_string_lossy().replace('\\', "\\\\")
+    );
+    write_file(&manifest_path, &manifest);
+
+    let staged_output_dir = actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "rixs.inp",
+        &staged_output_dir.join("rixs.inp"),
+        b"nenergies\n3\nemin emax estep\n-10.0 10.0 0.5\n",
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "phase_1.bin",
+        &staged_output_dir.join("phase_1.bin"),
+        &[0_u8, 1_u8, 2_u8, 3_u8],
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "phase_2.bin",
+        &staged_output_dir.join("phase_2.bin"),
+        &[4_u8, 5_u8, 6_u8, 7_u8],
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "wscrn_1.dat",
+        &staged_output_dir.join("wscrn_1.dat"),
+        b"0.0 0.0 0.0\n",
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "wscrn_2.dat",
+        &staged_output_dir.join("wscrn_2.dat"),
+        b"0.0 0.0 0.0\n",
+    );
+    stage_workspace_fixture_file_with_fallback_bytes(
+        fixture_id,
+        "xsect_2.dat",
+        &staged_output_dir.join("xsect_2.dat"),
+        b"0.0 0.0 0.0\n",
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "referenceherfd.dat",
+        &staged_output_dir.join("referenceherfd.dat"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "referenceherfd-sat.dat",
+        &staged_output_dir.join("referenceherfd-sat.dat"),
+    );
+    stage_workspace_fixture_file(
+        fixture_id,
+        "referencerixsET.dat",
+        &staged_output_dir.join("referencerixsET.dat"),
+    );
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}' && cp referencerixsET.dat rixsET.dat",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-rixs",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "RIXS oracle parity should report mismatches against reference-file baselines, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Fixture FX-RIXS-001 mismatches"),
+        "RIXS oracle summary should include fixture mismatch details, stdout: {}",
+        stdout
+    );
+    for artifact in [
+        "rixs0.dat",
+        "rixs1.dat",
+        "rixsET.dat",
+        "rixsEE.dat",
+        "rixsET-sat.dat",
+        "rixsEE-sat.dat",
+        "logrixs.dat",
+    ] {
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join(artifact)
+                .is_file(),
+            "run-rixs should materialize '{}' for '{}'",
+            artifact,
+            fixture_id
+        );
+    }
+    assert!(
+        report_path.is_file(),
+        "RIXS oracle parity should emit a report"
+    );
+
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    let fixture_report = fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture report should exist for FX-RIXS-001");
+    let artifact_reports = fixture_report["artifacts"]
+        .as_array()
+        .expect("fixture artifact reports should be an array");
+
+    let canonical_report = artifact_reports
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("rixsET.dat"))
+        .expect("RIXS fixture should include canonical rixsET.dat comparison");
+    assert_eq!(
+        canonical_report["comparison"]["mode"],
+        Value::from("numeric_tolerance"),
+        "canonical rixsET.dat should be compared using numeric_tolerance mode"
+    );
+    assert_eq!(
+        canonical_report["comparison"]["matched_category"],
+        Value::from("columnar_spectra"),
+        "canonical rixsET.dat should resolve columnar_spectra policy category"
+    );
+    assert_eq!(
+        canonical_report["comparison"]["metrics"]["kind"],
+        Value::from("numeric_tolerance"),
+        "canonical rixsET.dat should emit numeric tolerance metrics"
+    );
+
+    let reference_named_report = artifact_reports
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("referencerixsET.dat"))
+        .expect("RIXS fixture should include reference-named referencerixsET.dat comparison");
+    assert_eq!(
+        reference_named_report["comparison"]["mode"],
+        Value::from("exact_text"),
+        "reference-named referencerixsET.dat should use default exact_text comparison mode"
+    );
+    assert_eq!(
+        reference_named_report["comparison"]["matched_category"],
+        Value::Null,
+        "reference-named referencerixsET.dat should not resolve a policy category"
+    );
+    assert_eq!(
+        reference_named_report["comparison"]["metrics"]["kind"],
+        Value::from("exact_text"),
+        "reference-named referencerixsET.dat should emit exact_text metrics"
+    );
+
+    let mismatch_fixtures = parsed["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let mismatch_fixture = mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("mismatch_fixtures should include FX-RIXS-001");
+    let mismatch_artifacts = mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("fixture mismatch artifact list should be an array");
+    let missing_baseline_report = mismatch_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("rixs0.dat"))
+        .expect("canonical artifacts without reference aliases should report missing baselines");
+    assert_eq!(
+        missing_baseline_report["reason"],
+        Value::from("Missing baseline artifact"),
+        "rixs0.dat should report deterministic missing baseline reason in reference-file mode"
+    );
+}
+
+#[test]
 fn oracle_command_run_dmdw_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping DMDW oracle CLI test because jq is unavailable in PATH.");

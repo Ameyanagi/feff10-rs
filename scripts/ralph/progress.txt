@@ -42,6 +42,7 @@
 - For DMDW oracle parity coverage, stage `dmdw.inp` and `feff.dym` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-dmdw`, and assert missing `feff.dym` fails with `IO.DMDW_INPUT_READ` / fatal exit code `3` without emitting a report.
 - For SELF true-compute/parity coverage, stage `sfconv.inp` plus at least one spectrum input (`xmu.dat`/`chi.dat`/`loss.dat`/`feffNNNN.dat`), and treat the output contract as fixed SELF artifacts plus rewritten staged spectrum filenames.
 - For RIXS true-compute/parity coverage, stage `rixs.inp`, `phase_1.bin`, `phase_2.bin`, `wscrn_1.dat`, `wscrn_2.dat`, and `xsect_2.dat`, assert the fixed output contract (`rixs0.dat`, `rixs1.dat`, `rixsET.dat`, `rixsEE.dat`, `rixsET-sat.dat`, `rixsEE-sat.dat`, `logrixs.dat`), and use altered edge-2 staged inputs to verify multi-edge sensitivity without baseline-copy behavior.
+- For RIXS oracle parity on `reference_file` fixtures, seed capture with `ci-oracle-capture-runner` and alias at least one reference-named baseline (`referencerixsET.dat`) to a canonical artifact (`rixsET.dat`) so tests can assert both canonical `numeric_tolerance` routing and reference-named `exact_text` fallback behavior in one run.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -521,4 +522,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: RIXS true-compute and parity tests should enforce the canonical seven-artifact contract and seed temporary baselines from generated outputs instead of relying on fixture reference-named baseline files.
   - Gotchas encountered: `FX-RIXS-001` committed baselines do not include `rixs.inp`/`phase_*.bin`/`wscrn_*.dat`/`xsect_2.dat`, so tests and CLI coverage need deterministic fallback staged inputs while keeping runtime behavior baseline-independent.
   - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable conventions were captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 12:59:13 JST] - US-042
+- Added RIXS oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-RIXS-001` using `baselineStatus=reference_files_available` and explicit `baselineSources` `reference_file` wiring for `referenceherfd*.dat` and `referencerixsET.dat`.
+- Staged required RIXS runtime inputs with deterministic fallbacks, ran `feff10-rs oracle --run-rixs`, and asserted canonical RIXS output contract materialization under `actual-root/<fixture>/actual`.
+- Verified comparator behavior for both artifact naming modes in one oracle run: canonical `rixsET.dat` resolves `comparison.mode=numeric_tolerance` with `matched_category=columnar_spectra`, while reference-named `referencerixsET.dat` resolves default `comparison.mode=exact_text`.
+- Confirmed deterministic mismatch diagnostics for canonical outputs without reference aliases (for example `rixs0.dat` reports `Missing baseline artifact`) under reference-file fixture baselines.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Reference-file oracle fixtures can validate canonical comparator routing by aliasing one captured reference artifact to a canonical filename while still comparing the original reference-named file.
+  - Gotchas encountered: `FX-RIXS-001` fixture baselines do not provide canonical `rixs*.dat` files, so canonical artifact comparisons require an explicit capture-time alias or they default to deterministic `Missing baseline artifact` outcomes.
+  - Useful context: `stage_workspace_fixture_file_with_fallback_bytes` is required for RIXS oracle tests because committed `FX-RIXS-001` baselines omit `rixs.inp` and required sibling staged inputs.
 ---
