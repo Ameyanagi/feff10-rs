@@ -471,33 +471,3 @@ pub(super) fn run_oracle_capture(workspace_root: &Path, config: &OracleCommandCo
     ))
 }
 
-pub(super) fn help_requested(args: &[String]) -> bool {
-    args.iter().any(|arg| arg == "--help" || arg == "-h")
-}
-
-pub(super) fn usage_text() -> &'static str {
-    "Usage:\n  feff10-rs <command> [options]\n  feff10-rs help\n\nCommands:\n  regression       Run fixture regression comparisons\n  oracle           Run validation-only dual-run oracle capture and comparison\n  feff             Run serial FEFF compatibility chain in current directory\n  feffmpi <nprocs> Run MPI-compatible FEFF entrypoint (serial fallback in v1)\n  rdinp            Run RDINP module in current directory\n  pot              Run POT module in current directory\n  xsph             Run XSPH module in current directory\n  path             Run PATH module in current directory\n  fms              Run FMS module in current directory\n  band             Run BAND module in current directory\n  ldos             Run LDOS module in current directory\n  rixs             Run RIXS module in current directory\n  crpa             Run CRPA module in current directory\n  compton          Run COMPTON module in current directory\n  ff2x             Run DEBYE module (`ff2x`) in current directory\n  dmdw             Run DMDW module in current directory\n  screen           Run SCREEN module in current directory\n  sfconv           Run SELF module (`sfconv`) in current directory\n  eels             Run EELS module in current directory\n  fullspectrum     Run FULLSPECTRUM module in current directory\n\nRun `feff10-rs regression --help` for regression options.\nRun `feff10-rs oracle --help` for oracle options.\nRun `feff10-rs <module> --help` for module command usage."
-}
-
-pub(super) fn regression_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs regression [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --baseline-root <path>    Baseline snapshot root (default: artifacts/fortran-baselines)\n  --actual-root <path>      Actual output root (default: artifacts/fortran-baselines)\n  --baseline-subdir <name>  Baseline subdirectory per fixture (default: baseline)\n  --actual-subdir <name>    Actual subdirectory per fixture (default: baseline)\n  --report <path>           JSON report output path (default: artifacts/regression/report.json)\n  --run-rdinp              Run RDINP module before fixture comparisons\n  --run-pot                Run POT module before fixture comparisons\n  --run-screen             Run SCREEN module before fixture comparisons\n  --run-self               Run SELF module before fixture comparisons\n  --run-eels               Run EELS module before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM module before fixture comparisons\n  --run-xsph               Run XSPH module before fixture comparisons\n  --run-path               Run PATH module before fixture comparisons\n  --run-fms                Run FMS module before fixture comparisons\n  --run-band               Run BAND module before fixture comparisons\n  --run-ldos               Run LDOS module before fixture comparisons\n  --run-rixs               Run RIXS module before fixture comparisons\n  --run-crpa               Run CRPA module before fixture comparisons\n  --run-compton            Run COMPTON module before fixture comparisons\n  --run-debye              Run DEBYE module before fixture comparisons\n  --run-dmdw               Run DMDW module before fixture comparisons"
-}
-
-pub(super) fn oracle_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs oracle [options]\n\nOptions:\n  --manifest <path>         Fixture manifest path for capture and comparison (default: tasks/golden-fixture-manifest.json)\n  --policy <path>           Numeric tolerance policy path (default: tasks/numeric-tolerance-policy.json)\n  --oracle-root <path>      Fortran capture output root used as regression baseline (default: artifacts/fortran-oracle-capture)\n  --oracle-subdir <name>    Oracle subdirectory per fixture (default: outputs)\n  --actual-root <path>      Rust actual output root (default: artifacts/oracle-actual)\n  --actual-subdir <name>    Rust actual subdirectory per fixture (default: actual)\n  --report <path>           JSON report output path (default: artifacts/regression/oracle-report.json)\n  --capture-runner <cmd>    Runner command passed to scripts/fortran/capture-baselines.sh\n  --capture-bin-dir <path>  Fortran module binary directory passed to scripts/fortran/capture-baselines.sh\n  --capture-allow-missing-entry-files\n                           Continue capture when manifest entry files are missing and record metadata\n  --run-rdinp              Run RDINP module before fixture comparisons\n  --run-pot                Run POT module before fixture comparisons\n  --run-screen             Run SCREEN module before fixture comparisons\n  --run-self               Run SELF module before fixture comparisons\n  --run-eels               Run EELS module before fixture comparisons\n  --run-fullspectrum       Run FULLSPECTRUM module before fixture comparisons\n  --run-xsph               Run XSPH module before fixture comparisons\n  --run-path               Run PATH module before fixture comparisons\n  --run-fms                Run FMS module before fixture comparisons\n  --run-band               Run BAND module before fixture comparisons\n  --run-ldos               Run LDOS module before fixture comparisons\n  --run-rixs               Run RIXS module before fixture comparisons\n  --run-crpa               Run CRPA module before fixture comparisons\n  --run-compton            Run COMPTON module before fixture comparisons\n  --run-debye              Run DEBYE module before fixture comparisons\n  --run-dmdw               Run DMDW module before fixture comparisons\n\nThe oracle command is validation-only and must not be used as a production runtime path."
-}
-
-pub(super) fn feff_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs feff\n\nRuns the serial FEFF compatibility chain in the current working directory. No positional arguments are accepted."
-}
-
-pub(super) fn feffmpi_usage_text() -> &'static str {
-    "Usage:\n  feff10-rs feffmpi <nprocs>\n\nRuns the MPI-compatible FEFF entrypoint.\n`<nprocs>` must be a positive integer."
-}
-
-pub(super) fn module_usage_text(spec: ModuleCommandSpec) -> String {
-    format!(
-        "Usage:\n  feff10-rs {}\n\nRuns module {} in the current working directory.\nRequired entry artifact: '{}'.",
-        spec.command, spec.module, spec.input_artifact
-    )
-}

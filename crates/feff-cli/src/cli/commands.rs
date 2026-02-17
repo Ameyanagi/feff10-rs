@@ -6,13 +6,230 @@ use feff_core::modules::regression::{RegressionRunnerConfig, render_human_summar
 use feff_core::modules::{runtime_compute_engine_available, runtime_engine_unavailable_error};
 use std::path::PathBuf;
 
-pub(super) fn run_regression_command(args: Vec<String>) -> Result<i32, CliError> {
-    if help_requested(&args) {
-        println!("{}", regression_usage_text());
-        return Ok(0);
-    }
+#[derive(clap::Args)]
+pub(super) struct RegressionArgs {
+    /// Fixture manifest path
+    #[arg(long, default_value = "tasks/golden-fixture-manifest.json")]
+    manifest: PathBuf,
 
-    let config = parse_regression_args(args)?;
+    /// Numeric tolerance policy path
+    #[arg(long, default_value = "tasks/numeric-tolerance-policy.json")]
+    policy: PathBuf,
+
+    /// Baseline snapshot root
+    #[arg(long, default_value = "artifacts/fortran-baselines")]
+    baseline_root: PathBuf,
+
+    /// Actual output root
+    #[arg(long, default_value = "artifacts/fortran-baselines")]
+    actual_root: PathBuf,
+
+    /// Baseline subdirectory per fixture
+    #[arg(long, default_value = "baseline")]
+    baseline_subdir: String,
+
+    /// Actual subdirectory per fixture
+    #[arg(long, default_value = "baseline")]
+    actual_subdir: String,
+
+    /// JSON report output path
+    #[arg(long, default_value = "artifacts/regression/report.json")]
+    report: PathBuf,
+
+    #[command(flatten)]
+    run: RunModuleFlags,
+}
+
+#[derive(clap::Args)]
+#[command(group(clap::ArgGroup::new("capture").required(true).args(["capture_runner", "capture_bin_dir"])))]
+pub(super) struct OracleArgs {
+    /// Fixture manifest path
+    #[arg(long, default_value = "tasks/golden-fixture-manifest.json")]
+    manifest: PathBuf,
+
+    /// Numeric tolerance policy path
+    #[arg(long, default_value = "tasks/numeric-tolerance-policy.json")]
+    policy: PathBuf,
+
+    /// Fortran capture output root used as regression baseline
+    #[arg(long, default_value = "artifacts/fortran-oracle-capture")]
+    oracle_root: PathBuf,
+
+    /// Oracle subdirectory per fixture
+    #[arg(long, default_value = "outputs")]
+    oracle_subdir: String,
+
+    /// Rust actual output root
+    #[arg(long, default_value = "artifacts/oracle-actual")]
+    actual_root: PathBuf,
+
+    /// Rust actual subdirectory per fixture
+    #[arg(long, default_value = "actual")]
+    actual_subdir: String,
+
+    /// JSON report output path
+    #[arg(long, default_value = "artifacts/regression/oracle-report.json")]
+    report: PathBuf,
+
+    /// Runner command passed to capture script
+    #[arg(long)]
+    capture_runner: Option<String>,
+
+    /// Fortran module binary directory passed to capture script
+    #[arg(long)]
+    capture_bin_dir: Option<PathBuf>,
+
+    /// Continue capture when manifest entry files are missing
+    #[arg(long)]
+    capture_allow_missing_entry_files: bool,
+
+    #[command(flatten)]
+    run: RunModuleFlags,
+}
+
+#[derive(clap::Args, Default)]
+pub(super) struct RunModuleFlags {
+    /// Run RDINP module before comparisons
+    #[arg(long, alias = "run-rdinp-placeholder")]
+    run_rdinp: bool,
+
+    /// Run POT module before comparisons
+    #[arg(long, alias = "run-pot-placeholder")]
+    run_pot: bool,
+
+    /// Run XSPH module before comparisons
+    #[arg(long, alias = "run-xsph-placeholder")]
+    run_xsph: bool,
+
+    /// Run PATH module before comparisons
+    #[arg(long, alias = "run-path-placeholder")]
+    run_path: bool,
+
+    /// Run FMS module before comparisons
+    #[arg(long, alias = "run-fms-placeholder")]
+    run_fms: bool,
+
+    /// Run BAND module before comparisons
+    #[arg(long, alias = "run-band-placeholder")]
+    run_band: bool,
+
+    /// Run LDOS module before comparisons
+    #[arg(long, alias = "run-ldos-placeholder")]
+    run_ldos: bool,
+
+    /// Run RIXS module before comparisons
+    #[arg(long, alias = "run-rixs-placeholder")]
+    run_rixs: bool,
+
+    /// Run CRPA module before comparisons
+    #[arg(long, alias = "run-crpa-placeholder")]
+    run_crpa: bool,
+
+    /// Run COMPTON module before comparisons
+    #[arg(long, alias = "run-compton-placeholder")]
+    run_compton: bool,
+
+    /// Run DEBYE module before comparisons
+    #[arg(long, alias = "run-debye-placeholder")]
+    run_debye: bool,
+
+    /// Run DMDW module before comparisons
+    #[arg(long, alias = "run-dmdw-placeholder")]
+    run_dmdw: bool,
+
+    /// Run SCREEN module before comparisons
+    #[arg(long, alias = "run-screen-placeholder")]
+    run_screen: bool,
+
+    /// Run SELF module before comparisons
+    #[arg(long, alias = "run-self-placeholder")]
+    run_self: bool,
+
+    /// Run EELS module before comparisons
+    #[arg(long, alias = "run-eels-placeholder")]
+    run_eels: bool,
+
+    /// Run FULLSPECTRUM module before comparisons
+    #[arg(long, alias = "run-fullspectrum-placeholder")]
+    run_fullspectrum: bool,
+}
+
+impl RegressionArgs {
+    fn into_config(self) -> RegressionRunnerConfig {
+        RegressionRunnerConfig {
+            manifest_path: self.manifest,
+            policy_path: self.policy,
+            baseline_root: self.baseline_root,
+            actual_root: self.actual_root,
+            baseline_subdir: self.baseline_subdir,
+            actual_subdir: self.actual_subdir,
+            report_path: self.report,
+            run_rdinp: self.run.run_rdinp,
+            run_pot: self.run.run_pot,
+            run_xsph: self.run.run_xsph,
+            run_path: self.run.run_path,
+            run_fms: self.run.run_fms,
+            run_band: self.run.run_band,
+            run_ldos: self.run.run_ldos,
+            run_rixs: self.run.run_rixs,
+            run_crpa: self.run.run_crpa,
+            run_compton: self.run.run_compton,
+            run_debye: self.run.run_debye,
+            run_dmdw: self.run.run_dmdw,
+            run_screen: self.run.run_screen,
+            run_self: self.run.run_self,
+            run_eels: self.run.run_eels,
+            run_full_spectrum: self.run.run_fullspectrum,
+        }
+    }
+}
+
+impl OracleArgs {
+    fn into_config(self) -> OracleCommandConfig {
+        let capture_mode = if let Some(runner) = self.capture_runner {
+            OracleCaptureMode::Runner(runner)
+        } else if let Some(path) = self.capture_bin_dir {
+            OracleCaptureMode::BinDir(path)
+        } else {
+            unreachable!("clap requires one of --capture-runner or --capture-bin-dir")
+        };
+
+        let regression = RegressionRunnerConfig {
+            manifest_path: self.manifest,
+            policy_path: self.policy,
+            baseline_root: self.oracle_root,
+            actual_root: self.actual_root,
+            baseline_subdir: self.oracle_subdir,
+            actual_subdir: self.actual_subdir,
+            report_path: self.report,
+            run_rdinp: self.run.run_rdinp,
+            run_pot: self.run.run_pot,
+            run_xsph: self.run.run_xsph,
+            run_path: self.run.run_path,
+            run_fms: self.run.run_fms,
+            run_band: self.run.run_band,
+            run_ldos: self.run.run_ldos,
+            run_rixs: self.run.run_rixs,
+            run_crpa: self.run.run_crpa,
+            run_compton: self.run.run_compton,
+            run_debye: self.run.run_debye,
+            run_dmdw: self.run.run_dmdw,
+            run_screen: self.run.run_screen,
+            run_self: self.run.run_self,
+            run_eels: self.run.run_eels,
+            run_full_spectrum: self.run.run_fullspectrum,
+        };
+
+        OracleCommandConfig {
+            regression,
+            capture_mode,
+            allow_missing_entry_files: self.capture_allow_missing_entry_files,
+        }
+    }
+}
+
+pub(super) fn run_regression_command(args: RegressionArgs) -> Result<i32, CliError> {
+    let config = args.into_config();
     let report = run_regression(&config).map_err(CliError::Compute)?;
     println!("{}", render_human_summary(&report));
     println!("JSON report: {}", config.report_path.display());
@@ -20,13 +237,8 @@ pub(super) fn run_regression_command(args: Vec<String>) -> Result<i32, CliError>
     if report.passed { Ok(0) } else { Ok(1) }
 }
 
-pub(super) fn run_oracle_command(args: Vec<String>) -> Result<i32, CliError> {
-    if help_requested(&args) {
-        println!("{}", oracle_usage_text());
-        return Ok(0);
-    }
-
-    let mut config = parse_oracle_args(args)?;
+pub(super) fn run_oracle_command(args: OracleArgs) -> Result<i32, CliError> {
+    let mut config = args.into_config();
     let working_dir = std::env::current_dir().map_err(|source| {
         CliError::Compute(FeffError::io_system(
             "IO.CLI_CURRENT_DIR",
@@ -57,18 +269,7 @@ pub(super) fn run_oracle_command(args: Vec<String>) -> Result<i32, CliError> {
     if report.passed { Ok(0) } else { Ok(1) }
 }
 
-pub(super) fn run_feff_command(args: Vec<String>) -> Result<i32, CliError> {
-    if help_requested(&args) {
-        println!("{}", feff_usage_text());
-        return Ok(0);
-    }
-    if !args.is_empty() {
-        return Err(CliError::Usage(format!(
-            "Command 'feff' does not accept positional arguments.\n{}",
-            feff_usage_text()
-        )));
-    }
-
+pub(super) fn run_feff_command() -> Result<i32, CliError> {
     let context = load_cli_context()?;
     let fixture = select_serial_fixture(&context).map_err(CliError::Compute)?;
     let modules = modules_for_serial_fixture(&fixture);
@@ -101,31 +302,11 @@ pub(super) fn run_feff_command(args: Vec<String>) -> Result<i32, CliError> {
     Ok(0)
 }
 
-pub(super) fn run_feffmpi_command(args: Vec<String>) -> Result<i32, CliError> {
-    if help_requested(&args) {
-        println!("{}", feffmpi_usage_text());
-        return Ok(0);
-    }
-
-    if args.len() != 1 {
-        return Err(CliError::Usage(format!(
-            "Command 'feffmpi' requires exactly one argument: <nprocs>.\n{}",
-            feffmpi_usage_text()
-        )));
-    }
-
-    let process_count = args[0].parse::<usize>().map_err(|_| {
-        CliError::Usage(format!(
-            "Invalid process count '{}'; expected a positive integer.\n{}",
-            args[0],
-            feffmpi_usage_text()
-        ))
-    })?;
+pub(super) fn run_feffmpi_command(process_count: usize) -> Result<i32, CliError> {
     if process_count == 0 {
-        return Err(CliError::Usage(format!(
-            "Invalid process count '0'; expected a positive integer.\n{}",
-            feffmpi_usage_text()
-        )));
+        return Err(CliError::Usage(
+            "Invalid process count '0'; expected a positive integer.".to_string(),
+        ));
     }
 
     if process_count > 1 {
@@ -135,21 +316,10 @@ pub(super) fn run_feffmpi_command(args: Vec<String>) -> Result<i32, CliError> {
         );
     }
 
-    run_feff_command(Vec::new())
+    run_feff_command()
 }
 
-pub(super) fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> Result<i32, CliError> {
-    if help_requested(&args) {
-        println!("{}", module_usage_text(spec));
-        return Ok(0);
-    }
-    if !args.is_empty() {
-        return Err(CliError::Usage(format!(
-            "Command '{}' does not accept positional arguments.\n{}",
-            spec.command,
-            module_usage_text(spec)
-        )));
-    }
+pub(super) fn run_module_command(spec: ModuleCommandSpec) -> Result<i32, CliError> {
     if !runtime_compute_engine_available(spec.module) {
         return Err(CliError::Compute(runtime_engine_unavailable_error(
             spec.module,
@@ -172,220 +342,4 @@ pub(super) fn run_module_command(spec: ModuleCommandSpec, args: Vec<String>) -> 
         artifacts.len()
     );
     Ok(0)
-}
-
-fn parse_regression_args(args: Vec<String>) -> Result<RegressionRunnerConfig, CliError> {
-    let mut config = RegressionRunnerConfig::default();
-    let mut index = 0;
-    while index < args.len() {
-        let option = &args[index];
-        let next_index = index + 1;
-
-        match option.as_str() {
-            "--manifest" => {
-                config.manifest_path = PathBuf::from(value_for_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--policy" => {
-                config.policy_path = PathBuf::from(value_for_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--baseline-root" => {
-                config.baseline_root = PathBuf::from(value_for_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--actual-root" => {
-                config.actual_root = PathBuf::from(value_for_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--baseline-subdir" => {
-                config.baseline_subdir = value_for_option(&args, next_index, option)?.to_string();
-                index += 2;
-            }
-            "--actual-subdir" => {
-                config.actual_subdir = value_for_option(&args, next_index, option)?.to_string();
-                index += 2;
-            }
-            "--report" => {
-                config.report_path = PathBuf::from(value_for_option(&args, next_index, option)?);
-                index += 2;
-            }
-            _ => {
-                if apply_regression_run_flag(&mut config, option) {
-                    index += 1;
-                } else {
-                    return Err(CliError::Usage(format!(
-                        "Unknown option '{}'.\n{}",
-                        option,
-                        regression_usage_text()
-                    )));
-                }
-            }
-        }
-    }
-
-    Ok(config)
-}
-
-fn parse_oracle_args(args: Vec<String>) -> Result<OracleCommandConfig, CliError> {
-    let mut regression = RegressionRunnerConfig {
-        baseline_root: PathBuf::from("artifacts/fortran-oracle-capture"),
-        actual_root: PathBuf::from("artifacts/oracle-actual"),
-        baseline_subdir: "outputs".to_string(),
-        actual_subdir: "actual".to_string(),
-        report_path: PathBuf::from("artifacts/regression/oracle-report.json"),
-        ..RegressionRunnerConfig::default()
-    };
-
-    let mut capture_runner = None;
-    let mut capture_bin_dir = None;
-    let mut allow_missing_entry_files = false;
-
-    let mut index = 0;
-    while index < args.len() {
-        let option = &args[index];
-        let next_index = index + 1;
-
-        match option.as_str() {
-            "--manifest" => {
-                regression.manifest_path =
-                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--policy" => {
-                regression.policy_path =
-                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--oracle-root" => {
-                regression.baseline_root =
-                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--actual-root" => {
-                regression.actual_root =
-                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--oracle-subdir" => {
-                regression.baseline_subdir =
-                    value_for_oracle_option(&args, next_index, option)?.to_string();
-                index += 2;
-            }
-            "--actual-subdir" => {
-                regression.actual_subdir =
-                    value_for_oracle_option(&args, next_index, option)?.to_string();
-                index += 2;
-            }
-            "--report" => {
-                regression.report_path =
-                    PathBuf::from(value_for_oracle_option(&args, next_index, option)?);
-                index += 2;
-            }
-            "--capture-runner" => {
-                capture_runner =
-                    Some(value_for_oracle_option(&args, next_index, option)?.to_string());
-                index += 2;
-            }
-            "--capture-bin-dir" => {
-                capture_bin_dir = Some(PathBuf::from(value_for_oracle_option(
-                    &args, next_index, option,
-                )?));
-                index += 2;
-            }
-            "--capture-allow-missing-entry-files" => {
-                allow_missing_entry_files = true;
-                index += 1;
-            }
-            _ => {
-                if apply_regression_run_flag(&mut regression, option) {
-                    index += 1;
-                } else {
-                    return Err(CliError::Usage(format!(
-                        "Unknown option '{}'.\n{}",
-                        option,
-                        oracle_usage_text()
-                    )));
-                }
-            }
-        }
-    }
-
-    let capture_mode = match (capture_runner, capture_bin_dir) {
-        (Some(_), Some(_)) => {
-            return Err(CliError::Usage(format!(
-                "Use either '--capture-runner' or '--capture-bin-dir', not both.\n{}",
-                oracle_usage_text()
-            )));
-        }
-        (Some(command), None) => OracleCaptureMode::Runner(command),
-        (None, Some(path)) => OracleCaptureMode::BinDir(path),
-        (None, None) => {
-            return Err(CliError::Usage(format!(
-                "Missing required oracle capture mode ('--capture-runner' or '--capture-bin-dir').\n{}",
-                oracle_usage_text()
-            )));
-        }
-    };
-
-    Ok(OracleCommandConfig {
-        regression,
-        capture_mode,
-        allow_missing_entry_files,
-    })
-}
-
-fn apply_regression_run_flag(config: &mut RegressionRunnerConfig, option: &str) -> bool {
-    match option {
-        "--run-rdinp" | "--run-rdinp-placeholder" => config.run_rdinp = true,
-        "--run-pot" | "--run-pot-placeholder" => config.run_pot = true,
-        "--run-xsph" | "--run-xsph-placeholder" => config.run_xsph = true,
-        "--run-path" | "--run-path-placeholder" => config.run_path = true,
-        "--run-fms" | "--run-fms-placeholder" => config.run_fms = true,
-        "--run-band" | "--run-band-placeholder" => config.run_band = true,
-        "--run-ldos" | "--run-ldos-placeholder" => config.run_ldos = true,
-        "--run-rixs" | "--run-rixs-placeholder" => config.run_rixs = true,
-        "--run-crpa" | "--run-crpa-placeholder" => config.run_crpa = true,
-        "--run-compton" | "--run-compton-placeholder" => config.run_compton = true,
-        "--run-debye" | "--run-debye-placeholder" => config.run_debye = true,
-        "--run-dmdw" | "--run-dmdw-placeholder" => config.run_dmdw = true,
-        "--run-fullspectrum" | "--run-fullspectrum-placeholder" => config.run_full_spectrum = true,
-        "--run-screen" | "--run-screen-placeholder" => config.run_screen = true,
-        "--run-self" | "--run-self-placeholder" => config.run_self = true,
-        "--run-eels" | "--run-eels-placeholder" => config.run_eels = true,
-        _ => return false,
-    }
-    true
-}
-
-fn value_for_option<'a>(
-    args: &'a [String],
-    value_index: usize,
-    option: &str,
-) -> Result<&'a str, CliError> {
-    args.get(value_index)
-        .map(|value| value.as_str())
-        .ok_or_else(|| {
-            CliError::Usage(format!(
-                "Missing value for option '{}'.\n{}",
-                option,
-                regression_usage_text()
-            ))
-        })
-}
-
-fn value_for_oracle_option<'a>(
-    args: &'a [String],
-    value_index: usize,
-    option: &str,
-) -> Result<&'a str, CliError> {
-    args.get(value_index)
-        .map(|value| value.as_str())
-        .ok_or_else(|| {
-            CliError::Usage(format!(
-                "Missing value for option '{}'.\n{}",
-                option,
-                oracle_usage_text()
-            ))
-        })
 }

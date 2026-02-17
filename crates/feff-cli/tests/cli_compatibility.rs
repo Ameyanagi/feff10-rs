@@ -795,7 +795,7 @@ fn top_level_help_lists_compatibility_commands() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("feff"));
-    assert!(stdout.contains("feffmpi <nprocs>"));
+    assert!(stdout.contains("feffmpi"));
     assert!(stdout.contains("oracle"));
     assert!(stdout.contains("rdinp"));
 }
