@@ -12,6 +12,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - Dense LU kernels should pack `L` and `U` into a single `DenseComplexMatrix` with a permutation vector of source-row indices; solving requires applying that row permutation to `rhs` before forward/back substitution.
 - Matrix inversion helpers should reuse `LuDecomposition::solve` over identity basis vectors and reject tiny LU pivots relative to `||A||_inf` to fail fast on ill-conditioned inputs.
 - `faer` general eigensolver output ordering is unspecified; sort eigenpairs (value + matching vector column) by `(Re(lambda), Im(lambda))` before exposing deterministic APIs or comparing against reference spectra.
+- FEFF `somm.f90` parity requires Simpson weights over `r^(m+1)` on the log-radius grid plus endpoint corrections from the first two radial points using the near-zero exponent parameter.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -111,4 +112,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: expose eigen helper outputs as paired `{eigenvalues, eigenvectors}` so downstream kernels can validate or consume eigenpairs without recomputing.
   - Gotchas encountered: `faer` does not guarantee general-eigensolver ordering; deterministic regression tests require explicit sorting of values and corresponding vector columns.
   - Useful context: eigenpair regression is most stable when asserting residuals (`||A v - λ v||`) with absolute+relative tolerances instead of relying only on exact vector orientation.
+---
+
+## 2026-02-17 22:59:33 JST - US-010
+- Implemented FEFF `somm.f90`-parity radial integration in `crates/feff-core/src/numerics/special/integration.rs` via `integrate_somm`, including Simpson weighting over exponential radial grids and FEFF endpoint correction terms.
+- Added reusable API surfaces (`SommInput`, `SommError`, `RadialIntegrationApi`) and exported them through `crates/feff-core/src/numerics/special/mod.rs`.
+- Added deterministic regression tests covering analytic power-law integrals and two fixed Fortran fixture cases generated from `feff10/src/MATH/somm.f90`.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/special/integration.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: keep FEFF parity by splitting positive/negative accumulations separately before combining, matching `somm.f90` arithmetic-if behavior.
+  - Gotchas encountered: `somm.f90` treats `m` as integer (`implicit` I-N rule); using floating `m` changes exponent behavior and breaks parity.
+  - Useful context: FEFF source is available locally at `feff10/src/MATH/somm.f90`, which is the right baseline for future integration/convolution fixture generation.
 ---

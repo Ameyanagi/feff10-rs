@@ -1,5 +1,6 @@
 pub mod bessel;
 pub mod harmonics;
+pub mod integration;
 pub mod linalg;
 pub mod wigner;
 
@@ -7,6 +8,7 @@ pub use bessel::{
     spherical_h, spherical_h1, spherical_j, spherical_n, SphericalBesselApi, SphericalBesselInput,
 };
 pub use harmonics::{spherical_y, y_lm, SphericalHarmonicsApi, SphericalHarmonicsInput};
+pub use integration::{integrate_somm, RadialIntegrationApi, SommError, SommInput};
 pub use linalg::{
     eigen_decompose, eigenvalues, lu_factorize, lu_invert, lu_solve, EigenDecomposition,
     EigenError, EigenvalueSolveApi, LuDecomposition, LuError, LuLinearSolveApi,
