@@ -6,7 +6,7 @@ pub use bessel::{
     spherical_h, spherical_h1, spherical_j, spherical_n, SphericalBesselApi, SphericalBesselInput,
 };
 pub use harmonics::{spherical_y, y_lm, SphericalHarmonicsApi, SphericalHarmonicsInput};
-pub use wigner::{Wigner3jInput, Wigner6jInput, WignerSymbolsApi};
+pub use wigner::{wigner_3j, Wigner3jInput, Wigner6jInput, WignerSymbolsApi};
 
 use faer::Mat;
 use num_complex::Complex64;
