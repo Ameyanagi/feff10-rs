@@ -6,9 +6,13 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::CrpaModel;
-use parser::{artifact_list, input_parent_dir, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_source,
+    validate_request_shape,
+};
 
 pub(crate) const CRPA_REQUIRED_INPUTS: [&str; 3] = ["crpa.inp", "pot.inp", "geom.dat"];
+pub(crate) const CRPA_OPTIONAL_INPUTS: [&str; 2] = ["wscrn.dat", "logscreen.dat"];
 pub(crate) const CRPA_REQUIRED_OUTPUTS: [&str; 2] = ["wscrn.dat", "logscrn.dat"];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -21,10 +25,7 @@ pub struct CrpaContract {
 pub struct CrpaModule;
 
 impl CrpaModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<CrpaContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<CrpaContract> {
         validate_request_shape(request)?;
         Ok(CrpaContract {
             required_inputs: artifact_list(&CRPA_REQUIRED_INPUTS),
@@ -47,9 +48,23 @@ impl ModuleExecutor for CrpaModule {
             &input_dir.join(CRPA_REQUIRED_INPUTS[2]),
             CRPA_REQUIRED_INPUTS[2],
         )?;
+        let screen_wscrn_source = maybe_read_optional_input_source(
+            input_dir.join(CRPA_OPTIONAL_INPUTS[0]),
+            CRPA_OPTIONAL_INPUTS[0],
+        )?;
+        let screen_log_source = maybe_read_optional_input_source(
+            input_dir.join(CRPA_OPTIONAL_INPUTS[1]),
+            CRPA_OPTIONAL_INPUTS[1],
+        )?;
 
-        let model =
-            CrpaModel::from_sources(&request.fixture_id, &crpa_source, &pot_source, &geom_source)?;
+        let model = CrpaModel::from_sources(
+            &request.fixture_id,
+            &crpa_source,
+            &pot_source,
+            &geom_source,
+            screen_wscrn_source.as_deref(),
+            screen_log_source.as_deref(),
+        )?;
         let outputs = artifact_list(&CRPA_REQUIRED_OUTPUTS);
 
         fs::create_dir_all(&request.output_dir).map_err(|source| {
@@ -88,8 +103,8 @@ impl ModuleExecutor for CrpaModule {
 
 #[cfg(test)]
 mod tests {
-    use super::CrpaModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use super::{CRPA_OPTIONAL_INPUTS, CrpaModule};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
@@ -123,6 +138,18 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
    4      0.00000      1.80500      1.80500   1   1
 ";
 
+    const SCREEN_WSCRN_FIXTURE: &str = "# r       w_scrn(r)      v_ch(r)
+  1.0000000000E-04  2.5000000000E-01  3.1000000000E-01
+  1.7500000000E-01  2.2500000000E-01  2.9000000000E-01
+  3.5000000000E-01  1.9000000000E-01  2.5500000000E-01
+  5.2500000000E-01  1.5500000000E-01  2.1000000000E-01
+  7.0000000000E-01  1.2500000000E-01  1.8000000000E-01
+";
+
+    const SCREEN_LOG_FIXTURE: &str = "SCREEN true-compute runtime
+fixture: FX-SCREEN-001
+";
+
     #[test]
     fn contract_exposes_true_compute_crpa_artifact_contract() {
         let request = ComputeRequest::new(
@@ -152,12 +179,8 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         let output_dir = temp.path().join("actual");
         let input_path = stage_crpa_inputs(temp.path(), CRPA_INPUT_FIXTURE);
 
-        let request = ComputeRequest::new(
-            "FX-CRPA-001",
-            ComputeModule::Crpa,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-CRPA-001", ComputeModule::Crpa, &input_path, &output_dir);
         let artifacts = CrpaModule
             .execute(&request)
             .expect("CRPA execution should succeed");
@@ -226,6 +249,56 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
     }
 
     #[test]
+    fn execute_optional_screen_wscrn_changes_crpa_response() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let with_screen_root = temp.path().join("with-screen-wscrn");
+        let without_screen_root = temp.path().join("without-screen-wscrn");
+        let with_screen_input = stage_crpa_inputs(&with_screen_root, CRPA_INPUT_FIXTURE);
+        let without_screen_input = stage_crpa_inputs(&without_screen_root, CRPA_INPUT_FIXTURE);
+        fs::write(
+            with_screen_root.join(CRPA_OPTIONAL_INPUTS[0]),
+            SCREEN_WSCRN_FIXTURE,
+        )
+        .expect("optional wscrn input should be written");
+        fs::write(
+            with_screen_root.join(CRPA_OPTIONAL_INPUTS[1]),
+            SCREEN_LOG_FIXTURE,
+        )
+        .expect("optional logscreen input should be written");
+
+        let with_screen_output = with_screen_root.join("out");
+        let without_screen_output = without_screen_root.join("out");
+        let with_screen_request = ComputeRequest::new(
+            "FX-CRPA-001",
+            ComputeModule::Crpa,
+            &with_screen_input,
+            &with_screen_output,
+        );
+        let without_screen_request = ComputeRequest::new(
+            "FX-CRPA-001",
+            ComputeModule::Crpa,
+            &without_screen_input,
+            &without_screen_output,
+        );
+
+        CrpaModule
+            .execute(&with_screen_request)
+            .expect("CRPA run with optional wscrn.dat should succeed");
+        CrpaModule
+            .execute(&without_screen_request)
+            .expect("CRPA run without optional wscrn.dat should succeed");
+
+        let with_screen = fs::read(with_screen_output.join("wscrn.dat"))
+            .expect("wscrn output with optional screen data should exist");
+        let without_screen = fs::read(without_screen_output.join("wscrn.dat"))
+            .expect("wscrn output without optional screen data should exist");
+        assert_ne!(
+            with_screen, without_screen,
+            "optional SCREEN wscrn.dat should influence CRPA wscrn.dat output"
+        );
+    }
+
+    #[test]
     fn execute_rejects_non_crpa_module_requests() {
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = stage_crpa_inputs(temp.path(), CRPA_INPUT_FIXTURE);
@@ -252,12 +325,8 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         fs::write(temp.path().join("geom.dat"), GEOM_INPUT_FIXTURE)
             .expect("geom input should be staged");
 
-        let request = ComputeRequest::new(
-            "FX-CRPA-001",
-            ComputeModule::Crpa,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-CRPA-001", ComputeModule::Crpa, &input_path, temp.path());
         let error = CrpaModule
             .execute(&request)
             .expect_err("missing pot input should fail");
@@ -275,12 +344,8 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
 ";
         let input_path = stage_crpa_inputs(temp.path(), disabled_crpa_input);
 
-        let request = ComputeRequest::new(
-            "FX-CRPA-001",
-            ComputeModule::Crpa,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-CRPA-001", ComputeModule::Crpa, &input_path, temp.path());
         let error = CrpaModule
             .execute(&request)
             .expect_err("disabled CRPA flag should fail");

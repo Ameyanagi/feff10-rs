@@ -35,6 +35,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - `select_serial_fixture` for `feff` should prefer workflow candidates with the largest `modulesCovered` set so RDINP+module parity fixtures do not preempt full serial-chain fixtures.
 - Regression RDINP execution should stage `feff.inp` into actual outputs only when the baseline fixture includes `feff.inp`; unconditional staging breaks suites that intentionally compare module outputs only.
 - For downstream physics modules that can consume POT outputs, parse `pot.bin` (`POTBIN10`) first and keep a deterministic `pot.inp` fallback only for workflows where POT artifacts are not staged.
+- Downstream module migrations should preserve required artifact contracts and ingest upstream artifacts as optional sibling inputs (for example CRPA consuming SCREEN `wscrn.dat`) so standalone fixture runs still execute deterministically.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -367,4 +368,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: SCREEN-like downstream modules should ingest upstream true-compute binaries (`pot.bin`) for physics terms and keep text-deck paths as compatibility fallback only.
   - Gotchas encountered: `rustfmt` on this workspace requires `--edition 2024` because parser modules use let-chains.
   - Useful context: there are still no repository-local `AGENTS.md` files under this workspace, so reusable guidance remains centralized in `scripts/ralph/progress.txt`.
+---
+## 2026-02-18 01:55:00 JST - US-030
+- Replaced CRPA synthetic-only shaping in `crates/feff-core/src/modules/crpa/model.rs` by ingesting SCREEN `wscrn.dat` radial data and using it as the primary signal when generating CRPA `wscrn.dat`, with existing POT/GEOM-driven fallback behavior when SCREEN output is absent.
+- Kept CRPA required/expected artifact contracts unchanged in `crates/feff-core/src/modules/crpa/mod.rs` while adding optional sibling read plumbing for SCREEN `wscrn.dat` and `logscreen.dat`.
+- Added parser support in `crates/feff-core/src/modules/crpa/parser.rs` for optional `wscrn.dat` ingestion and structured radial summary extraction.
+- Added module test coverage `execute_optional_screen_wscrn_changes_crpa_response` to verify optional SCREEN output deterministically influences CRPA output.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/modules/crpa/parser.rs`, `crates/feff-core/src/modules/crpa/model.rs`, `crates/feff-core/src/modules/crpa/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: downstream module ports can consume upstream module artifacts as optional sibling inputs to improve physics coupling without breaking required artifact contracts.
+  - Gotchas encountered: CRPA and SCREEN both use `wscrn.dat`; guard SCREEN coupling on `logscreen.dat` presence so rerunning CRPA in-place does not consume its own prior `wscrn.dat`.
+  - Useful context: regression flow order already executes SCREEN before CRPA in combined runs, so optional SCREEN coupling becomes active without orchestration changes.
 ---

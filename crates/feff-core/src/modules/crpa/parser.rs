@@ -1,7 +1,7 @@
 use super::CRPA_REQUIRED_INPUTS;
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy)]
 pub(super) struct CrpaControlInput {
@@ -35,6 +35,23 @@ pub(super) struct AtomSite {
     pub(super) y: f64,
     pub(super) z: f64,
     pub(super) ipot: i32,
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct ScreenWscrnRow {
+    pub(super) radius: f64,
+    pub(super) screened: f64,
+    pub(super) charge: f64,
+}
+
+#[derive(Debug, Clone)]
+pub(super) struct ScreenWscrnInput {
+    pub(super) radial_rows: Vec<ScreenWscrnRow>,
+    pub(super) radius_min: f64,
+    pub(super) radius_max: f64,
+    pub(super) screen_mean: f64,
+    pub(super) charge_mean: f64,
+    pub(super) delta_mean: f64,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -104,6 +121,17 @@ pub(super) fn read_input_source(path: &Path, artifact_name: &str) -> ComputeResu
             ),
         )
     })
+}
+
+pub(super) fn maybe_read_optional_input_source(
+    path: PathBuf,
+    artifact_name: &str,
+) -> ComputeResult<Option<String>> {
+    if path.is_file() {
+        return read_input_source(&path, artifact_name).map(Some);
+    }
+
+    Ok(None)
 }
 
 pub(super) fn parse_crpa_source(fixture_id: &str, source: &str) -> ComputeResult<CrpaControlInput> {
@@ -320,6 +348,60 @@ pub(super) fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult
         radius_mean,
         radius_rms,
         radius_max,
+    })
+}
+
+pub(super) fn parse_wscrn_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<ScreenWscrnInput> {
+    let mut radial_rows = Vec::new();
+    let mut radius_min = f64::INFINITY;
+    let mut radius_max = 0.0_f64;
+    let mut screen_sum = 0.0_f64;
+    let mut charge_sum = 0.0_f64;
+    let mut delta_sum = 0.0_f64;
+
+    for line in source.lines() {
+        let values = parse_numeric_tokens(line);
+        if values.len() < 3 {
+            continue;
+        }
+
+        let radius = values[0].abs().max(1.0e-8);
+        let screened = values[1];
+        let charge = values[2];
+
+        radial_rows.push(ScreenWscrnRow {
+            radius,
+            screened,
+            charge,
+        });
+        radius_min = radius_min.min(radius);
+        radius_max = radius_max.max(radius);
+        screen_sum += screened;
+        charge_sum += charge;
+        delta_sum += (charge - screened).abs();
+    }
+
+    if radial_rows.is_empty() {
+        return Err(crpa_parse_error(
+            fixture_id,
+            "wscrn.dat is present but has no parseable radial rows",
+        ));
+    }
+
+    let count = radial_rows.len() as f64;
+    let radius_min = radius_min.max(1.0e-8);
+    let radius_max = radius_max.max(radius_min + 1.0e-8);
+
+    Ok(ScreenWscrnInput {
+        radial_rows,
+        radius_min,
+        radius_max,
+        screen_mean: screen_sum / count,
+        charge_mean: charge_sum / count,
+        delta_mean: delta_sum / count,
     })
 }
 
