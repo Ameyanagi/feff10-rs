@@ -2,8 +2,6 @@ use crate::domain::FeffError;
 use crate::numerics::{NumericTolerance, compare_with_policy_tolerance, format_numeric_for_policy};
 use globset::{Glob, GlobMatcher};
 use serde::{Deserialize, Serialize};
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -459,100 +457,24 @@ impl Comparator {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum ComparatorError {
-    ReadPolicy {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    ParsePolicy {
-        path: PathBuf,
-        source: serde_json::Error,
-    },
+    #[error("failed to read policy '{}': {source}", path.display())]
+    ReadPolicy { path: PathBuf, source: std::io::Error },
+    #[error("failed to parse policy '{}': {source}", path.display())]
+    ParsePolicy { path: PathBuf, source: serde_json::Error },
+    #[error("invalid policy: {0}")]
     InvalidPolicy(String),
-    InvalidGlob {
-        pattern: String,
-        source: globset::Error,
-    },
-    ReadArtifact {
-        path: PathBuf,
-        source: std::io::Error,
-    },
-    DecodeArtifact {
-        path: PathBuf,
-        source: std::string::FromUtf8Error,
-    },
-    NumericParse {
-        path: PathBuf,
-        source: NumericParseError,
-    },
-    MissingTolerance {
-        artifact_path: String,
-        category_id: Option<String>,
-    },
-}
-
-impl Display for ComparatorError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ReadPolicy { path, source } => {
-                write!(f, "failed to read policy '{}': {}", path.display(), source)
-            }
-            Self::ParsePolicy { path, source } => {
-                write!(f, "failed to parse policy '{}': {}", path.display(), source)
-            }
-            Self::InvalidPolicy(message) => write!(f, "invalid policy: {}", message),
-            Self::InvalidGlob { pattern, source } => {
-                write!(f, "invalid glob pattern '{}': {}", pattern, source)
-            }
-            Self::ReadArtifact { path, source } => {
-                write!(
-                    f,
-                    "failed to read artifact '{}': {}",
-                    path.display(),
-                    source
-                )
-            }
-            Self::DecodeArtifact { path, source } => {
-                write!(
-                    f,
-                    "artifact '{}' is not valid UTF-8: {}",
-                    path.display(),
-                    source
-                )
-            }
-            Self::NumericParse { path, source } => {
-                write!(
-                    f,
-                    "failed to parse numeric content in '{}': {}",
-                    path.display(),
-                    source
-                )
-            }
-            Self::MissingTolerance {
-                artifact_path,
-                category_id,
-            } => write!(
-                f,
-                "numeric_tolerance selected for artifact '{}' without tolerance (category={:?})",
-                artifact_path, category_id
-            ),
-        }
-    }
-}
-
-impl Error for ComparatorError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::ReadPolicy { source, .. } => Some(source),
-            Self::ParsePolicy { source, .. } => Some(source),
-            Self::InvalidGlob { source, .. } => Some(source),
-            Self::ReadArtifact { source, .. } => Some(source),
-            Self::DecodeArtifact { source, .. } => Some(source),
-            Self::NumericParse { source, .. } => Some(source),
-            Self::InvalidPolicy(_) | Self::MissingTolerance { .. } => None,
-        }
-    }
+    #[error("invalid glob pattern '{pattern}': {source}")]
+    InvalidGlob { pattern: String, source: globset::Error },
+    #[error("failed to read artifact '{}': {source}", path.display())]
+    ReadArtifact { path: PathBuf, source: std::io::Error },
+    #[error("artifact '{}' is not valid UTF-8: {source}", path.display())]
+    DecodeArtifact { path: PathBuf, source: std::string::FromUtf8Error },
+    #[error("failed to parse numeric content in '{}': {source}", path.display())]
+    NumericParse { path: PathBuf, source: NumericParseError },
+    #[error("numeric_tolerance selected for artifact '{artifact_path}' without tolerance (category={category_id:?})")]
+    MissingTolerance { artifact_path: String, category_id: Option<String> },
 }
 
 impl From<ComparatorError> for FeffError {
@@ -575,24 +497,13 @@ impl From<ComparatorError> for FeffError {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, thiserror::Error)]
+#[error("line {line}, token {token_index} ('{token}') is not a valid number")]
 pub struct NumericParseError {
     pub line: usize,
     pub token_index: usize,
     pub token: String,
 }
-
-impl Display for NumericParseError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "line {}, token {} ('{}') is not a valid number",
-            self.line, self.token_index, self.token
-        )
-    }
-}
-
-impl Error for NumericParseError {}
 
 #[derive(Debug, Deserialize)]
 struct RawPolicy {

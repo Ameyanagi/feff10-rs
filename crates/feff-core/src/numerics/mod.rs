@@ -1,6 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -53,48 +51,18 @@ pub struct NumericToleranceCategory {
     pub tolerance: Option<NumericTolerance>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum NumericTolerancePolicyError {
+    #[error("failed to read numeric tolerance policy '{}': {source}", path.display())]
     Read {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("failed to parse numeric tolerance policy '{}': {source}", path.display())]
     Parse {
         path: PathBuf,
         source: serde_json::Error,
     },
-}
-
-impl Display for NumericTolerancePolicyError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Read { path, source } => {
-                write!(
-                    f,
-                    "failed to read numeric tolerance policy '{}': {}",
-                    path.display(),
-                    source
-                )
-            }
-            Self::Parse { path, source } => {
-                write!(
-                    f,
-                    "failed to parse numeric tolerance policy '{}': {}",
-                    path.display(),
-                    source
-                )
-            }
-        }
-    }
-}
-
-impl Error for NumericTolerancePolicyError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Read { source, .. } => Some(source),
-            Self::Parse { source, .. } => Some(source),
-        }
-    }
 }
 
 pub fn load_numeric_tolerance_policy(

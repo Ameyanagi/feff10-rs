@@ -20,8 +20,6 @@ use super::xsph::XsphModule;
 use crate::domain::{FeffError, ComputeModule, ComputeRequest, ComputeResult};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -321,267 +319,125 @@ fn collect_fixture_mismatches(fixtures: &[FixtureRegressionReport]) -> Vec<Fixtu
         .collect()
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum RegressionRunnerError {
+    #[error("failed to read manifest '{}': {source}", path.display())]
     ReadManifest {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("failed to parse manifest '{}': {source}", path.display())]
     ParseManifest {
         path: PathBuf,
         source: serde_json::Error,
     },
+    #[error("invalid fixture configuration for '{fixture_id}': {message}")]
     InvalidFixtureConfig {
         fixture_id: String,
         message: String,
     },
-    Comparator(ComparatorError),
+    #[error("comparator setup failed: {0}")]
+    Comparator(#[from] ComparatorError),
+    #[error("RDINP scaffold execution failed for fixture '{fixture_id}': {source}")]
     Rdinp {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("POT scaffold execution failed for fixture '{fixture_id}': {source}")]
     Pot {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("XSPH parity execution failed for fixture '{fixture_id}': {source}")]
     Xsph {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("BAND parity execution failed for fixture '{fixture_id}': {source}")]
     Band {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("LDOS parity execution failed for fixture '{fixture_id}': {source}")]
     Ldos {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("RIXS parity execution failed for fixture '{fixture_id}': {source}")]
     Rixs {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("CRPA parity execution failed for fixture '{fixture_id}': {source}")]
     Crpa {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("COMPTON parity execution failed for fixture '{fixture_id}': {source}")]
     Compton {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("SCREEN parity execution failed for fixture '{fixture_id}': {source}")]
     Screen {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("SELF parity execution failed for fixture '{fixture_id}': {source}")]
     SelfEnergy {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("EELS parity execution failed for fixture '{fixture_id}': {source}")]
     Eels {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("FULLSPECTRUM parity execution failed for fixture '{fixture_id}': {source}")]
     FullSpectrum {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("DEBYE parity execution failed for fixture '{fixture_id}': {source}")]
     Debye {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("DMDW parity execution failed for fixture '{fixture_id}': {source}")]
     Dmdw {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("PATH scaffold execution failed for fixture '{fixture_id}': {source}")]
     Path {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("FMS scaffold execution failed for fixture '{fixture_id}': {source}")]
     Fms {
         fixture_id: String,
         source: FeffError,
     },
+    #[error("failed to read directory '{}': {source}", path.display())]
     ReadDirectory {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("failed to create report directory '{}': {source}", path.display())]
     ReportDirectory {
         path: PathBuf,
         source: std::io::Error,
     },
+    #[error("failed to serialize report '{}': {source}", path.display())]
     SerializeReport {
         path: PathBuf,
         source: serde_json::Error,
     },
+    #[error("failed to write report '{}': {source}", path.display())]
     WriteReport {
         path: PathBuf,
         source: std::io::Error,
     },
-}
-
-impl Display for RegressionRunnerError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::ReadManifest { path, source } => {
-                write!(
-                    f,
-                    "failed to read manifest '{}': {}",
-                    path.display(),
-                    source
-                )
-            }
-            Self::ParseManifest { path, source } => {
-                write!(
-                    f,
-                    "failed to parse manifest '{}': {}",
-                    path.display(),
-                    source
-                )
-            }
-            Self::InvalidFixtureConfig {
-                fixture_id,
-                message,
-            } => write!(
-                f,
-                "invalid fixture configuration for '{}': {}",
-                fixture_id, message
-            ),
-            Self::Comparator(source) => write!(f, "comparator setup failed: {}", source),
-            Self::Rdinp { fixture_id, source } => write!(
-                f,
-                "RDINP scaffold execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Pot { fixture_id, source } => write!(
-                f,
-                "POT scaffold execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Xsph { fixture_id, source } => write!(
-                f,
-                "XSPH parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Band { fixture_id, source } => write!(
-                f,
-                "BAND parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Ldos { fixture_id, source } => write!(
-                f,
-                "LDOS parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Rixs { fixture_id, source } => write!(
-                f,
-                "RIXS parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Crpa { fixture_id, source } => write!(
-                f,
-                "CRPA parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Compton { fixture_id, source } => write!(
-                f,
-                "COMPTON parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Screen { fixture_id, source } => write!(
-                f,
-                "SCREEN parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::SelfEnergy { fixture_id, source } => write!(
-                f,
-                "SELF parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Eels { fixture_id, source } => write!(
-                f,
-                "EELS parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::FullSpectrum { fixture_id, source } => write!(
-                f,
-                "FULLSPECTRUM parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Debye { fixture_id, source } => write!(
-                f,
-                "DEBYE parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Dmdw { fixture_id, source } => write!(
-                f,
-                "DMDW parity execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Path { fixture_id, source } => write!(
-                f,
-                "PATH scaffold execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::Fms { fixture_id, source } => write!(
-                f,
-                "FMS scaffold execution failed for fixture '{}': {}",
-                fixture_id, source
-            ),
-            Self::ReadDirectory { path, source } => {
-                write!(
-                    f,
-                    "failed to read directory '{}': {}",
-                    path.display(),
-                    source
-                )
-            }
-            Self::ReportDirectory { path, source } => write!(
-                f,
-                "failed to create report directory '{}': {}",
-                path.display(),
-                source
-            ),
-            Self::SerializeReport { path, source } => write!(
-                f,
-                "failed to serialize report '{}': {}",
-                path.display(),
-                source
-            ),
-            Self::WriteReport { path, source } => {
-                write!(f, "failed to write report '{}': {}", path.display(), source)
-            }
-        }
-    }
-}
-
-impl Error for RegressionRunnerError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::ReadManifest { source, .. } => Some(source),
-            Self::ParseManifest { source, .. } => Some(source),
-            Self::InvalidFixtureConfig { .. } => None,
-            Self::Comparator(source) => Some(source),
-            Self::Rdinp { source, .. } => Some(source),
-            Self::Pot { source, .. } => Some(source),
-            Self::Xsph { source, .. } => Some(source),
-            Self::Band { source, .. } => Some(source),
-            Self::Ldos { source, .. } => Some(source),
-            Self::Rixs { source, .. } => Some(source),
-            Self::Crpa { source, .. } => Some(source),
-            Self::Compton { source, .. } => Some(source),
-            Self::Screen { source, .. } => Some(source),
-            Self::SelfEnergy { source, .. } => Some(source),
-            Self::Eels { source, .. } => Some(source),
-            Self::FullSpectrum { source, .. } => Some(source),
-            Self::Debye { source, .. } => Some(source),
-            Self::Dmdw { source, .. } => Some(source),
-            Self::Path { source, .. } => Some(source),
-            Self::Fms { source, .. } => Some(source),
-            Self::ReadDirectory { source, .. } => Some(source),
-            Self::ReportDirectory { source, .. } => Some(source),
-            Self::SerializeReport { source, .. } => Some(source),
-            Self::WriteReport { source, .. } => Some(source),
-        }
-    }
 }
 
 impl From<RegressionRunnerError> for FeffError {

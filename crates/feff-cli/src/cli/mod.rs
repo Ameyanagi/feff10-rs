@@ -5,8 +5,6 @@ mod helpers;
 use feff_core::domain::FeffError;
 use dispatch::module_command_spec;
 use helpers::usage_text;
-use std::error::Error;
-use std::fmt::{Display, Formatter};
 
 pub fn run_from_env() -> i32 {
     let mut args = std::env::args();
@@ -72,9 +70,11 @@ fn dispatch_command(command: &str, args: Vec<String>) -> Result<i32, CliError> {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, thiserror::Error)]
 pub enum CliError {
+    #[error("{0}")]
     Usage(String),
+    #[error("{0}")]
     Compute(FeffError),
 }
 
@@ -83,24 +83,6 @@ impl CliError {
         match self {
             Self::Usage(message) => FeffError::input_validation("INPUT.CLI_USAGE", message.clone()),
             Self::Compute(error) => error.clone(),
-        }
-    }
-}
-
-impl Display for CliError {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Usage(message) => f.write_str(message),
-            Self::Compute(source) => write!(f, "{}", source),
-        }
-    }
-}
-
-impl Error for CliError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            Self::Usage(_) => None,
-            Self::Compute(source) => Some(source),
         }
     }
 }
