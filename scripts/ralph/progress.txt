@@ -8,6 +8,7 @@
 - For PATH true-compute/parity coverage, run `RDINP -> POT -> XSPH -> PATH` and seed parity baselines from generated outputs so `paths.dat`, `paths.bin`, `crit.dat`, and `log4.dat` stay deterministic without baseline-copy runtime behavior.
 - For FMS true-compute/parity coverage, run `RDINP -> POT -> XSPH -> FMS` and seed parity baselines from generated outputs so `gg.bin` and `log3.dat` stay deterministic without baseline-copy runtime behavior.
 - For PATH oracle parity coverage, stage `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-path`, and assert `paths.dat` resolves `comparison.mode=exact_text` with `matched_category=path_listing_reports`.
+- For FMS oracle parity coverage, stage `fms.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-fms`, and assert `gg.bin` reports `comparison.mode=exact_text` and `comparison.metrics.kind=exact_text`.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
@@ -291,4 +292,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: FMS parity/regression stability should reuse generated prerequisites (`RDINP -> POT -> XSPH`) and seed baselines from generated outputs rather than staging legacy `phase.bin` snapshots.
   - Gotchas encountered: Enabling an additional runtime module can flip `feff`/`feffmpi` compatibility tests from fail-fast to success; those tests must assert real serial-workflow artifact outcomes instead of fixed unavailable-engine failures.
   - Useful context: No repository-local `AGENTS.md` files exist in this project tree, so reusable module/testing conventions were captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 10:10:32 JST] - US-024
+- Added oracle CLI parity coverage in `tests/regression_cli.rs` for both required fixtures (`FX-FMS-001`, `FX-WORKFLOW-XAS-001`) by running `feff10-rs oracle` with `--run-fms` and CI capture-runner plumbing.
+- Staged required FMS inputs (`fms.inp`, `geom.dat`, `global.inp`, `phase.bin`) for each fixture and asserted true-compute FMS outputs (`gg.bin`, `log3.dat`) are materialized under `actual-root/<fixture>/actual`.
+- Added deterministic report assertions that `gg.bin` is present in per-fixture artifact reports and remains on exact-text comparison semantics (`comparison.mode = exact_text`, `comparison.metrics.kind = exact_text`) to validate binary parity contract expectations.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli oracle_command_runs_fms_parity_for_required_fixtures_and_reports_binary_contracts`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FMS oracle parity can be validated with module-local staged inputs plus `--run-fms`, without chaining RDINP/POT/XSPH hooks in the oracle flow.
+  - Gotchas encountered: The capture runner command still requires `GITHUB_WORKSPACE=<repo-root>` in temp-directory oracle tests, or fixture baseline lookup fails before comparisons run.
+  - Useful context: This repository still has no in-tree `AGENTS.md`; reusable module/testing conventions should continue to be captured in `scripts/ralph/progress.txt`.
 ---

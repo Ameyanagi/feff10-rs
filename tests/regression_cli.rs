@@ -1585,6 +1585,175 @@ fn oracle_command_runs_path_parity_for_required_fixtures_and_applies_path_listin
 }
 
 #[test]
+fn oracle_command_runs_fms_parity_for_required_fixtures_and_reports_binary_contracts() {
+    if !command_available("jq") {
+        eprintln!("Skipping FMS oracle CLI test because jq is unavailable in PATH.");
+        return;
+    }
+
+    let temp = TempDir::new().expect("tempdir should be created");
+    let fixtures = [
+        ("FX-FMS-001", "feff10/examples/XANES/Cu"),
+        ("FX-WORKFLOW-XAS-001", "feff10/examples/XANES/Cu"),
+    ];
+    let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
+    assert!(
+        capture_runner.is_file(),
+        "capture runner should exist at '{}'",
+        capture_runner.display()
+    );
+
+    let manifest_path = temp.path().join("manifest.json");
+    let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
+    let oracle_root = temp.path().join("oracle-root");
+    let actual_root = temp.path().join("actual-root");
+    let report_path = temp.path().join("report/oracle-fms.json");
+
+    let fixture_entries = fixtures
+        .iter()
+        .map(|(fixture_id, input_directory)| {
+            let fixture_input_dir = workspace_root.join(input_directory);
+            format!(
+                r#"
+            {{
+              "id": "{fixture_id}",
+              "modulesCovered": ["FMS"],
+              "inputDirectory": "{input_directory}",
+              "entryFiles": ["feff.inp"]
+            }}
+            "#,
+                fixture_id = fixture_id,
+                input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\")
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(",");
+    let manifest = format!(
+        r#"
+        {{
+          "fixtures": [{}]
+        }}
+        "#,
+        fixture_entries
+    );
+    write_file(&manifest_path, &manifest);
+
+    for (fixture_id, _) in fixtures {
+        let staged_output_dir = actual_root.join(fixture_id).join("actual");
+        stage_workspace_fixture_file(fixture_id, "fms.inp", &staged_output_dir.join("fms.inp"));
+        stage_workspace_fixture_file(fixture_id, "geom.dat", &staged_output_dir.join("geom.dat"));
+        stage_workspace_fixture_file(
+            fixture_id,
+            "global.inp",
+            &staged_output_dir.join("global.inp"),
+        );
+        stage_workspace_fixture_file(
+            fixture_id,
+            "phase.bin",
+            &staged_output_dir.join("phase.bin"),
+        );
+    }
+
+    let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
+    let capture_runner_command = format!(
+        "GITHUB_WORKSPACE='{}' '{}'",
+        workspace_root_arg, capture_runner_arg
+    );
+    let output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &oracle_root,
+        &actual_root,
+        &report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-fms",
+        ],
+    );
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "FMS oracle parity should report mismatches against captured outputs, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("Mismatches:"),
+        "FMS oracle summary should include mismatch totals, stdout: {}",
+        stdout
+    );
+    for (fixture_id, _) in fixtures {
+        assert!(
+            stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+            "FMS oracle summary should include fixture-level mismatch details for '{}', stdout: {}",
+            fixture_id,
+            stdout
+        );
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join("gg.bin")
+                .is_file(),
+            "run-fms should materialize gg.bin for fixture '{}'",
+            fixture_id
+        );
+        assert!(
+            actual_root
+                .join(fixture_id)
+                .join("actual")
+                .join("log3.dat")
+                .is_file(),
+            "run-fms should materialize log3.dat for fixture '{}'",
+            fixture_id
+        );
+    }
+    assert!(
+        report_path.is_file(),
+        "FMS oracle parity should emit a report"
+    );
+
+    let parsed: Value =
+        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
+            .expect("report JSON should parse");
+    assert_eq!(parsed["mismatch_fixture_count"], Value::from(2));
+
+    let fixture_reports = parsed["fixtures"]
+        .as_array()
+        .expect("fixtures report should be an array");
+    for (fixture_id, _) in fixtures {
+        let fixture_report = fixture_reports
+            .iter()
+            .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+            .unwrap_or_else(|| panic!("missing fixture report for '{}'", fixture_id));
+        let artifact_reports = fixture_report["artifacts"]
+            .as_array()
+            .expect("fixture artifact reports should be an array");
+
+        let gg_report = artifact_reports
+            .iter()
+            .find(|artifact| artifact["artifact_path"].as_str() == Some("gg.bin"))
+            .unwrap_or_else(|| panic!("fixture '{}' should include gg.bin comparison", fixture_id));
+        assert_eq!(
+            gg_report["comparison"]["mode"],
+            Value::from("exact_text"),
+            "gg.bin should use exact_text comparison mode for fixture '{}'",
+            fixture_id
+        );
+        assert_eq!(
+            gg_report["comparison"]["metrics"]["kind"],
+            Value::from("exact_text"),
+            "gg.bin should report exact_text metrics for fixture '{}'",
+            fixture_id
+        );
+    }
+}
+
+#[test]
 fn oracle_command_run_screen_input_mismatch_emits_deterministic_diagnostic_contract() {
     if !command_available("jq") {
         eprintln!("Skipping SCREEN oracle CLI test because jq is unavailable in PATH.");
