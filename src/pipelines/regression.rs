@@ -2179,7 +2179,7 @@ mod tests {
         assert!(!report.passed);
 
         let output_dir = actual_root.join("FX-RIXS-001").join("actual");
-        let has_rixs_output = [
+        let missing_outputs: Vec<&str> = [
             "rixs0.dat",
             "rixs1.dat",
             "rixsET.dat",
@@ -2187,13 +2187,16 @@ mod tests {
             "rixsET-sat.dat",
             "rixsEE-sat.dat",
             "logrixs.dat",
-            "referenceherfd.dat",
-            "referenceherfd-sat.dat",
-            "referencerixsET.dat",
         ]
         .iter()
-        .any(|artifact| output_dir.join(artifact).is_file());
-        assert!(has_rixs_output, "RIXS output should exist");
+        .copied()
+        .filter(|artifact| !output_dir.join(artifact).is_file())
+        .collect();
+        assert!(
+            missing_outputs.is_empty(),
+            "RIXS true-compute outputs should exist, missing: {:?}",
+            missing_outputs
+        );
     }
 
     #[test]

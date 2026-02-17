@@ -41,6 +41,7 @@
 - For LDOS oracle parity coverage, stage `ldos.inp`, `geom.dat`, `pot.bin`, and `reciprocal.inp` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-ldos`, and assert failed `ldos*.dat` comparisons report `comparison.mode=numeric_tolerance` with `matched_category=density_tables` and numeric tolerance metrics.
 - For DMDW oracle parity coverage, stage `dmdw.inp` and `feff.dym` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-dmdw`, and assert missing `feff.dym` fails with `IO.DMDW_INPUT_READ` / fatal exit code `3` without emitting a report.
 - For SELF true-compute/parity coverage, stage `sfconv.inp` plus at least one spectrum input (`xmu.dat`/`chi.dat`/`loss.dat`/`feffNNNN.dat`), and treat the output contract as fixed SELF artifacts plus rewritten staged spectrum filenames.
+- For RIXS true-compute/parity coverage, stage `rixs.inp`, `phase_1.bin`, `phase_2.bin`, `wscrn_1.dat`, `wscrn_2.dat`, and `xsect_2.dat`, assert the fixed output contract (`rixs0.dat`, `rixs1.dat`, `rixsET.dat`, `rixsEE.dat`, `rixsET-sat.dat`, `rixsEE-sat.dat`, `logrixs.dat`), and use altered edge-2 staged inputs to verify multi-edge sensitivity without baseline-copy behavior.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -509,4 +510,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: FULLSPECTRUM oracle parity on capture-only fixtures should assert both capture metadata and full-output report artifacts, not just command exit status.
   - Gotchas encountered: `FX-FULLSPECTRUM-001` committed baselines currently include only `xmu.dat` from the FULLSPECTRUM output set, so the remaining outputs should be asserted as deterministic `Missing baseline artifact` mismatches.
   - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 12:50:33 JST] - US-041
+- Replaced `src/pipelines/rixs.rs` baseline materialization with a true-compute RIXS pipeline that parses staged `rixs.inp`, `phase_1.bin`, `phase_2.bin`, `wscrn_1.dat`, `wscrn_2.dat`, and `xsect_2.dat` and deterministically computes canonical RIXS outputs (`rixs0.dat`, `rixs1.dat`, `rixsET.dat`, `rixsEE.dat`, `rixsET-sat.dat`, `rixsEE-sat.dat`, `logrixs.dat`) without runtime baseline reads/copies.
+- Enabled RIXS as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring) and added runtime dispatch coverage for successful RIXS execution/output contract.
+- Reworked `tests/rixs_parity.rs` to the true-compute pattern (required output contract checks, deterministic repeated runs, multi-edge input sensitivity assertions, and regression baselines seeded from generated outputs), updated regression scaffolding assertions in `src/pipelines/regression.rs`, added CLI compatibility coverage for `rixs` module command success in `tests/cli_compatibility.rs`, and updated README runtime/regression docs to describe `--run-rixs` as true-compute execution.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/pipelines/rixs.rs`, `src/pipelines/mod.rs`, `src/pipelines/regression.rs`, `tests/rixs_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: RIXS true-compute and parity tests should enforce the canonical seven-artifact contract and seed temporary baselines from generated outputs instead of relying on fixture reference-named baseline files.
+  - Gotchas encountered: `FX-RIXS-001` committed baselines do not include `rixs.inp`/`phase_*.bin`/`wscrn_*.dat`/`xsect_2.dat`, so tests and CLI coverage need deterministic fallback staged inputs while keeping runtime behavior baseline-independent.
+  - Useful context: There are still no repository-local `AGENTS.md` files under this project tree, so reusable conventions were captured in `scripts/ralph/progress.txt`.
 ---

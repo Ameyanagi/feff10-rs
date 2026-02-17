@@ -66,6 +66,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Fms
             | PipelineModule::Band
             | PipelineModule::Ldos
+            | PipelineModule::Rixs
             | PipelineModule::Compton
             | PipelineModule::Debye
             | PipelineModule::Dmdw
@@ -109,10 +110,10 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Fms => RuntimeFmsExecutor.execute_runtime(request),
         PipelineModule::Band => RuntimeBandExecutor.execute_runtime(request),
         PipelineModule::Ldos => RuntimeLdosExecutor.execute_runtime(request),
+        PipelineModule::Rixs => RuntimeRixsExecutor.execute_runtime(request),
         PipelineModule::Compton => RuntimeComptonExecutor.execute_runtime(request),
         PipelineModule::Debye => RuntimeDebyeExecutor.execute_runtime(request),
         PipelineModule::Dmdw => RuntimeDmdwExecutor.execute_runtime(request),
-        _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
 
@@ -221,6 +222,15 @@ struct RuntimeLdosExecutor;
 impl RuntimePipelineExecutor for RuntimeLdosExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         ldos::LdosPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeRixsExecutor;
+
+impl RuntimePipelineExecutor for RuntimeRixsExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        rixs::RixsPipelineScaffold.execute(request)
     }
 }
 
@@ -436,17 +446,98 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Fms));
         assert!(runtime_compute_engine_available(PipelineModule::Band));
         assert!(runtime_compute_engine_available(PipelineModule::Ldos));
+        assert!(runtime_compute_engine_available(PipelineModule::Rixs));
         assert!(runtime_compute_engine_available(PipelineModule::Compton));
         assert!(runtime_compute_engine_available(PipelineModule::Debye));
         assert!(runtime_compute_engine_available(PipelineModule::Dmdw));
     }
 
     #[test]
-    fn runtime_dispatch_rejects_modules_without_compute_engines() {
-        let request = PipelineRequest::new("FX-RIXS-001", PipelineModule::Rixs, "rixs.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Rixs, &request)
-            .expect_err("unsupported runtime module should fail");
-        assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
+    fn runtime_dispatch_executes_rixs_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(
+            input_dir.join("rixs.inp"),
+            "m_run\n1\ngam_ch, gam_exp(1), gam_exp(2)\n0.0001350512 0.0001450512 0.0001550512\nEMinI, EMaxI, EMinF, EMaxF\n-12.0 18.0 -4.0 16.0\nxmu\n-367493090.02742821\nReadpoles, SkipCalc, MBConv, ReadSigma\nT F F T\nnEdges\n2\nEdge 1\nL3\nEdge 2\nL2\n",
+        )
+        .expect("rixs input should be written");
+        std::fs::write(
+            input_dir.join("phase_1.bin"),
+            [3_u8, 5_u8, 8_u8, 13_u8, 21_u8, 34_u8, 55_u8, 89_u8],
+        )
+        .expect("phase_1 input should be written");
+        std::fs::write(
+            input_dir.join("phase_2.bin"),
+            [2_u8, 7_u8, 1_u8, 8_u8, 2_u8, 8_u8, 1_u8, 8_u8],
+        )
+        .expect("phase_2 input should be written");
+        std::fs::write(
+            input_dir.join("wscrn_1.dat"),
+            "-6.0 0.11 0.95\n-2.0 0.16 1.05\n0.0 0.18 1.15\n3.5 0.23 1.30\n8.0 0.31 1.45\n",
+        )
+        .expect("wscrn_1 input should be written");
+        std::fs::write(
+            input_dir.join("wscrn_2.dat"),
+            "-5.0 0.09 0.85\n-1.5 0.14 0.95\n1.0 0.17 1.05\n4.0 0.21 1.22\n9.0 0.28 1.36\n",
+        )
+        .expect("wscrn_2 input should be written");
+        std::fs::write(
+            input_dir.join("xsect_2.dat"),
+            "0.0 1.2 0.1\n2.0 1.0 0.2\n4.0 0.9 0.3\n6.0 0.8 0.4\n8.0 0.7 0.5\n",
+        )
+        .expect("xsect_2 input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-RIXS-001",
+            PipelineModule::Rixs,
+            input_dir.join("rixs.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Rixs, &request)
+            .expect("RIXS runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rixs0.dat")),
+            "RIXS runtime should emit rixs0.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rixs1.dat")),
+            "RIXS runtime should emit rixs1.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rixsET.dat")),
+            "RIXS runtime should emit rixsET.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rixsEE.dat")),
+            "RIXS runtime should emit rixsEE.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rixsET-sat.dat")),
+            "RIXS runtime should emit rixsET-sat.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rixsEE-sat.dat")),
+            "RIXS runtime should emit rixsEE-sat.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("logrixs.dat")),
+            "RIXS runtime should emit logrixs.dat"
+        );
     }
 
     #[test]

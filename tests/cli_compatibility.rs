@@ -253,6 +253,60 @@ fn band_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn rixs_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_rixs_input(temp.path().join("rixs.inp"));
+    stage_rixs_phase_input(
+        "phase_1.bin",
+        temp.path().join("phase_1.bin"),
+        &[3_u8, 5_u8, 8_u8, 13_u8, 21_u8, 34_u8, 55_u8, 89_u8],
+    );
+    stage_rixs_phase_input(
+        "phase_2.bin",
+        temp.path().join("phase_2.bin"),
+        &[2_u8, 7_u8, 1_u8, 8_u8, 2_u8, 8_u8, 1_u8, 8_u8],
+    );
+    stage_rixs_wscrn_input("wscrn_1.dat", temp.path().join("wscrn_1.dat"));
+    stage_rixs_wscrn_input("wscrn_2.dat", temp.path().join("wscrn_2.dat"));
+    stage_rixs_xsect_input(temp.path().join("xsect_2.dat"));
+
+    let rixs = run_cli_command(temp.path(), &["rixs"]);
+    assert!(
+        rixs.status.success(),
+        "rixs should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&rixs.stderr)
+    );
+    assert!(
+        temp.path().join("rixs0.dat").is_file(),
+        "rixs should emit rixs0.dat"
+    );
+    assert!(
+        temp.path().join("rixs1.dat").is_file(),
+        "rixs should emit rixs1.dat"
+    );
+    assert!(
+        temp.path().join("rixsET.dat").is_file(),
+        "rixs should emit rixsET.dat"
+    );
+    assert!(
+        temp.path().join("rixsEE.dat").is_file(),
+        "rixs should emit rixsEE.dat"
+    );
+    assert!(
+        temp.path().join("rixsET-sat.dat").is_file(),
+        "rixs should emit rixsET-sat.dat"
+    );
+    assert!(
+        temp.path().join("rixsEE-sat.dat").is_file(),
+        "rixs should emit rixsEE-sat.dat"
+    );
+    assert!(
+        temp.path().join("logrixs.dat").is_file(),
+        "rixs should emit logrixs.dat"
+    );
+}
+
+#[test]
 fn compton_module_command_succeeds_with_runtime_compute_engine() {
     let temp = fixture_tempdir();
     stage_baseline_artifact(
@@ -610,6 +664,108 @@ fn stage_band_input(destination: PathBuf) {
         "mband : calculate bands if = 1\n   1\nemin, emax, estep : energy mesh\n    -8.00000      6.00000      0.05000\nnkp : # points in k-path\n 121\nikpath : type of k-path\n   2\nfreeprop :  empty lattice if = T\n F\n",
     )
     .expect("band input should be staged");
+}
+
+fn stage_rixs_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-RIXS-001")
+        .join("baseline")
+        .join("rixs.inp");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("rixs input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("rixs input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "m_run\n1\ngam_ch, gam_exp(1), gam_exp(2)\n0.0001350512 0.0001450512 0.0001550512\nEMinI, EMaxI, EMinF, EMaxF\n-12.0 18.0 -4.0 16.0\nxmu\n-367493090.02742821\nReadpoles, SkipCalc, MBConv, ReadSigma\nT F F T\nnEdges\n2\nEdge 1\nL3\nEdge 2\nL2\n",
+    )
+    .expect("rixs input should be staged");
+}
+
+fn stage_rixs_phase_input(artifact: &str, destination: PathBuf, fallback: &[u8]) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-RIXS-001")
+        .join("baseline")
+        .join(artifact);
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("{} should be readable: {}", artifact, source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("phase input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(&destination, fallback).expect("phase input should be staged");
+}
+
+fn stage_rixs_wscrn_input(artifact: &str, destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-RIXS-001")
+        .join("baseline")
+        .join(artifact);
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("{} should be readable: {}", artifact, source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("wscrn input should be staged");
+        return;
+    }
+
+    let fallback = if artifact.eq_ignore_ascii_case("wscrn_1.dat") {
+        "-6.0 0.11 0.95\n-2.0 0.16 1.05\n0.0 0.18 1.15\n3.5 0.23 1.30\n8.0 0.31 1.45\n"
+    } else {
+        "-5.0 0.09 0.85\n-1.5 0.14 0.95\n1.0 0.17 1.05\n4.0 0.21 1.22\n9.0 0.28 1.36\n"
+    };
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(&destination, fallback).expect("wscrn input should be staged");
+}
+
+fn stage_rixs_xsect_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-RIXS-001")
+        .join("baseline")
+        .join("xsect_2.dat");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("xsect_2 input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("xsect_2 input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "0.0 1.2 0.1\n2.0 1.0 0.2\n4.0 0.9 0.3\n6.0 0.8 0.4\n8.0 0.7 0.5\n",
+    )
+    .expect("xsect_2 input should be staged");
 }
 
 fn stage_gg_slice_input(destination: PathBuf) {
