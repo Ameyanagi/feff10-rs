@@ -5,6 +5,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - Add shared third-party dependencies in workspace `Cargo.toml` and consume them in crates with `<dependency>.workspace = true`.
 - For new numerics domains, add `pub mod <domain>;` to `crates/feff-core/src/numerics/mod.rs` and re-export public APIs from `crates/feff-core/src/numerics/<domain>/mod.rs`.
 - For ATOM/FOVRG prep work, keep reusable radial mesh and solver-state carriers in `crates/feff-core/src/numerics/radial.rs`, then thread those states into module models (for example POT/XSPH) instead of recomputing radial stats ad hoc.
+- Radial Dirac shooting in this codebase should integrate outward/inward on `RadialGrid` and evaluate mismatch using the largest-amplitude point in a small window around the match index, which avoids unstable `small/large` ratios when the nominal match point is near a node.
 - FEFF special-function parity ports should mirror `besjh.f90` region cutoffs (`Re/|Im| < 1.0`, `< 7.51`) and use targeted `bjnser` seeding plus recursion per region.
 - FEFF Hankel parity follows `besjh.f90` conventions: use `hl = -nl + i*jl` in small/mid regions, and in the asymptotic branch select `exp(±i z)` plus `sjl ± i*cjl` based on the sign of `Im(z)`.
 - Spherical harmonics ports should use the Condon-Shortley convention with `Y_l^{-m} = (-1)^m * conj(Y_l^m)`, and regression tests should include the sum rule `sum_m |Y_lm|^2 = (2l+1)/(4*pi)`.
@@ -275,4 +276,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: ATOM/FOVRG-ready state handoff should happen through shared numerics carriers (`BoundStateSolverState` / `ComplexEnergySolverState`) so module models can consume consistent radial metadata.
   - Gotchas encountered: running `rustfmt` on a module root (for example `numerics/mod.rs`) can rewrite sibling files; format targeted leaf files or manually revert unrelated import-order churn before commit.
   - Useful context: POT currently seeds bound-state prep from `geom.dat` Cartesian radii, while XSPH seeds complex-energy prep from parsed geometry extents + `pot.bin`-derived energy terms.
+---
+
+## 2026-02-18 00:38:41 JST - US-023
+- Implemented a reusable radial Dirac bound-state shooting kernel in `crates/feff-core/src/numerics/radial.rs` with typed APIs (`RadialDiracInput`, `RadialDiracSolution`, `RadialDiracError`) and `solve_bound_state_dirac`, including outward/inward RK4 propagation, energy bracketing, node targeting, normalization, and match-window mismatch handling.
+- Added two reference atomic regression tests in `numerics::radial` for convergence and boundary behavior: hydrogenic `1s` and a higher-nuclear-charge `1s` case, including binding-energy ordering and boundary finiteness/decay checks.
+- Re-exported the new radial Dirac APIs from `crates/feff-core/src/numerics/mod.rs` for downstream ATOM/POT integration stories.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/radial.rs`, `crates/feff-core/src/numerics/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: use the existing `BoundStateSolverState`/`RadialGrid` carrier as the canonical input surface for ATOM-style bound-state solvers, and re-export any new solver APIs through `numerics/mod.rs`.
+  - Gotchas encountered: direct mismatch checks exactly at a fixed match point can become unstable when `G(r_match)` is close to a node; select a nearby max-amplitude probe point before ratio comparisons.
+  - Useful context: current solver tests use Coulomb-reference potentials (`V(r) = -Z/(c*r)` in FEFF-scaled form) and validate stable boundary behavior without requiring full SCF-loop parity yet.
 ---

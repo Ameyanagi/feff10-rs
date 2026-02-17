@@ -6,7 +6,10 @@ pub use exchange::{
     evaluate_exchange_potential, ExchangeEvaluation, ExchangeEvaluationInput, ExchangeModel,
     ExchangePotential, ExchangePotentialApi,
 };
-pub use radial::{BoundStateSolverState, ComplexEnergySolverState, RadialExtent, RadialGrid};
+pub use radial::{
+    solve_bound_state_dirac, BoundStateSolverState, ComplexEnergySolverState, RadialDiracError,
+    RadialDiracInput, RadialDiracSolution, RadialExtent, RadialGrid,
+};
 
 use serde::{Deserialize, Serialize};
 use std::fs;
