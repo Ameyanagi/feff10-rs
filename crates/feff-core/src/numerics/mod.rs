@@ -1,10 +1,16 @@
 pub mod exchange;
+pub mod mkgtr;
 pub mod radial;
 pub mod special;
 
 pub use exchange::{
     evaluate_exchange_potential, ExchangeEvaluation, ExchangeEvaluationInput, ExchangeModel,
     ExchangePotential, ExchangePotentialApi,
+};
+pub use mkgtr::{
+    assemble_scattering_kernel, invert_scattering_kernel, rotate_green_matrix, MkgtrAssemblyInput,
+    MkgtrError, MkgtrInversionInput, MkgtrInversionResult, MkgtrKernel, MkgtrKernelApi,
+    MkgtrLayout, MkgtrRotationInput,
 };
 pub use radial::{
     atom_s02_from_overlap, atom_total_energy_from_terms, compute_atom_scf_outputs,

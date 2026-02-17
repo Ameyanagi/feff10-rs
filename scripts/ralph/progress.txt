@@ -4,6 +4,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 ## Codebase Patterns
 - Add shared third-party dependencies in workspace `Cargo.toml` and consume them in crates with `<dependency>.workspace = true`.
 - For new numerics domains, add `pub mod <domain>;` to `crates/feff-core/src/numerics/mod.rs` and re-export public APIs from `crates/feff-core/src/numerics/<domain>/mod.rs`.
+- MKGTR/FMS angular-channel indexing should preserve FEFF ordering `index = nsp * (l*l + l + m) + spin` (with 0-based Rust `spin`) so assembly/rotation kernels stay aligned with `gg.bin` basis layout.
 - For ATOM/FOVRG prep work, keep reusable radial mesh and solver-state carriers in `crates/feff-core/src/numerics/radial.rs`, then thread those states into module models (for example POT/XSPH) instead of recomputing radial stats ad hoc.
 - Radial Dirac shooting in this codebase should integrate outward/inward on `RadialGrid` and evaluate mismatch using the largest-amplitude point in a small window around the match index, which avoids unstable `small/large` ratios when the nominal match point is near a node.
 - FOVRG complex-energy kernels should flatten the potential tail to the interstitial (`v_mt`) value before integration and seed irregular channels from spherical Hankel asymptotics plus the relativistic factor `x*a/(1+sqrt(1+x^2))`.
@@ -445,4 +446,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: module oracle fixtures are most stable when baseline directories only include the staged module inputs plus module-owned outputs, not full workflow archives.
   - Gotchas encountered: standalone `feff-cli xsph` uses default fixture ID `FX-XSPH-001`, which causes `log2.dat` fixture-header drift for other fixture IDs; generate baselines via the oracle/regression flow to preserve target fixture IDs.
   - Useful context: XSPH oracle parity here is anchored on deterministic committed snapshots for `phase.bin`/`xsect.dat`/`log2.dat` with optional-`wscrn.dat` coverage split across two fixtures.
+---
+## 2026-02-18 03:08:03 JST - US-036
+- Added `crates/feff-core/src/numerics/mkgtr/mod.rs` with MKGTR utilities for Green-kernel assembly (`assemble_scattering_kernel`), angular-basis rotation (`rotate_green_matrix` with FEFF-style `(l,m,spin)` indexing), and inversion/conditioning (`invert_scattering_kernel`) built on `faer`-backed dense matrices.
+- Exported the MKGTR API through `crates/feff-core/src/numerics/mod.rs` for downstream FMS wiring.
+- Added MKGTR unit tests covering channel-index layout, assembly correctness (`I - G*T`), zero-beta phase-rotation behavior, layout validation, inversion accuracy, and conditioning-threshold rejection.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/mkgtr/mod.rs`, `crates/feff-core/src/numerics/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: MKGTR rotation should contract with FEFF-style row/column ordering (`matrix[(row_rot, col_rot)]` under the `(row=l_row,m_row)` and `(col=l_col,m_col)` basis loops) to preserve expected phase behavior at `beta=0`.
+  - Gotchas encountered: running `rustfmt` on `crates/feff-core/src/numerics/mod.rs` can recursively reformat sibling files (for example `radial.rs`); use file-scoped formatting and revert unrelated churn before commit.
+  - Useful context: this story intentionally adds reusable MKGTR numerics primitives only; FMS module output wiring remains for `US-038`.
 ---
