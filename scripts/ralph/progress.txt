@@ -16,6 +16,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF `conv.f90` parity requires an extrapolated final interval with `dx = max(last_step, 50*broadening)` and a small-`|t|` polynomial branch for `conv1` when `|t| < 0.1`.
 - Keep numerics cross-domain regression baselines in `tasks/math-regression-fixtures.json` and load them from integration tests so Bessel/harmonics/Wigner/linalg/integration/convolution checks share one fixture source.
 - Exchange-model plumbing should map FEFF `ixc` through `numerics::exchange::ExchangeModel::from_feff_ixc` and invoke `ExchangePotentialApi::evaluate` in POT/XSPH compute paths while preserving existing placeholder output formulas until model kernels are ported.
+- Keep EXCH regression baselines in `tasks/exchange-regression-fixtures.json` and validate them from `crates/feff-core/tests/exchange_regression.rs` to keep fixture-driven parity checks for all four exchange models.
 - FEFF EXCH parity ports should convert electron density to `rs = (3/(4*pi*rho))^(1/3)` (fallback `rs=10` for non-positive density) and clamp normalized momentum `x=k/kf` to at least `1.00001` before evaluating `rhl`/`edp` formulas.
 - FEFF local VBH/PZ exchange evaluators are real-only `rs` functions; keep `imaginary = 0` and use unpolarized `xmag = 1.0` parity when porting `vbh.f90` and `m_pz.f90`.
 
@@ -186,4 +187,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: VBH/PZ parity tests can reuse the shared `density -> rs` transform and validate only the real channel because both evaluators are ground-state local potentials with zero imaginary part.
   - Gotchas encountered: compiling Fortran harnesses for reference vectors can emit transient module artifacts (`*.mod`) in repo root; remove them before committing.
   - Useful context: FEFF VBH/PZ reference samples can be regenerated with a minimal harness that links `feff10/src/EXCH/vbh.f90` and `feff10/src/EXCH/m_pz.f90`.
+---
+
+## 2026-02-17 23:39:10 JST - US-016
+- Added EXCH regression fixtures at `tasks/exchange-regression-fixtures.json` covering all four exchange models (Hedin-Lundqvist, Dirac-Hara, Von Barth-Hedin, Perdew-Zunger) with deterministic fixed-input expected outputs.
+- Added `crates/feff-core/tests/exchange_regression.rs` to load the fixture file, assert tolerance-based parity for real/imaginary channels, and verify deterministic repeat evaluation per case.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `tasks/exchange-regression-fixtures.json`, `crates/feff-core/tests/exchange_regression.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: keep EXCH reference values fixture-driven in `tasks/exchange-regression-fixtures.json` and validate through one integration test file (`crates/feff-core/tests/exchange_regression.rs`) to avoid duplicating model-specific constants across unit tests.
+  - Gotchas encountered: `ExchangeModel` is not serde-deserializable, so fixture tests should deserialize into a local fixture enum and map to `ExchangeModel` explicitly.
+  - Useful context: integration tests in this workspace resolve `tasks/*` fixtures by traversing two parents from `CARGO_MANIFEST_DIR` (crate dir -> workspace root), matching existing regression-test conventions.
 ---

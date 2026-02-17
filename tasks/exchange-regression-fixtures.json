@@ -1,0 +1,110 @@
+{
+  "fixtureVersion": "1.0.0",
+  "description": "Regression fixtures for FEFF EXCH model outputs in feff-core numerics::exchange.",
+  "exchangeCases": [
+    {
+      "id": "FX-EXCH-HL-001",
+      "model": "hedin_lundqvist",
+      "electronDensity": 4.6627424733953704e-1,
+      "energy": 0.0,
+      "waveNumber": 2.0,
+      "expected": {
+        "real": -8.49656165836650e-1,
+        "imaginary": -5.37284632348553e-11
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    },
+    {
+      "id": "FX-EXCH-HL-002",
+      "model": "hedin_lundqvist",
+      "electronDensity": 2.2420399571547987e-2,
+      "energy": 0.0,
+      "waveNumber": 3.5,
+      "expected": {
+        "real": -1.42636930901624e-1,
+        "imaginary": -1.51019101330210e-1
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    },
+    {
+      "id": "FX-EXCH-DH-001",
+      "model": "dirac_hara",
+      "electronDensity": 4.6627424733953704e-1,
+      "energy": 0.0,
+      "waveNumber": 2.0,
+      "expected": {
+        "real": -7.63515499719434e-1,
+        "imaginary": 0.0
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    },
+    {
+      "id": "FX-EXCH-DH-002",
+      "model": "dirac_hara",
+      "electronDensity": 2.2420399571547987e-2,
+      "energy": 0.0,
+      "waveNumber": 3.5,
+      "expected": {
+        "real": -1.16464733953738e-2,
+        "imaginary": 0.0
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    },
+    {
+      "id": "FX-EXCH-VBH-001",
+      "model": "von_barth_hedin",
+      "electronDensity": 4.6627424733953704e-1,
+      "energy": 0.0,
+      "waveNumber": 2.8,
+      "expected": {
+        "real": -8.55605401086108e-1,
+        "imaginary": 0.0
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    },
+    {
+      "id": "FX-EXCH-VBH-002",
+      "model": "von_barth_hedin",
+      "electronDensity": 2.6198344541875779e-3,
+      "energy": 0.0,
+      "waveNumber": 2.8,
+      "expected": {
+        "real": -1.87082102551233e-1,
+        "imaginary": 0.0
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    },
+    {
+      "id": "FX-EXCH-PZ-001",
+      "model": "perdew_zunger",
+      "electronDensity": 4.6627424733953704e-1,
+      "energy": 0.0,
+      "waveNumber": 2.8,
+      "expected": {
+        "real": -8.35873273039178e-1,
+        "imaginary": 0.0
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    },
+    {
+      "id": "FX-EXCH-PZ-002",
+      "model": "perdew_zunger",
+      "electronDensity": 2.6198344541875779e-3,
+      "energy": 0.0,
+      "waveNumber": 2.8,
+      "expected": {
+        "real": -1.71352372050846e-1,
+        "imaginary": 0.0
+      },
+      "absTol": 2.0e-7,
+      "relTol": 1.0e-6
+    }
+  ]
+}
