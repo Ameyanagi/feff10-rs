@@ -5,6 +5,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - Add shared third-party dependencies in workspace `Cargo.toml` and consume them in crates with `<dependency>.workspace = true`.
 - For new numerics domains, add `pub mod <domain>;` to `crates/feff-core/src/numerics/mod.rs` and re-export public APIs from `crates/feff-core/src/numerics/<domain>/mod.rs`.
 - FEFF special-function parity ports should mirror `besjh.f90` region cutoffs (`Re/|Im| < 1.0`, `< 7.51`) and use targeted `bjnser` seeding plus recursion per region.
+- FEFF Hankel parity follows `besjh.f90` conventions: use `hl = -nl + i*jl` in small/mid regions, and in the asymptotic branch select `exp(±i z)` plus `sjl ± i*cjl` based on the sign of `Im(z)`.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -25,4 +26,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: FEFF parity for `j_l` depends on preserving `besjh.f90` branch boundaries and using `bjnser` seeds before recursion in the mid-range branch.
   - Gotchas encountered: `besjh` expects `Re(z) >= 0`; this port enforces the same precondition to avoid unsupported branch behavior drifting from Fortran.
   - Useful context: no repository-local `AGENTS.md` exists under this workspace, so reusable implementation notes were consolidated in this Ralph progress log.
+---
+
+## 2026-02-17 22:17:03 JST - US-003
+- Implemented FEFF-parity complex spherical Neumann `spherical_n(order, argument)` and Hankel `spherical_h(order, argument)` APIs in `crates/feff-core/src/numerics/special/bessel.rs`, including `bjnser` Neumann series, mid-range recursion seeding, and large-argument asymptotic paths.
+- Added `spherical_h1` as a compatibility alias to `spherical_h`, and re-exported `spherical_n`, `spherical_h`, and `spherical_h1` from `crates/feff-core/src/numerics/special/mod.rs`.
+- Added FEFF reference-vector regression tests for `n_l` and `h_l` across small/mid/large arguments, including branch-cut sign behavior (`Im(z) > 0` vs `Im(z) < 0`) and large-argument cases generated from FEFF `besjn.f90` and `besjh.f90`.
+- Files changed: `crates/feff-core/src/numerics/special/bessel.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FEFF Hankel parity requires a dedicated asymptotic branch that switches phase/exponential sign by `Im(z)`; deriving Hankel only from `j + i*n` can lose FEFF parity for the negative-imaginary branch.
+  - Gotchas encountered: running workspace-wide `cargo fmt` introduces large unrelated diffs; keep story scope by using targeted `rustfmt` on touched files.
+  - Useful context: FEFF reference vectors for math kernels can be generated quickly by compiling small local Fortran harnesses against `feff10/src/MATH/{bjnser,besjn,besjh}.f90`.
 ---
