@@ -1,0 +1,85 @@
+{
+  "atomScfCases": [
+    {
+      "id": "hydrogenic-single-shell",
+      "grid": {
+        "mean": 0.9,
+        "rms": 1.4,
+        "max": 10.0,
+        "pointCount": 321,
+        "logStep": 0.03
+      },
+      "orbitals": [
+        {
+          "kind": "hydrogenic_1s",
+          "effectiveCharge": 1.0,
+          "occupation": 1.0,
+          "valenceOccupation": 1.0,
+          "smallComponentScale": 0.001
+        }
+      ],
+      "previousDensityMix": {
+        "weight": 0.65,
+        "scale": 1.08
+      },
+      "nuclearCharge": 1.0,
+      "muffinTinRadius": 6.0,
+      "expected": {
+        "targetCharge": 1.0,
+        "targetValenceCharge": 1.0,
+        "chargeAbsTol": 5e-7,
+        "chargeRelTol": 5e-7,
+        "boundaryPotential": 0.0,
+        "boundaryAbsTol": 1e-10,
+        "maxOuterPotentialMagnitude": 1e-10,
+        "minimumCorePotential": -0.12,
+        "minBoundaryEnclosedCharge": 0.94,
+        "maxBoundaryEnclosedCharge": 1.01
+      }
+    },
+    {
+      "id": "oxygen-like-mixed-shells",
+      "grid": {
+        "mean": 0.75,
+        "rms": 1.2,
+        "max": 8.0,
+        "pointCount": 401,
+        "logStep": 0.025
+      },
+      "orbitals": [
+        {
+          "kind": "hydrogenic_1s",
+          "effectiveCharge": 7.2,
+          "occupation": 2.0,
+          "valenceOccupation": 0.0,
+          "smallComponentScale": 0.004
+        },
+        {
+          "kind": "hydrogenic_2p",
+          "effectiveCharge": 4.5,
+          "occupation": 4.0,
+          "valenceOccupation": 4.0,
+          "smallComponentScale": 0.003
+        }
+      ],
+      "previousDensityMix": {
+        "weight": 0.5,
+        "scale": 0.92
+      },
+      "nuclearCharge": 8.0,
+      "muffinTinRadius": 4.2,
+      "expected": {
+        "targetCharge": 6.0,
+        "targetValenceCharge": 4.0,
+        "chargeAbsTol": 1e-6,
+        "chargeRelTol": 1e-6,
+        "boundaryPotential": 0.0,
+        "boundaryAbsTol": 1e-10,
+        "maxOuterPotentialMagnitude": 1e-10,
+        "minimumCorePotential": -1.5,
+        "minBoundaryEnclosedCharge": 4.8,
+        "maxBoundaryEnclosedCharge": 6.05
+      }
+    }
+  ]
+}

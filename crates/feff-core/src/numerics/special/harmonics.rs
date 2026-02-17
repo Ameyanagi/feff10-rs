@@ -106,7 +106,7 @@ fn factorial_ratio(degree: usize, order: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{SphericalHarmonicsInput, spherical_y, y_lm};
+    use super::{spherical_y, y_lm, SphericalHarmonicsInput};
     use crate::common::constants::PI;
     use num_complex::Complex64;
 

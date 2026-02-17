@@ -26,6 +26,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - FEFF `getorb`-style extraction in Rust should preserve 1-based orbital table indices (`1..=40`) and provide a kappa projection lookup equivalent to Fortran `iorb(-5:4)` over occupied orbitals.
 - FEFF edge defaults should use `common::edge::{hole_code_from_edge_spec, core_hole_lifetime_ev}` so RDINP-generated `ihole` and `gamach` remain aligned with `setedg`/`setgam` behavior.
 - Keep COMMON regression baselines in `tasks/common-regression-fixtures.json` and validate constants/config/getorb/edge APIs together from `crates/feff-core/tests/common_regression.rs`.
+- ATOM radial SCF updates should use shell density `sigma(r)=4*pi*r^2*rho(r)`: normalize `sigma` to target charge via radial trapezoid integration, then build muffin-tin Coulomb potentials from cumulative/tail integrals and anchor `V(r_mt)=0` with a constant outer tail.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -288,4 +289,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: use the existing `BoundStateSolverState`/`RadialGrid` carrier as the canonical input surface for ATOM-style bound-state solvers, and re-export any new solver APIs through `numerics/mod.rs`.
   - Gotchas encountered: direct mismatch checks exactly at a fixed match point can become unstable when `G(r_match)` is close to a node; select a nearby max-amplitude probe point before ratio comparisons.
   - Useful context: current solver tests use Coulomb-reference potentials (`V(r) = -Z/(c*r)` in FEFF-scaled form) and validate stable boundary behavior without requiring full SCF-loop parity yet.
+---
+## 2026-02-18 00:49:19 JST - US-024
+- Implemented ATOM SCF radial update kernels in `crates/feff-core/src/numerics/radial.rs`: `update_atom_charge_density` (orbital-density accumulation, optional density mixing, and charge/valence normalization) plus `update_muffin_tin_potential` (spherical Coulomb potential update with muffin-tin boundary anchoring).
+- Added new reusable ATOM kernel API types/errors (`AtomRadialOrbitalInput`, `AtomChargeDensityUpdate`, `MuffinTinPotentialUpdate`, `AtomScfKernelError`) and re-exported them from `crates/feff-core/src/numerics/mod.rs` for upcoming SCF-loop integration stories.
+- Added fixture-driven regression coverage in `crates/feff-core/tests/atom_radial_update_regression.rs` with constraints sourced from `tasks/atom-radial-update-fixtures.json`, validating charge normalization targets and muffin-tin radial-potential boundary/core constraints.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/radial.rs`, `crates/feff-core/src/numerics/mod.rs`, `crates/feff-core/tests/atom_radial_update_regression.rs`, `tasks/atom-radial-update-fixtures.json`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`, `crates/feff-core/src/numerics/exchange/mod.rs`, `crates/feff-core/src/numerics/special/harmonics.rs`.
+- **Learnings for future iterations:**
+  - Patterns discovered: ATOM density updates should normalize shell density (`4*pi*r^2*rho`) to occupancy targets before any potential update, so downstream SCF steps start from charge-consistent radial profiles.
+  - Gotchas encountered: serializing orbital profile kinds with numeric shell labels needs explicit serde rename attributes (for example `hydrogenic_1s`) rather than relying on `rename_all` casing transforms.
+  - Useful context: this workspace still has no repository-local `AGENTS.md`, so reusable ATOM SCF guidance remains captured in `scripts/ralph/progress.txt`.
 ---

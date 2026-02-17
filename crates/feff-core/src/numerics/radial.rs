@@ -230,6 +230,345 @@ impl ComplexEnergySolverState {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub struct AtomRadialOrbitalInput<'a> {
+    occupation: f64,
+    valence_occupation: f64,
+    large_component: &'a [f64],
+    small_component: &'a [f64],
+}
+
+impl<'a> AtomRadialOrbitalInput<'a> {
+    pub fn new(occupation: f64, large_component: &'a [f64], small_component: &'a [f64]) -> Self {
+        let occupation = sanitize_positive(occupation);
+        Self {
+            occupation,
+            valence_occupation: occupation,
+            large_component,
+            small_component,
+        }
+    }
+
+    pub fn with_valence_occupation(mut self, valence_occupation: f64) -> Self {
+        self.valence_occupation = sanitize_positive(valence_occupation).min(self.occupation);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomChargeDensityUpdate {
+    shell_density: Vec<f64>,
+    valence_shell_density: Vec<f64>,
+    density_4pi: Vec<f64>,
+    valence_density_4pi: Vec<f64>,
+    total_charge: f64,
+    valence_charge: f64,
+    target_charge: f64,
+    target_valence_charge: f64,
+    normalization_scale: f64,
+    valence_normalization_scale: f64,
+}
+
+impl AtomChargeDensityUpdate {
+    pub fn shell_density(&self) -> &[f64] {
+        &self.shell_density
+    }
+
+    pub fn valence_shell_density(&self) -> &[f64] {
+        &self.valence_shell_density
+    }
+
+    pub fn density_4pi(&self) -> &[f64] {
+        &self.density_4pi
+    }
+
+    pub fn valence_density_4pi(&self) -> &[f64] {
+        &self.valence_density_4pi
+    }
+
+    pub fn total_charge(&self) -> f64 {
+        self.total_charge
+    }
+
+    pub fn valence_charge(&self) -> f64 {
+        self.valence_charge
+    }
+
+    pub fn target_charge(&self) -> f64 {
+        self.target_charge
+    }
+
+    pub fn target_valence_charge(&self) -> f64 {
+        self.target_valence_charge
+    }
+
+    pub fn normalization_scale(&self) -> f64 {
+        self.normalization_scale
+    }
+
+    pub fn valence_normalization_scale(&self) -> f64 {
+        self.valence_normalization_scale
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MuffinTinPotentialUpdate {
+    electron_potential: Vec<f64>,
+    total_potential: Vec<f64>,
+    muffin_tin_potential: Vec<f64>,
+    enclosed_charge: Vec<f64>,
+    boundary_index: usize,
+    boundary_radius: f64,
+    boundary_value: f64,
+}
+
+impl MuffinTinPotentialUpdate {
+    pub fn electron_potential(&self) -> &[f64] {
+        &self.electron_potential
+    }
+
+    pub fn total_potential(&self) -> &[f64] {
+        &self.total_potential
+    }
+
+    pub fn muffin_tin_potential(&self) -> &[f64] {
+        &self.muffin_tin_potential
+    }
+
+    pub fn enclosed_charge(&self) -> &[f64] {
+        &self.enclosed_charge
+    }
+
+    pub fn boundary_index(&self) -> usize {
+        self.boundary_index
+    }
+
+    pub fn boundary_radius(&self) -> f64 {
+        self.boundary_radius
+    }
+
+    pub fn boundary_value(&self) -> f64 {
+        self.boundary_value
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum AtomScfKernelError {
+    #[error("bound-state radial grid requires at least 2 points, got {actual}")]
+    InsufficientGridPoints { actual: usize },
+    #[error("charge-density update requires at least one orbital input")]
+    NoOrbitals,
+    #[error(
+        "orbital {orbital_index} component length mismatch: expected {expected}, large {large_actual}, small {small_actual}"
+    )]
+    OrbitalLengthMismatch {
+        orbital_index: usize,
+        expected: usize,
+        large_actual: usize,
+        small_actual: usize,
+    },
+    #[error("previous shell density length mismatch: expected {expected}, got {actual}")]
+    PreviousShellDensityLengthMismatch { expected: usize, actual: usize },
+    #[error("shell density length mismatch: expected {expected}, got {actual}")]
+    ShellDensityLengthMismatch { expected: usize, actual: usize },
+    #[error("invalid nuclear charge: {value}")]
+    InvalidNuclearCharge { value: f64 },
+    #[error("charge-density integral is non-positive for target charge {target_charge}")]
+    NonPositiveChargeIntegral { target_charge: f64 },
+}
+
+pub fn update_atom_charge_density(
+    state: &BoundStateSolverState,
+    orbitals: &[AtomRadialOrbitalInput<'_>],
+    previous_shell_density: Option<&[f64]>,
+    mixing: f64,
+) -> Result<AtomChargeDensityUpdate, AtomScfKernelError> {
+    let radial_grid = state.radial_grid().points();
+    if radial_grid.len() < 2 {
+        return Err(AtomScfKernelError::InsufficientGridPoints {
+            actual: radial_grid.len(),
+        });
+    }
+    if orbitals.is_empty() {
+        return Err(AtomScfKernelError::NoOrbitals);
+    }
+    if let Some(previous_shell_density) = previous_shell_density {
+        if previous_shell_density.len() != radial_grid.len() {
+            return Err(AtomScfKernelError::PreviousShellDensityLengthMismatch {
+                expected: radial_grid.len(),
+                actual: previous_shell_density.len(),
+            });
+        }
+    }
+
+    let mut shell_density = vec![0.0_f64; radial_grid.len()];
+    let mut valence_shell_density = vec![0.0_f64; radial_grid.len()];
+    let mut target_charge = 0.0_f64;
+    let mut target_valence_charge = 0.0_f64;
+
+    for (orbital_index, orbital) in orbitals.iter().enumerate() {
+        if orbital.large_component.len() != radial_grid.len()
+            || orbital.small_component.len() != radial_grid.len()
+        {
+            return Err(AtomScfKernelError::OrbitalLengthMismatch {
+                orbital_index,
+                expected: radial_grid.len(),
+                large_actual: orbital.large_component.len(),
+                small_actual: orbital.small_component.len(),
+            });
+        }
+
+        let occupation = sanitize_positive(orbital.occupation);
+        let valence_occupation = sanitize_positive(orbital.valence_occupation).min(occupation);
+        target_charge += occupation;
+        target_valence_charge += valence_occupation;
+
+        for index in 0..radial_grid.len() {
+            let large = orbital.large_component[index];
+            let small = orbital.small_component[index];
+            let amplitude = if large.is_finite() && small.is_finite() {
+                (large * large + small * small).max(0.0)
+            } else {
+                0.0
+            };
+            shell_density[index] += occupation * amplitude;
+            valence_shell_density[index] += valence_occupation * amplitude;
+        }
+    }
+
+    if let Some(previous_shell_density) = previous_shell_density {
+        let mixed_weight = mixing.abs().clamp(0.0, 1.0);
+        let previous_weight = 1.0 - mixed_weight;
+        for (index, current) in shell_density.iter_mut().enumerate() {
+            let previous = sanitize_positive(previous_shell_density[index]);
+            *current = previous_weight.mul_add(previous, mixed_weight * *current);
+        }
+    }
+
+    for value in &mut shell_density {
+        *value = sanitize_positive(*value);
+    }
+    for value in &mut valence_shell_density {
+        *value = sanitize_positive(*value);
+    }
+
+    let mut normalization_scale = 0.0_f64;
+    if target_charge > 0.0 {
+        let integrated_charge = integrate_shell_density(radial_grid, &shell_density);
+        if integrated_charge <= 0.0 {
+            return Err(AtomScfKernelError::NonPositiveChargeIntegral { target_charge });
+        }
+        normalization_scale = target_charge / integrated_charge;
+        for value in &mut shell_density {
+            *value *= normalization_scale;
+        }
+    }
+
+    let mut valence_normalization_scale = 0.0_f64;
+    if target_valence_charge > 0.0 {
+        let integrated_valence_charge =
+            integrate_shell_density(radial_grid, &valence_shell_density);
+        if integrated_valence_charge <= 0.0 {
+            return Err(AtomScfKernelError::NonPositiveChargeIntegral {
+                target_charge: target_valence_charge,
+            });
+        }
+        valence_normalization_scale = target_valence_charge / integrated_valence_charge;
+        for value in &mut valence_shell_density {
+            *value *= valence_normalization_scale;
+        }
+    }
+
+    let total_charge = integrate_shell_density(radial_grid, &shell_density);
+    let valence_charge = integrate_shell_density(radial_grid, &valence_shell_density);
+    let density_4pi = shell_to_density_4pi(radial_grid, &shell_density);
+    let valence_density_4pi = shell_to_density_4pi(radial_grid, &valence_shell_density);
+
+    Ok(AtomChargeDensityUpdate {
+        shell_density,
+        valence_shell_density,
+        density_4pi,
+        valence_density_4pi,
+        total_charge,
+        valence_charge,
+        target_charge,
+        target_valence_charge,
+        normalization_scale,
+        valence_normalization_scale,
+    })
+}
+
+pub fn update_muffin_tin_potential(
+    state: &BoundStateSolverState,
+    shell_density: &[f64],
+    nuclear_charge: f64,
+    muffin_tin_radius: Option<f64>,
+) -> Result<MuffinTinPotentialUpdate, AtomScfKernelError> {
+    let radial_grid = state.radial_grid().points();
+    if radial_grid.len() < 2 {
+        return Err(AtomScfKernelError::InsufficientGridPoints {
+            actual: radial_grid.len(),
+        });
+    }
+    if shell_density.len() != radial_grid.len() {
+        return Err(AtomScfKernelError::ShellDensityLengthMismatch {
+            expected: radial_grid.len(),
+            actual: shell_density.len(),
+        });
+    }
+    if !nuclear_charge.is_finite() || nuclear_charge <= 0.0 {
+        return Err(AtomScfKernelError::InvalidNuclearCharge {
+            value: nuclear_charge,
+        });
+    }
+
+    let mut sanitized_shell_density = vec![0.0_f64; shell_density.len()];
+    for (target, source) in sanitized_shell_density
+        .iter_mut()
+        .zip(shell_density.iter().copied())
+    {
+        *target = sanitize_positive(source);
+    }
+
+    let enclosed_charge = cumulative_shell_charge(radial_grid, &sanitized_shell_density);
+    let tail_integral = reverse_shell_over_radius_integral(radial_grid, &sanitized_shell_density);
+    let mut electron_potential = vec![0.0_f64; radial_grid.len()];
+    let mut total_potential = vec![0.0_f64; radial_grid.len()];
+
+    for index in 0..radial_grid.len() {
+        let radius = radial_grid[index].max(MIN_RADIUS);
+        electron_potential[index] = enclosed_charge[index] / radius + tail_integral[index];
+        total_potential[index] = electron_potential[index] - nuclear_charge / radius;
+    }
+
+    let boundary_radius_target = muffin_tin_radius
+        .filter(|value| value.is_finite() && *value > 0.0)
+        .unwrap_or_else(|| state.muffin_tin_radius());
+    let boundary_index = radial_grid
+        .iter()
+        .position(|radius| *radius >= boundary_radius_target)
+        .unwrap_or(radial_grid.len() - 1);
+    let shift = -total_potential[boundary_index];
+    let mut muffin_tin_potential = total_potential
+        .iter()
+        .map(|value| value + shift)
+        .collect::<Vec<_>>();
+    let boundary_value = muffin_tin_potential[boundary_index];
+    for value in muffin_tin_potential.iter_mut().skip(boundary_index + 1) {
+        *value = boundary_value;
+    }
+
+    Ok(MuffinTinPotentialUpdate {
+        electron_potential,
+        total_potential,
+        muffin_tin_potential,
+        enclosed_charge,
+        boundary_index,
+        boundary_radius: radial_grid[boundary_index],
+        boundary_value,
+    })
+}
+
 const SPEED_OF_LIGHT_AU: f64 = 137.035_999_084_f64;
 const MIN_RADIUS: f64 = 1.0e-12_f64;
 const ENERGY_SCAN_STEPS: usize = 96;
@@ -1029,6 +1368,46 @@ fn sanitize_positive(value: f64) -> f64 {
     } else {
         0.0
     }
+}
+
+fn integrate_shell_density(radial_grid: &[f64], shell_density: &[f64]) -> f64 {
+    let mut integral = 0.0_f64;
+    for index in 1..radial_grid.len() {
+        let step = (radial_grid[index] - radial_grid[index - 1]).max(0.0);
+        let left = shell_density[index - 1];
+        let right = shell_density[index];
+        integral += 0.5 * (left + right) * step;
+    }
+    integral
+}
+
+fn shell_to_density_4pi(radial_grid: &[f64], shell_density: &[f64]) -> Vec<f64> {
+    let mut density = Vec::with_capacity(shell_density.len());
+    for (radius, shell) in radial_grid.iter().zip(shell_density.iter().copied()) {
+        density.push(shell / radius.max(MIN_RADIUS).powi(2));
+    }
+    density
+}
+
+fn cumulative_shell_charge(radial_grid: &[f64], shell_density: &[f64]) -> Vec<f64> {
+    let mut enclosed_charge = vec![0.0_f64; radial_grid.len()];
+    for index in 1..radial_grid.len() {
+        let step = (radial_grid[index] - radial_grid[index - 1]).max(0.0);
+        enclosed_charge[index] = enclosed_charge[index - 1]
+            + 0.5 * (shell_density[index - 1] + shell_density[index]) * step;
+    }
+    enclosed_charge
+}
+
+fn reverse_shell_over_radius_integral(radial_grid: &[f64], shell_density: &[f64]) -> Vec<f64> {
+    let mut tail_integral = vec![0.0_f64; radial_grid.len()];
+    for index in (0..(radial_grid.len() - 1)).rev() {
+        let step = (radial_grid[index + 1] - radial_grid[index]).max(0.0);
+        let left = shell_density[index] / radial_grid[index].max(MIN_RADIUS);
+        let right = shell_density[index + 1] / radial_grid[index + 1].max(MIN_RADIUS);
+        tail_integral[index] = tail_integral[index + 1] + 0.5 * (left + right) * step;
+    }
+    tail_integral
 }
 
 #[cfg(test)]

@@ -439,7 +439,7 @@ fn rcfl(mrs: usize, rs_power: usize, coefficient: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{ExchangeEvaluationInput, ExchangeModel, evaluate_exchange_potential};
+    use super::{evaluate_exchange_potential, ExchangeEvaluationInput, ExchangeModel};
     use crate::common::constants::PI;
 
     #[test]
