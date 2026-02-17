@@ -11,6 +11,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - Wigner 6j ports should use Racah summation on doubled quantum numbers with triangle tuples `(j1,j2,j3)`, `(j1,j5,j6)`, `(j4,j2,j6)`, `(j4,j5,j3)`, and evaluate factorial terms in log space for stability.
 - Dense LU kernels should pack `L` and `U` into a single `DenseComplexMatrix` with a permutation vector of source-row indices; solving requires applying that row permutation to `rhs` before forward/back substitution.
 - Matrix inversion helpers should reuse `LuDecomposition::solve` over identity basis vectors and reject tiny LU pivots relative to `||A||_inf` to fail fast on ill-conditioned inputs.
+- `faer` general eigensolver output ordering is unspecified; sort eigenpairs (value + matching vector column) by `(Re(lambda), Im(lambda))` before exposing deterministic APIs or comparing against reference spectra.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -98,4 +99,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: inversion should be layered on top of existing LU decomposition/solve instead of duplicating elimination logic.
   - Gotchas encountered: near-singular matrices can pass raw LU singular thresholds; adding a relative pivot check avoids unstable inverse outputs.
   - Useful context: there are still no repository-local `AGENTS.md` files in this workspace, so reusable numerics notes remain in `scripts/ralph/progress.txt`.
+---
+
+## 2026-02-17 22:49:39 JST - US-009
+- Implemented a dense eigenvalue helper in `crates/feff-core/src/numerics/special/linalg.rs` with `EigenDecomposition`, `EigenError`, `eigen_decompose`, and `eigenvalues`, backed by `faer`'s `Mat::eigen()` API.
+- Added deterministic eigenpair ordering (sort by `(Re(lambda), Im(lambda))` while reordering matching eigenvector columns) and exported the new APIs from `crates/feff-core/src/numerics/special/mod.rs`.
+- Added regression tests covering shape validation, reference-spectrum checks on a scattering-style upper-triangular kernel, dense complex eigenpair residual checks (`A v ≈ λ v`), and a real-kernel complex-conjugate eigenvalue pair case.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/special/linalg.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: expose eigen helper outputs as paired `{eigenvalues, eigenvectors}` so downstream kernels can validate or consume eigenpairs without recomputing.
+  - Gotchas encountered: `faer` does not guarantee general-eigensolver ordering; deterministic regression tests require explicit sorting of values and corresponding vector columns.
+  - Useful context: eigenpair regression is most stable when asserting residuals (`||A v - λ v||`) with absolute+relative tolerances instead of relying only on exact vector orientation.
 ---

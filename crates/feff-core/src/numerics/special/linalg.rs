@@ -170,6 +170,72 @@ pub trait LuLinearSolveApi {
     fn lu_invert(&self, matrix: &DenseComplexMatrix) -> Result<DenseComplexMatrix, LuError>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub enum EigenError {
+    #[error("eigendecomposition requires a square matrix, got {rows}x{cols}")]
+    NonSquareMatrix { rows: usize, cols: usize },
+    #[error("eigendecomposition requires a non-empty matrix")]
+    EmptyMatrix,
+    #[error("eigendecomposition did not converge")]
+    NoConvergence,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct EigenDecomposition {
+    eigenvectors: DenseComplexMatrix,
+    eigenvalues: Vec<Complex64>,
+}
+
+impl EigenDecomposition {
+    pub fn dimension(&self) -> usize {
+        self.eigenvalues.len()
+    }
+
+    pub fn eigenvectors(&self) -> &DenseComplexMatrix {
+        &self.eigenvectors
+    }
+
+    pub fn eigenvalues(&self) -> &[Complex64] {
+        &self.eigenvalues
+    }
+}
+
+pub fn eigen_decompose(matrix: &DenseComplexMatrix) -> Result<EigenDecomposition, EigenError> {
+    let dimension = validate_square_shape_for_eigen(matrix)?;
+    let faer_eigen = matrix.eigen().map_err(|_| EigenError::NoConvergence)?;
+    let mut eigenvectors = DenseComplexMatrix::zeros(dimension, dimension);
+    let mut eigenvalues = vec![Complex64::new(0.0, 0.0); dimension];
+
+    for index in 0..dimension {
+        eigenvalues[index] = faer_eigen.S()[index];
+    }
+
+    for row in 0..dimension {
+        for col in 0..dimension {
+            eigenvectors[(row, col)] = faer_eigen.U()[(row, col)];
+        }
+    }
+
+    sort_eigenpairs(&mut eigenvalues, &mut eigenvectors);
+
+    Ok(EigenDecomposition {
+        eigenvectors,
+        eigenvalues,
+    })
+}
+
+pub fn eigenvalues(matrix: &DenseComplexMatrix) -> Result<Vec<Complex64>, EigenError> {
+    Ok(eigen_decompose(matrix)?.eigenvalues)
+}
+
+pub trait EigenvalueSolveApi {
+    fn eigen_decompose(
+        &self,
+        matrix: &DenseComplexMatrix,
+    ) -> Result<EigenDecomposition, EigenError>;
+    fn eigenvalues(&self, matrix: &DenseComplexMatrix) -> Result<Vec<Complex64>, EigenError>;
+}
+
 fn validate_square_shape(matrix: &DenseComplexMatrix) -> Result<usize, LuError> {
     let rows = matrix.nrows();
     let cols = matrix.ncols();
@@ -181,6 +247,49 @@ fn validate_square_shape(matrix: &DenseComplexMatrix) -> Result<usize, LuError> 
     }
 
     Ok(rows)
+}
+
+fn validate_square_shape_for_eigen(matrix: &DenseComplexMatrix) -> Result<usize, EigenError> {
+    let rows = matrix.nrows();
+    let cols = matrix.ncols();
+    if rows == 0 || cols == 0 {
+        return Err(EigenError::EmptyMatrix);
+    }
+    if rows != cols {
+        return Err(EigenError::NonSquareMatrix { rows, cols });
+    }
+
+    Ok(rows)
+}
+
+fn sort_eigenpairs(eigenvalues: &mut [Complex64], eigenvectors: &mut DenseComplexMatrix) {
+    let dimension = eigenvalues.len();
+    let mut order: Vec<usize> = (0..dimension).collect();
+    order.sort_unstable_by(|lhs, rhs| {
+        eigenvalues[*lhs]
+            .re
+            .total_cmp(&eigenvalues[*rhs].re)
+            .then_with(|| eigenvalues[*lhs].im.total_cmp(&eigenvalues[*rhs].im))
+    });
+
+    if order
+        .iter()
+        .enumerate()
+        .all(|(index, &entry)| index == entry)
+    {
+        return;
+    }
+
+    let unsorted_values = eigenvalues.to_vec();
+    let mut sorted_vectors = DenseComplexMatrix::zeros(dimension, dimension);
+    for (target_col, &source_col) in order.iter().enumerate() {
+        eigenvalues[target_col] = unsorted_values[source_col];
+        for row in 0..dimension {
+            sorted_vectors[(row, target_col)] = eigenvectors[(row, source_col)];
+        }
+    }
+
+    *eigenvectors = sorted_vectors;
 }
 
 fn select_pivot_row(matrix: &DenseComplexMatrix, pivot_col: usize) -> (usize, f64) {
@@ -233,7 +342,9 @@ fn matrix_infinity_norm(matrix: &DenseComplexMatrix) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{lu_factorize, lu_invert, lu_solve, LuError};
+    use super::{
+        eigen_decompose, eigenvalues, lu_factorize, lu_invert, lu_solve, EigenError, LuError,
+    };
     use crate::numerics::special::DenseComplexMatrix;
     use num_complex::Complex64;
 
@@ -381,6 +492,113 @@ mod tests {
         assert_eq!(error, LuError::IllConditionedMatrix { pivot_index: 1 });
     }
 
+    #[test]
+    fn eigen_decompose_rejects_non_square_matrices() {
+        let matrix = DenseComplexMatrix::zeros(2, 3);
+        let error = eigen_decompose(&matrix).expect_err("non-square matrix should fail");
+        assert_eq!(error, EigenError::NonSquareMatrix { rows: 2, cols: 3 });
+    }
+
+    #[test]
+    fn eigen_decompose_rejects_empty_matrices() {
+        let matrix = DenseComplexMatrix::zeros(0, 0);
+        let error = eigen_decompose(&matrix).expect_err("empty matrix should fail");
+        assert_eq!(error, EigenError::EmptyMatrix);
+    }
+
+    #[test]
+    fn eigen_helpers_match_upper_triangular_scattering_reference_spectrum() {
+        let matrix = dense_matrix(&[
+            vec![
+                Complex64::new(1.60, -0.20),
+                Complex64::new(0.12, 0.04),
+                Complex64::new(-0.08, 0.03),
+            ],
+            vec![
+                Complex64::new(0.00, 0.00),
+                Complex64::new(0.85, 0.15),
+                Complex64::new(0.22, -0.11),
+            ],
+            vec![
+                Complex64::new(0.00, 0.00),
+                Complex64::new(0.00, 0.00),
+                Complex64::new(-0.35, 0.05),
+            ],
+        ]);
+
+        let decomposition = eigen_decompose(&matrix).expect("eigendecomposition");
+        assert_eigenpair_residuals(
+            &matrix,
+            decomposition.eigenvectors(),
+            decomposition.eigenvalues(),
+        );
+
+        let expected = vec![
+            Complex64::new(-0.35, 0.05),
+            Complex64::new(0.85, 0.15),
+            Complex64::new(1.60, -0.20),
+        ];
+        assert_vector_close(&expected, decomposition.eigenvalues(), 1.0e-11, 1.0e-10);
+
+        let direct_values = eigenvalues(&matrix).expect("eigenvalues");
+        assert_vector_close(&expected, &direct_values, 1.0e-11, 1.0e-10);
+    }
+
+    #[test]
+    fn eigen_decompose_validates_dense_scattering_eigenpairs() {
+        let matrix = dense_matrix(&[
+            vec![
+                Complex64::new(1.05, 0.12),
+                Complex64::new(-0.31, 0.08),
+                Complex64::new(0.18, -0.06),
+            ],
+            vec![
+                Complex64::new(0.27, -0.14),
+                Complex64::new(0.72, 0.21),
+                Complex64::new(-0.43, 0.05),
+            ],
+            vec![
+                Complex64::new(-0.16, 0.11),
+                Complex64::new(0.39, -0.18),
+                Complex64::new(1.34, -0.07),
+            ],
+        ]);
+
+        let decomposition = eigen_decompose(&matrix).expect("eigendecomposition");
+        assert_eigenpair_residuals(
+            &matrix,
+            decomposition.eigenvectors(),
+            decomposition.eigenvalues(),
+        );
+
+        let trace = matrix[(0, 0)] + matrix[(1, 1)] + matrix[(2, 2)];
+        let spectral_trace = decomposition
+            .eigenvalues()
+            .iter()
+            .copied()
+            .fold(Complex64::new(0.0, 0.0), |sum, value| sum + value);
+        assert_complex_close("trace consistency", trace, spectral_trace, 1.0e-10, 1.0e-9);
+    }
+
+    #[test]
+    fn eigenvalues_capture_expected_complex_pair_for_real_kernel() {
+        let matrix = dense_matrix(&[
+            vec![Complex64::new(0.6, 0.0), Complex64::new(-2.0, 0.0)],
+            vec![Complex64::new(0.5, 0.0), Complex64::new(0.6, 0.0)],
+        ]);
+
+        let values = eigenvalues(&matrix).expect("eigenvalues");
+        let expected = vec![Complex64::new(0.6, -1.0), Complex64::new(0.6, 1.0)];
+        assert_vector_close(&expected, &values, 1.0e-10, 1.0e-9);
+
+        let decomposition = eigen_decompose(&matrix).expect("eigendecomposition");
+        assert_eigenpair_residuals(
+            &matrix,
+            decomposition.eigenvectors(),
+            decomposition.eigenvalues(),
+        );
+    }
+
     fn dense_matrix(rows: &[Vec<Complex64>]) -> DenseComplexMatrix {
         let nrows = rows.len();
         let ncols = rows.first().map_or(0, |row| row.len());
@@ -518,6 +736,51 @@ mod tests {
                 actual_value,
                 abs_tol,
                 rel_tol,
+            );
+        }
+    }
+
+    fn assert_eigenpair_residuals(
+        matrix: &DenseComplexMatrix,
+        eigenvectors: &DenseComplexMatrix,
+        eigenvalues: &[Complex64],
+    ) {
+        assert_eq!(matrix.nrows(), matrix.ncols(), "matrix must be square");
+        assert_eq!(eigenvectors.nrows(), matrix.nrows(), "row count mismatch");
+        assert_eq!(
+            eigenvectors.ncols(),
+            matrix.ncols(),
+            "column count mismatch"
+        );
+        assert_eq!(
+            eigenvalues.len(),
+            matrix.nrows(),
+            "eigenvalue count mismatch"
+        );
+
+        let dimension = matrix.nrows();
+        for col in 0..dimension {
+            let lambda = eigenvalues[col];
+            let mut residual_norm_sq = 0.0;
+            let mut scale_norm_sq = 0.0;
+
+            for row in 0..dimension {
+                let mut lhs = Complex64::new(0.0, 0.0);
+                for k in 0..dimension {
+                    lhs += matrix[(row, k)] * eigenvectors[(k, col)];
+                }
+                let rhs = lambda * eigenvectors[(row, col)];
+                let residual = lhs - rhs;
+
+                residual_norm_sq += residual.norm_sqr();
+                scale_norm_sq += lhs.norm_sqr().max(rhs.norm_sqr());
+            }
+
+            let residual_norm = residual_norm_sq.sqrt();
+            let relative_residual = residual_norm / scale_norm_sq.sqrt().max(1.0);
+            assert!(
+                residual_norm <= 1.0e-10 || relative_residual <= 1.0e-9,
+                "eigenpair {col} residual too large: abs={residual_norm:.3e}, rel={relative_residual:.3e}"
             );
         }
     }
