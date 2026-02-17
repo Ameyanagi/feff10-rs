@@ -20,6 +20,7 @@
 - For `geom.dat` contract checks, compare canonical atom-row content (with `nat/nph` headers) rather than raw row order, because true-compute RDINP can emit equivalent coordinate sets in a different deterministic order.
 - RDINP-generated `ldos.inp` can omit the legacy `neldos` field in the `mldos` control row; parsers for downstream compute modules should accept both 5-field and 6-field forms and apply a deterministic fallback when `neldos` is absent.
 - If a fixture entry deck cannot satisfy RDINP parser contracts, module true-compute/parity tests should stage the module's declared input artifacts directly from fixture baselines instead of forcing RDINP pre-staging.
+- When asserting numeric-tolerance comparisons for artifacts with comment/header lines (for example `xsect.dat`), include `numericParsing.commentPrefixes` in the policy override so comparison results are emitted instead of parse-error `comparison: null` entries.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -239,4 +240,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: When converting a producer module to true-compute binary output, version the binary with an explicit magic header and teach downstream baseline-backed consumers to accept that header until their own compute rewrites land.
   - Gotchas encountered: Regression baselines seeded from generated output should omit optional artifacts that pre-compare hooks do not generate (for XSPH, avoid seeding `wscrn.dat` unless a hook stages it).
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/test conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 09:35:25 JST] - US-020
+- Added oracle CLI parity coverage in `tests/regression_cli.rs` for both required fixtures (`FX-XSPH-001`, `FX-WORKFLOW-XAS-001`) by running `feff10-rs oracle` with `--run-xsph` and capture runner plumbing.
+- Staged required XSPH inputs (`xsph.inp`, `geom.dat`, `global.inp`, `pot.bin`) for both fixtures and covered optional `wscrn.dat` behavior by staging it only for `FX-XSPH-001`, leaving it absent for `FX-WORKFLOW-XAS-001`.
+- Added report assertions for binary and numeric comparison outcomes: `phase.bin` exact-text/binary metrics and `xsect.dat` numeric-tolerance metrics via a story-local policy override (including comment-prefix parsing), plus deterministic optional-input mismatch diagnostics (`wscrn.dat` missing-actual reason).
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-020` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: For oracle parity stories that must prove binary and numeric outcomes in one report, assert `comparison.metrics.kind` on one binary artifact and one numeric artifact from the same fixture report.
+  - Gotchas encountered: `xsect.dat` includes comment/header lines; numeric tolerance assertions need policy `numericParsing.commentPrefixes` (for example `["#"]`) or report entries degrade to parse-error `comparison: null`.
+  - Useful context: Optional XSPH `wscrn.dat` behavior can be validated in a two-fixture oracle run by staging it for one fixture and omitting it for the other while still exercising `--run-xsph`.
 ---
