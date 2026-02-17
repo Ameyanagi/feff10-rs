@@ -6,6 +6,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - For new numerics domains, add `pub mod <domain>;` to `crates/feff-core/src/numerics/mod.rs` and re-export public APIs from `crates/feff-core/src/numerics/<domain>/mod.rs`.
 - FEFF special-function parity ports should mirror `besjh.f90` region cutoffs (`Re/|Im| < 1.0`, `< 7.51`) and use targeted `bjnser` seeding plus recursion per region.
 - FEFF Hankel parity follows `besjh.f90` conventions: use `hl = -nl + i*jl` in small/mid regions, and in the asymptotic branch select `exp(±i z)` plus `sjl ± i*cjl` based on the sign of `Im(z)`.
+- Spherical harmonics ports should use the Condon-Shortley convention with `Y_l^{-m} = (-1)^m * conj(Y_l^m)`, and regression tests should include the sum rule `sum_m |Y_lm|^2 = (2l+1)/(4*pi)`.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -37,4 +38,15 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: FEFF Hankel parity requires a dedicated asymptotic branch that switches phase/exponential sign by `Im(z)`; deriving Hankel only from `j + i*n` can lose FEFF parity for the negative-imaginary branch.
   - Gotchas encountered: running workspace-wide `cargo fmt` introduces large unrelated diffs; keep story scope by using targeted `rustfmt` on touched files.
   - Useful context: FEFF reference vectors for math kernels can be generated quickly by compiling small local Fortran harnesses against `feff10/src/MATH/{bjnser,besjn,besjh}.f90`.
+---
+
+## 2026-02-17 22:21:38 JST - US-004
+- Implemented production spherical harmonics APIs in `crates/feff-core/src/numerics/special/harmonics.rs`: `y_lm(degree, order, theta, phi)` and `spherical_y(input)`, backed by associated Legendre recurrence, FEFF-compatible Condon-Shortley phase, and negative-order symmetry handling.
+- Re-exported harmonics APIs from `crates/feff-core/src/numerics/special/mod.rs` so downstream numerics/scattering call paths can consume them directly.
+- Added unit tests validating representative closed-form values plus required normalization and symmetry identities for representative `l,m` combinations.
+- Files changed: `crates/feff-core/src/numerics/special/harmonics.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: the `harmonics.rs` API shape should expose both scalar-argument (`y_lm`) and struct-input (`spherical_y`) entry points, matching how existing numerics modules separate ergonomic and trait-oriented call sites.
+  - Gotchas encountered: numerical identities are more stable with explicit absolute+relative tolerances; relying on strict equality for harmonic normalization/symmetry will produce flaky tests.
+  - Useful context: this repository currently has no local `AGENTS.md` files, so reusable implementation guidance for numerics migrations should be captured in `scripts/ralph/progress.txt`.
 ---
