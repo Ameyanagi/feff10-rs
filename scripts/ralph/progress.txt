@@ -13,6 +13,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - Matrix inversion helpers should reuse `LuDecomposition::solve` over identity basis vectors and reject tiny LU pivots relative to `||A||_inf` to fail fast on ill-conditioned inputs.
 - `faer` general eigensolver output ordering is unspecified; sort eigenpairs (value + matching vector column) by `(Re(lambda), Im(lambda))` before exposing deterministic APIs or comparing against reference spectra.
 - FEFF `somm.f90` parity requires Simpson weights over `r^(m+1)` on the log-radius grid plus endpoint corrections from the first two radial points using the near-zero exponent parameter.
+- FEFF `conv.f90` parity requires an extrapolated final interval with `dx = max(last_step, 50*broadening)` and a small-`|t|` polynomial branch for `conv1` when `|t| < 0.1`.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -124,4 +125,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: keep FEFF parity by splitting positive/negative accumulations separately before combining, matching `somm.f90` arithmetic-if behavior.
   - Gotchas encountered: `somm.f90` treats `m` as integer (`implicit` I-N rule); using floating `m` changes exponent behavior and breaks parity.
   - Useful context: FEFF source is available locally at `feff10/src/MATH/somm.f90`, which is the right baseline for future integration/convolution fixture generation.
+---
+
+## 2026-02-17 23:06:36 JST - US-011
+- Implemented FEFF `conv.f90`-parity spectrum helpers in `crates/feff-core/src/numerics/special/convolution.rs`: `convolve_lorentzian` (analytic interval convolution with high-energy extrapolation) and `interpolate_spectrum_linear` (complex linear interpolation with boundary clamping).
+- Added typed API surfaces (`LorentzianConvolutionInput`, `SpectralInterpolationInput`, `ConvolutionError`, `SpectralConvolutionApi`) and exported them from `crates/feff-core/src/numerics/special/mod.rs`.
+- Added unit tests for interpolation boundary handling and validation errors, plus convolution parity against independent Simpson-quadrature reference integrals and explicit high-energy extension behavior on representative spectra arrays.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/special/convolution.rs`, `crates/feff-core/src/numerics/special/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FEFF convolution parity depends on appending an extrapolated final segment using `dx = max(last_step, 50*broadening)` before evaluating interval integrals.
+  - Gotchas encountered: interval integration needs the small-`|t|` branch (`|t| < 0.1`) to avoid instability in `log((1+t)/(1-t))`.
+  - Useful context: there are still no repository-local `AGENTS.md` files in this workspace, so reusable convolution guidance remains centralized in `scripts/ralph/progress.txt`.
 ---

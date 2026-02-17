@@ -1,4 +1,5 @@
 pub mod bessel;
+pub mod convolution;
 pub mod harmonics;
 pub mod integration;
 pub mod linalg;
@@ -6,6 +7,10 @@ pub mod wigner;
 
 pub use bessel::{
     spherical_h, spherical_h1, spherical_j, spherical_n, SphericalBesselApi, SphericalBesselInput,
+};
+pub use convolution::{
+    convolve_lorentzian, interpolate_spectrum_linear, ConvolutionError, LorentzianConvolutionInput,
+    SpectralConvolutionApi, SpectralInterpolationInput,
 };
 pub use harmonics::{spherical_y, y_lm, SphericalHarmonicsApi, SphericalHarmonicsInput};
 pub use integration::{integrate_somm, RadialIntegrationApi, SommError, SommInput};
