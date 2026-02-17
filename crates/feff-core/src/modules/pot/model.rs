@@ -1,5 +1,6 @@
 use super::parser::{parse_geom_input, parse_pot_input, GeomModel, PotControl, PotentialEntry};
 use super::POT_BINARY_MAGIC;
+use crate::common::config::feff9_for_atomic_number;
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
 use crate::numerics::exchange::{
@@ -287,9 +288,25 @@ impl PotModel {
 
     fn potential_metrics(&self, index: usize, potential: &PotentialEntry) -> (f64, f64, f64, f64) {
         let (radius_mean, radius_rms, _) = self.radius_stats();
-        let zeff = potential.atomic_number as f64 - potential.xion;
+        let configuration = usize::try_from(potential.atomic_number)
+            .ok()
+            .and_then(feff9_for_atomic_number);
+        let nominal_occupation = configuration
+            .map(|configuration| configuration.total_occupation())
+            .unwrap_or(potential.atomic_number as f64);
+        let valence_occupation = configuration
+            .map(|configuration| configuration.total_valence())
+            .unwrap_or(nominal_occupation);
+        let valence_fraction = if nominal_occupation > 0.0 {
+            (valence_occupation / nominal_occupation).clamp(0.0, 1.0)
+        } else {
+            0.0
+        };
+
+        let zeff = nominal_occupation - potential.xion;
         let local_density = potential.xnatph.max(0.0_f64) / (radius_rms + 1.0_f64);
-        let screening = potential.folp / (potential.lmaxsc.max(0) as f64 + 1.0_f64);
+        let screening = potential.folp / (potential.lmaxsc.max(0) as f64 + 1.0_f64)
+            * (0.95_f64 + 0.05_f64 * valence_fraction);
 
         let _exchange = self.exchange_api.evaluate(ExchangeEvaluationInput::new(
             self.exchange_model,
