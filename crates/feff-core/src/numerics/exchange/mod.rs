@@ -72,10 +72,20 @@ pub fn evaluate_exchange_potential(input: ExchangeEvaluationInput) -> ExchangeEv
 
 const PI: f64 = std::f64::consts::PI;
 const THIRD: f64 = 1.0 / 3.0;
+const TWO_THIRDS: f64 = 2.0 / 3.0;
 const FA: f64 = 1.919_158_292_677_512_8;
 const HL_ALPHA: f64 = 4.0 / 3.0;
 const HL_MIN_X: f64 = 1.000_01;
 const DEFAULT_RS: f64 = 10.0;
+const VBH_GAMMA: f64 = 5.129_762_802_484_097;
+const SLATER_F: f64 = -0.687_247_939_924_714;
+const PZ_A: f64 = 0.0311;
+const PZ_B: f64 = -0.048;
+const PZ_C: f64 = 0.0020;
+const PZ_D: f64 = -0.0116;
+const PZ_GC: f64 = -0.1423;
+const PZ_B1: f64 = 1.0529;
+const PZ_B2: f64 = 0.3334;
 
 const RCFR: [f64; 24] = [
     -0.173_963,
@@ -172,7 +182,14 @@ fn evaluate_model(input: ExchangeEvaluationInput) -> ExchangeEvaluation {
             real: dirac_hara(rs, xk),
             imaginary: 0.0,
         },
-        ExchangeModel::VonBarthHedin | ExchangeModel::PerdewZunger => ExchangeEvaluation::ZERO,
+        ExchangeModel::VonBarthHedin => ExchangeEvaluation {
+            real: von_barth_hedin(rs),
+            imaginary: 0.0,
+        },
+        ExchangeModel::PerdewZunger => ExchangeEvaluation {
+            real: perdew_zunger(rs),
+            imaginary: 0.0,
+        },
     }
 }
 
@@ -275,6 +292,51 @@ fn dirac_hara(rs: f64, xk: f64) -> f64 {
     }
     let c = ((1.0 + x) / (1.0 - x)).abs().ln();
     -(xf / PI) * (1.0 + c * (1.0 - x.powi(2)) / (2.0 * x))
+}
+
+fn von_barth_hedin(rs: f64) -> f64 {
+    if rs > 1_000.0 {
+        return 0.0;
+    }
+
+    let epc = -0.0504 * vbh_flarge(rs / 30.0);
+    let efc = -0.0254 * vbh_flarge(rs / 75.0);
+    let xmup = -0.0504 * (1.0 + 30.0 / rs).ln();
+    let vu = VBH_GAMMA * (efc - epc);
+
+    let alg = -1.221_774_12 / rs + vu;
+    let blg = xmup - vu;
+
+    // FEFF's vbh path uses xmag=1.0 for unpolarized potentials in POT setup.
+    (alg + blg) / 2.0
+}
+
+fn vbh_flarge(x: f64) -> f64 {
+    (1.0 + x.powi(3)) * (1.0 + 1.0 / x).ln() + x / 2.0 - x.powi(2) - THIRD
+}
+
+fn perdew_zunger(rs: f64) -> f64 {
+    slater_vx(rs) + pz_vc(rs)
+}
+
+fn slater_vx(rs: f64) -> f64 {
+    (4.0 / 3.0) * SLATER_F * TWO_THIRDS / rs
+}
+
+fn pz_vc(rs: f64) -> f64 {
+    if rs < 1.0 {
+        let lnrs = rs.ln();
+        PZ_A * lnrs
+            + (PZ_B - PZ_A / 3.0)
+            + (2.0 / 3.0) * PZ_C * rs * lnrs
+            + ((2.0 * PZ_D - PZ_C) / 3.0) * rs
+    } else {
+        let rs12 = rs.sqrt();
+        let ox = 1.0 + PZ_B1 * rs12 + PZ_B2 * rs;
+        let dox = 1.0 + (7.0 / 6.0) * PZ_B1 * rs12 + (4.0 / 3.0) * PZ_B2 * rs;
+        let ec = PZ_GC / ox;
+        ec * dox / ox
+    }
 }
 
 fn imhl(rs: f64, xk: f64) -> (f64, i32) {
@@ -380,9 +442,7 @@ fn rcfl(mrs: usize, rs_power: usize, coefficient: usize) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        evaluate_exchange_potential, ExchangeEvaluation, ExchangeEvaluationInput, ExchangeModel,
-    };
+    use super::{evaluate_exchange_potential, ExchangeEvaluationInput, ExchangeModel};
 
     #[test]
     fn maps_feff_ixc_to_exchange_models() {
@@ -407,7 +467,12 @@ mod tests {
             ExchangeModel::from_feff_ixc(2),
             ExchangeModel::VonBarthHedin
         );
+        assert_eq!(
+            ExchangeModel::from_feff_ixc(7),
+            ExchangeModel::VonBarthHedin
+        );
         assert_eq!(ExchangeModel::from_feff_ixc(4), ExchangeModel::PerdewZunger);
+        assert_eq!(ExchangeModel::from_feff_ixc(8), ExchangeModel::PerdewZunger);
     }
 
     #[test]
@@ -467,10 +532,80 @@ mod tests {
     }
 
     #[test]
-    fn unported_models_remain_zero_for_now() {
-        let input = ExchangeEvaluationInput::new(ExchangeModel::PerdewZunger, 0.125, -3.4, 2.8);
-        assert_eq!(evaluate_exchange_potential(input), ExchangeEvaluation::ZERO);
-        let input = ExchangeEvaluationInput::new(ExchangeModel::VonBarthHedin, 0.125, -3.4, 2.8);
-        assert_eq!(evaluate_exchange_potential(input), ExchangeEvaluation::ZERO);
+    fn von_barth_hedin_matches_feff_reference_samples() {
+        let samples: &[(f64, f64)] = &[
+            (0.8, -8.55605401086108e-01),
+            (1.4, -5.14728351946735e-01),
+            (2.2, -3.45300361314999e-01),
+            (4.5, -1.87082102551233e-01),
+        ];
+
+        for &(rs, expected_real) in samples {
+            let density = 3.0 / (4.0 * std::f64::consts::PI * rs.powi(3));
+            let evaluated = evaluate_exchange_potential(ExchangeEvaluationInput::new(
+                ExchangeModel::VonBarthHedin,
+                density,
+                0.0,
+                2.8,
+            ));
+            assert!(
+                (evaluated.real - expected_real).abs() <= 2.0e-7,
+                "VBH real mismatch for rs={rs}: expected {expected_real}, got {}",
+                evaluated.real
+            );
+            assert_eq!(
+                evaluated.imaginary, 0.0,
+                "VBH should not set imaginary part"
+            );
+        }
+    }
+
+    #[test]
+    fn perdew_zunger_matches_feff_reference_samples() {
+        let samples: &[(f64, f64)] = &[
+            (0.8, -8.35873273039178e-01),
+            (1.4, -4.95831903962417e-01),
+            (2.2, -3.27475420984098e-01),
+            (4.5, -1.71352372050846e-01),
+        ];
+
+        for &(rs, expected_real) in samples {
+            let density = 3.0 / (4.0 * std::f64::consts::PI * rs.powi(3));
+            let evaluated = evaluate_exchange_potential(ExchangeEvaluationInput::new(
+                ExchangeModel::PerdewZunger,
+                density,
+                0.0,
+                2.8,
+            ));
+            assert!(
+                (evaluated.real - expected_real).abs() <= 2.0e-7,
+                "PZ real mismatch for rs={rs}: expected {expected_real}, got {}",
+                evaluated.real
+            );
+            assert_eq!(evaluated.imaginary, 0.0, "PZ should not set imaginary part");
+        }
+    }
+
+    #[test]
+    fn local_exchange_models_select_distinct_kernels() {
+        let density = 0.125;
+        let vbh = evaluate_exchange_potential(ExchangeEvaluationInput::new(
+            ExchangeModel::VonBarthHedin,
+            density,
+            0.0,
+            2.8,
+        ));
+        let pz = evaluate_exchange_potential(ExchangeEvaluationInput::new(
+            ExchangeModel::PerdewZunger,
+            density,
+            0.0,
+            2.8,
+        ));
+        assert_ne!(
+            vbh.real, pz.real,
+            "VBH and PZ should evaluate different kernels"
+        );
+        assert_eq!(vbh.imaginary, 0.0);
+        assert_eq!(pz.imaginary, 0.0);
     }
 }
