@@ -288,6 +288,50 @@ fn compton_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn ff2x_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_ff2x_input(temp.path().join("ff2x.inp"));
+    stage_baseline_artifact("FX-DEBYE-001", "paths.dat", temp.path().join("paths.dat"));
+    stage_baseline_artifact("FX-DEBYE-001", "feff.inp", temp.path().join("feff.inp"));
+    stage_baseline_artifact("FX-DEBYE-001", "spring.inp", temp.path().join("spring.inp"));
+
+    let ff2x = run_cli_command(temp.path(), &["ff2x"]);
+    assert!(
+        ff2x.status.success(),
+        "ff2x should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&ff2x.stderr)
+    );
+    assert!(
+        temp.path().join("s2_em.dat").is_file(),
+        "ff2x should emit s2_em.dat"
+    );
+    assert!(
+        temp.path().join("s2_rm1.dat").is_file(),
+        "ff2x should emit s2_rm1.dat"
+    );
+    assert!(
+        temp.path().join("s2_rm2.dat").is_file(),
+        "ff2x should emit s2_rm2.dat"
+    );
+    assert!(
+        temp.path().join("xmu.dat").is_file(),
+        "ff2x should emit xmu.dat"
+    );
+    assert!(
+        temp.path().join("chi.dat").is_file(),
+        "ff2x should emit chi.dat"
+    );
+    assert!(
+        temp.path().join("log6.dat").is_file(),
+        "ff2x should emit log6.dat"
+    );
+    assert!(
+        temp.path().join("spring.dat").is_file(),
+        "ff2x should emit spring.dat"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
@@ -470,6 +514,32 @@ fn stage_gg_slice_input(destination: PathBuf) {
         fs::create_dir_all(parent).expect("destination parent should exist");
     }
     fs::write(&destination, [4_u8, 5_u8, 6_u8, 7_u8]).expect("gg_slice input should be staged");
+}
+
+fn stage_ff2x_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-DEBYE-001")
+        .join("baseline")
+        .join("ff2x.inp");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("ff2x input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("ff2x input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "mchi, ispec, idwopt, ipr6, mbconv, absolu, iGammaCH\n   1   0   2   0   0   0   0\nvrcorr, vicorr, s02, critcw\n      0.00000      0.00000      1.00000      4.00000\ntk, thetad, alphat, thetae, sig2g\n    450.00000    315.00000      0.00000      0.00000      0.00000\nmomentum transfer\n      0.00000      0.00000      0.00000\n the number of decomposi\n   -1\n",
+    )
+    .expect("ff2x input should be staged");
 }
 
 fn workspace_root() -> PathBuf {

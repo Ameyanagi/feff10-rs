@@ -64,6 +64,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Band
             | PipelineModule::Ldos
             | PipelineModule::Compton
+            | PipelineModule::Debye
     )
 }
 
@@ -102,6 +103,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Band => RuntimeBandExecutor.execute_runtime(request),
         PipelineModule::Ldos => RuntimeLdosExecutor.execute_runtime(request),
         PipelineModule::Compton => RuntimeComptonExecutor.execute_runtime(request),
+        PipelineModule::Debye => RuntimeDebyeExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -193,6 +195,15 @@ struct RuntimeComptonExecutor;
 impl RuntimePipelineExecutor for RuntimeComptonExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         compton::ComptonPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeDebyeExecutor;
+
+impl RuntimePipelineExecutor for RuntimeDebyeExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        debye::DebyePipelineScaffold.execute(request)
     }
 }
 
@@ -377,6 +388,7 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Band));
         assert!(runtime_compute_engine_available(PipelineModule::Ldos));
         assert!(runtime_compute_engine_available(PipelineModule::Compton));
+        assert!(runtime_compute_engine_available(PipelineModule::Debye));
     }
 
     #[test]
@@ -801,6 +813,72 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_debye_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("ff2x.inp"), FF2X_INPUT_FIXTURE)
+            .expect("ff2x input should be written");
+        std::fs::write(input_dir.join("paths.dat"), PATHS_INPUT_FIXTURE)
+            .expect("paths input should be written");
+        std::fs::write(input_dir.join("feff.inp"), FEFF_INPUT_FIXTURE)
+            .expect("feff input should be written");
+        std::fs::write(input_dir.join("spring.inp"), SPRING_INPUT_FIXTURE)
+            .expect("spring input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-DEBYE-001",
+            PipelineModule::Debye,
+            input_dir.join("ff2x.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Debye, &request)
+            .expect("DEBYE runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("s2_em.dat")),
+            "DEBYE runtime should emit s2_em.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("s2_rm1.dat")),
+            "DEBYE runtime should emit s2_rm1.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("s2_rm2.dat")),
+            "DEBYE runtime should emit s2_rm2.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("xmu.dat")),
+            "DEBYE runtime should emit xmu.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("chi.dat")),
+            "DEBYE runtime should emit chi.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("log6.dat")),
+            "DEBYE runtime should emit log6.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("spring.dat")),
+            "DEBYE runtime should emit spring.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
         let error = runtime_engine_unavailable_error(PipelineModule::Rixs);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
@@ -898,6 +976,47 @@ rho_xy? rho_yz? rho_xz? rho_vol? rho_line?
  F F F F F
 qhat_x qhat_y qhat_z
   0.000000000000000E+000  0.000000000000000E+000   1.00000000000000
+";
+
+    const FF2X_INPUT_FIXTURE: &str = "mchi, ispec, idwopt, ipr6, mbconv, absolu, iGammaCH
+   1   0   2   0   0   0   0
+vrcorr, vicorr, s02, critcw
+      0.00000      0.00000      1.00000      4.00000
+tk, thetad, alphat, thetae, sig2g
+    450.00000    315.00000      0.00000      0.00000      0.00000
+momentum transfer
+      0.00000      0.00000      0.00000
+ the number of decomposi
+   -1
+";
+
+    const PATHS_INPUT_FIXTURE: &str =
+        "PATH  Rmax= 8.000,  Keep_limit= 0.00, Heap_limit 0.00  Pwcrit= 2.50%
+ -----------------------------------------------------------------------
+     1    2  12.000  index, nleg, degeneracy, r=  2.5323
+     2    3  48.000  index, nleg, degeneracy, r=  3.7984
+     3    2  24.000  index, nleg, degeneracy, r=  4.3860
+";
+
+    const FEFF_INPUT_FIXTURE: &str = "TITLE Cu DEBYE RM Method
+EDGE K
+EXAFS 15.0
+POTENTIALS
+    0   29   Cu
+    1   29   Cu
+ATOMS
+    0.00000    0.00000    0.00000    0   Cu  0.00000    0
+    1.79059    0.00000    1.79059    1   Cu  2.53228    1
+    0.00000    1.79059    1.79059    1   Cu  2.53228    2
+END
+";
+
+    const SPRING_INPUT_FIXTURE: &str = "*\tres\twmax\tdosfit\tacut
+ VDOS\t0.03\t0.5\t1
+
+ STRETCHES
+ *\ti\tj\tk_ij\tdR_ij (%)
+\t0\t1\t27.9\t2.
 ";
 
     const GLOBAL_INPUT_FIXTURE: &str = " nabs, iphabs - CFAVERAGE data
