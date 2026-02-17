@@ -32,10 +32,11 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-If `cargo test --locked` fails on macOS with `ld: library not found for -liconv`, use:
+macOS targets are configured to use `clang` by default via `.cargo/config.toml`.
+If your local toolchain still cannot resolve `clang`, install Xcode Command Line Tools or run:
 
 ```bash
-CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked
+xcrun -f clang
 ```
 
 ## Rust Parity Gates

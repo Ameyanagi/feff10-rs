@@ -18,7 +18,7 @@ This guide maps common FEFF10 Rust migration/runtime failures to concrete action
 | `ERROR: [RUN.<MODULE>_INPUT_MISMATCH] ...` during regression hooks | Staged module inputs do not match approved baseline inputs for that fixture. | Compare staged files under `<actual-root>/<fixture>/<actual-subdir>` against baseline files under `<baseline-root>/<fixture>/<baseline-subdir>` and resolve drift before rerunning. |
 | Regression or oracle command exits `1` with fixture failures | Comparator found artifact mismatches (command completed and report was written). | Inspect the report JSON (`--report`) and render a diff summary with the jq command in `docs/developer-workflows.md`. |
 | `WARNING: [RUN.MPI_DEFERRED] ...` from `feffmpi` | MPI parity is intentionally deferred for v1. | This warning is expected; serial compatibility execution continues. |
-| `ld: library not found for -liconv` on macOS tests/lints | Default linker environment is missing required pathing for this host setup. | Run with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER=\"$(xcrun -f clang)\"` for `cargo test`/`cargo clippy`. |
+| `ld: library not found for -liconv` on macOS tests/lints | `clang` is not being resolved correctly on the host. | This repo already sets macOS target linkers to `clang` in `.cargo/config.toml`; verify `xcrun -f clang` succeeds, then rerun `cargo test`/`cargo clippy`. |
 
 ## Exit Code Quick Reference
 

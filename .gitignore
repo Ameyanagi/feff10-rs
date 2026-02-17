@@ -1,0 +1,18 @@
+.codex/skills/prd/
+.codex/skills/ralph/
+.codex/skills/prd-improve/
+
+
+# Added by cargo
+
+/target
+
+# Local reference source checkout (do not commit)
+/feff10/
+
+# Generated rehearsal artifacts
+/artifacts/rollback-rehearsal/
+
+# Local Ralph runtime state
+/scripts/ralph/.last-branch
+/scripts/ralph/archive/

@@ -10,10 +10,11 @@ This document is the maintainer-facing workflow reference for building, validati
 - `unzip`
 - `sha256sum` or `shasum`
 
-If tests fail on macOS with `ld: library not found for -liconv`, run Rust test/lint commands with:
+macOS targets are configured to use `clang` by default via `.cargo/config.toml`.
+If tests still fail with `ld: library not found for -liconv`, verify `clang` is available:
 
 ```bash
-CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"
+xcrun -f clang
 ```
 
 ## Build And Quality Checks
