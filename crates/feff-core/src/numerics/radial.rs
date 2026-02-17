@@ -1,3 +1,4 @@
+use crate::numerics::special::spherical_h;
 use num_complex::Complex64;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1454,6 +1455,488 @@ const ENERGY_SCAN_STEPS: usize = 96;
 const MIN_ENERGY_WINDOW: f64 = 1.0e-10_f64;
 const MIN_COMPONENT_MAGNITUDE: f64 = 1.0e-120_f64;
 const MAX_COMPONENT_MAGNITUDE: f64 = 1.0e120_f64;
+const RELATIVISTIC_ALPHA_AU: f64 = 1.0 / SPEED_OF_LIGHT_AU;
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComplexRadialDiracInput<'a> {
+    state: &'a ComplexEnergySolverState,
+    potential: &'a [Complex64],
+    kappa: i32,
+    interstitial_index: Option<usize>,
+}
+
+impl<'a> ComplexRadialDiracInput<'a> {
+    pub fn new(
+        state: &'a ComplexEnergySolverState,
+        potential: &'a [Complex64],
+        kappa: i32,
+    ) -> Self {
+        Self {
+            state,
+            potential,
+            kappa,
+            interstitial_index: None,
+        }
+    }
+
+    pub fn with_interstitial_index(mut self, interstitial_index: usize) -> Self {
+        self.interstitial_index = Some(interstitial_index);
+        self
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ComplexRadialDiracSolution {
+    energy: Complex64,
+    wave_number: Complex64,
+    kappa: i32,
+    interstitial_index: usize,
+    regular_large_component: Vec<Complex64>,
+    regular_small_component: Vec<Complex64>,
+    irregular_large_component: Vec<Complex64>,
+    irregular_small_component: Vec<Complex64>,
+}
+
+impl ComplexRadialDiracSolution {
+    pub fn energy(&self) -> Complex64 {
+        self.energy
+    }
+
+    pub fn wave_number(&self) -> Complex64 {
+        self.wave_number
+    }
+
+    pub fn kappa(&self) -> i32 {
+        self.kappa
+    }
+
+    pub fn interstitial_index(&self) -> usize {
+        self.interstitial_index
+    }
+
+    pub fn regular_large_component(&self) -> &[Complex64] {
+        &self.regular_large_component
+    }
+
+    pub fn regular_small_component(&self) -> &[Complex64] {
+        &self.regular_small_component
+    }
+
+    pub fn irregular_large_component(&self) -> &[Complex64] {
+        &self.irregular_large_component
+    }
+
+    pub fn irregular_small_component(&self) -> &[Complex64] {
+        &self.irregular_small_component
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, thiserror::Error)]
+pub enum ComplexRadialDiracError {
+    #[error("complex-energy radial grid requires at least 16 points, got {actual}")]
+    InsufficientGridPoints { actual: usize },
+    #[error("complex potential length mismatch: expected {expected}, got {actual}")]
+    PotentialLengthMismatch { expected: usize, actual: usize },
+    #[error("invalid kappa quantum number: {kappa}")]
+    InvalidKappa { kappa: i32 },
+    #[error("interstitial index {index} is outside valid range [{min}, {max}]")]
+    InterstitialIndexOutOfRange {
+        index: usize,
+        min: usize,
+        max: usize,
+    },
+    #[error(
+        "failed to evaluate asymptotic wave number for energy {energy} and potential {potential}"
+    )]
+    InvalidWaveNumber {
+        energy: Complex64,
+        potential: Complex64,
+    },
+    #[error(
+        "numerical instability while integrating complex radial Dirac equation at grid index {index}"
+    )]
+    NumericalInstability { index: usize },
+}
+
+pub fn solve_complex_energy_dirac(
+    input: ComplexRadialDiracInput<'_>,
+) -> Result<ComplexRadialDiracSolution, ComplexRadialDiracError> {
+    let radial_grid = input.state.radial_grid().points();
+    if radial_grid.len() < 16 {
+        return Err(ComplexRadialDiracError::InsufficientGridPoints {
+            actual: radial_grid.len(),
+        });
+    }
+    if input.potential.len() != radial_grid.len() {
+        return Err(ComplexRadialDiracError::PotentialLengthMismatch {
+            expected: radial_grid.len(),
+            actual: input.potential.len(),
+        });
+    }
+    if input.kappa == 0 {
+        return Err(ComplexRadialDiracError::InvalidKappa { kappa: input.kappa });
+    }
+
+    let interstitial_index = resolve_interstitial_index(input.state, input.interstitial_index)?;
+    let potential = sanitize_complex_potential(input.potential, interstitial_index);
+    let energy = input.state.energy();
+    let wave_number = asymptotic_wave_number(
+        energy,
+        potential[interstitial_index],
+        input.state.max_wave_number(),
+    )
+    .ok_or(ComplexRadialDiracError::InvalidWaveNumber {
+        energy,
+        potential: potential[interstitial_index],
+    })?;
+
+    let (regular_large_component, regular_small_component) =
+        integrate_complex_regular(radial_grid, &potential, energy, input.kappa)?;
+    let (irregular_large_component, irregular_small_component) =
+        integrate_complex_irregular(radial_grid, &potential, energy, input.kappa, wave_number)?;
+
+    Ok(ComplexRadialDiracSolution {
+        energy,
+        wave_number,
+        kappa: input.kappa,
+        interstitial_index,
+        regular_large_component,
+        regular_small_component,
+        irregular_large_component,
+        irregular_small_component,
+    })
+}
+
+fn resolve_interstitial_index(
+    state: &ComplexEnergySolverState,
+    requested_index: Option<usize>,
+) -> Result<usize, ComplexRadialDiracError> {
+    let point_count = state.radial_grid().point_count();
+    let min_interstitial = 4;
+    let max_interstitial = point_count.saturating_sub(5);
+
+    if let Some(index) = requested_index {
+        if index < min_interstitial || index > max_interstitial {
+            return Err(ComplexRadialDiracError::InterstitialIndexOutOfRange {
+                index,
+                min: min_interstitial,
+                max: max_interstitial,
+            });
+        }
+        return Ok(index);
+    }
+
+    Ok((point_count * 3 / 4).clamp(min_interstitial, max_interstitial))
+}
+
+fn sanitize_complex_potential(values: &[Complex64], interstitial_index: usize) -> Vec<Complex64> {
+    let mut sanitized = vec![Complex64::new(0.0, 0.0); values.len()];
+    for (index, value) in values.iter().copied().enumerate() {
+        sanitized[index] = if complex_is_finite(value) {
+            value
+        } else {
+            Complex64::new(0.0, 0.0)
+        };
+    }
+
+    let tail = sanitized
+        .get(interstitial_index)
+        .copied()
+        .unwrap_or_else(|| Complex64::new(0.0, 0.0));
+    for value in sanitized
+        .iter_mut()
+        .skip(interstitial_index.saturating_add(1))
+    {
+        *value = tail;
+    }
+    sanitized
+}
+
+fn integrate_complex_regular(
+    radial_grid: &[f64],
+    potential: &[Complex64],
+    energy: Complex64,
+    kappa: i32,
+) -> Result<(Vec<Complex64>, Vec<Complex64>), ComplexRadialDiracError> {
+    let point_count = radial_grid.len();
+    let mut large = vec![Complex64::new(0.0, 0.0); point_count];
+    let mut small = vec![Complex64::new(0.0, 0.0); point_count];
+
+    let radius0 = radial_grid[0].max(MIN_RADIUS);
+    let zeta = estimate_coulomb_zeta(potential[0], radius0);
+    let kappa_f64 = kappa as f64;
+    let gamma = (kappa_f64 * kappa_f64 - zeta * zeta).max(1.0e-10).sqrt();
+    let large0 = radius0.powf(gamma);
+    large[0] = Complex64::new(large0, 0.0);
+    let ratio = if zeta > 1.0e-10 {
+        (kappa_f64 - gamma) / zeta
+    } else if kappa >= 0 {
+        1.0e-4
+    } else {
+        -1.0e-4
+    };
+    small[0] = large[0] * ratio;
+    renormalize_complex_components(&mut large[0], &mut small[0]);
+
+    for index in 0..(point_count - 1) {
+        let next = rk4_step_complex(
+            radial_grid[index],
+            radial_grid[index + 1],
+            potential[index],
+            potential[index + 1],
+            large[index],
+            small[index],
+            energy,
+            kappa,
+        );
+        match next {
+            Some((next_large, next_small)) => {
+                large[index + 1] = next_large;
+                small[index + 1] = next_small;
+                renormalize_complex_components(&mut large[index + 1], &mut small[index + 1]);
+            }
+            None => return Err(ComplexRadialDiracError::NumericalInstability { index }),
+        }
+    }
+
+    normalize_complex_wavefunction(radial_grid, &mut large, &mut small)?;
+    Ok((large, small))
+}
+
+fn integrate_complex_irregular(
+    radial_grid: &[f64],
+    potential: &[Complex64],
+    energy: Complex64,
+    kappa: i32,
+    wave_number: Complex64,
+) -> Result<(Vec<Complex64>, Vec<Complex64>), ComplexRadialDiracError> {
+    let point_count = radial_grid.len();
+    let mut large = vec![Complex64::new(0.0, 0.0); point_count];
+    let mut small = vec![Complex64::new(0.0, 0.0); point_count];
+    let last = point_count - 1;
+
+    let (large_order, small_order, sign) =
+        kappa_to_orbital_orders(kappa).ok_or(ComplexRadialDiracError::InvalidKappa { kappa })?;
+    let relativistic_term = wave_number * RELATIVISTIC_ALPHA_AU;
+    let factor = sign * relativistic_term
+        / (Complex64::new(1.0, 0.0)
+            + (Complex64::new(1.0, 0.0) + relativistic_term * relativistic_term).sqrt());
+    let normalization = (Complex64::new(1.0, 0.0) + factor * factor).sqrt();
+    let normalization = if normalization.norm() > MIN_COMPONENT_MAGNITUDE {
+        normalization
+    } else {
+        Complex64::new(1.0, 0.0)
+    };
+
+    let argument = ensure_positive_real_argument(wave_number * radial_grid[last]);
+    large[last] = spherical_h(large_order, argument) * radial_grid[last] / normalization;
+    small[last] = spherical_h(small_order, argument) * radial_grid[last] * factor / normalization;
+    renormalize_complex_components(&mut large[last], &mut small[last]);
+
+    for index in (1..=last).rev() {
+        let previous = rk4_step_complex(
+            radial_grid[index],
+            radial_grid[index - 1],
+            potential[index],
+            potential[index - 1],
+            large[index],
+            small[index],
+            energy,
+            kappa,
+        );
+        match previous {
+            Some((prev_large, prev_small)) => {
+                large[index - 1] = prev_large;
+                small[index - 1] = prev_small;
+                renormalize_complex_components(&mut large[index - 1], &mut small[index - 1]);
+            }
+            None => {
+                return Err(ComplexRadialDiracError::NumericalInstability { index: index - 1 });
+            }
+        }
+    }
+
+    normalize_complex_wavefunction(radial_grid, &mut large, &mut small)?;
+    Ok((large, small))
+}
+
+fn asymptotic_wave_number(
+    energy: Complex64,
+    tail_potential: Complex64,
+    max_wave_number_hint: f64,
+) -> Option<Complex64> {
+    let shifted_energy = energy - tail_potential * SPEED_OF_LIGHT_AU;
+    let mut wave_number = (Complex64::new(2.0, 0.0) * shifted_energy
+        + (shifted_energy * RELATIVISTIC_ALPHA_AU).powi(2))
+    .sqrt();
+    if wave_number.re < 0.0 {
+        wave_number = -wave_number;
+    }
+
+    if !complex_is_finite(wave_number) || wave_number.norm() <= MIN_COMPONENT_MAGNITUDE {
+        wave_number = Complex64::new(max_wave_number_hint.max(1.0e-8), energy.im.abs() * 1.0e-3);
+    }
+
+    if complex_is_finite(wave_number) && wave_number.norm() > 0.0 {
+        Some(wave_number)
+    } else {
+        None
+    }
+}
+
+fn kappa_to_orbital_orders(kappa: i32) -> Option<(usize, usize, f64)> {
+    if kappa == 0 {
+        return None;
+    }
+
+    if kappa < 0 {
+        let l = kappa.unsigned_abs() as usize - 1;
+        Some((l, l + 1, -1.0))
+    } else {
+        let l = kappa as usize;
+        Some((l, l.saturating_sub(1), 1.0))
+    }
+}
+
+fn estimate_coulomb_zeta(potential_at_origin: Complex64, radius: f64) -> f64 {
+    let radius = radius.max(MIN_RADIUS);
+    let effective_charge = (-potential_at_origin.re * radius * SPEED_OF_LIGHT_AU)
+        .max(0.0)
+        .min(118.0);
+    (effective_charge / SPEED_OF_LIGHT_AU).max(1.0e-8)
+}
+
+fn ensure_positive_real_argument(argument: Complex64) -> Complex64 {
+    if argument.re >= 0.0 {
+        argument
+    } else {
+        -argument
+    }
+}
+
+fn complex_is_finite(value: Complex64) -> bool {
+    value.re.is_finite() && value.im.is_finite()
+}
+
+fn renormalize_complex_components(large: &mut Complex64, small: &mut Complex64) {
+    let magnitude = large.norm().max(small.norm());
+    if magnitude > MAX_COMPONENT_MAGNITUDE {
+        *large /= magnitude;
+        *small /= magnitude;
+    } else if magnitude < MIN_COMPONENT_MAGNITUDE && magnitude > 0.0 {
+        let scale = (MIN_COMPONENT_MAGNITUDE / magnitude).min(MAX_COMPONENT_MAGNITUDE);
+        *large *= scale;
+        *small *= scale;
+    }
+}
+
+fn normalize_complex_wavefunction(
+    radial_grid: &[f64],
+    large_component: &mut [Complex64],
+    small_component: &mut [Complex64],
+) -> Result<(), ComplexRadialDiracError> {
+    let mut norm = 0.0_f64;
+    for index in 1..radial_grid.len() {
+        let left = large_component[index - 1].norm_sqr() + small_component[index - 1].norm_sqr();
+        let right = large_component[index].norm_sqr() + small_component[index].norm_sqr();
+        let step = radial_grid[index] - radial_grid[index - 1];
+        norm += 0.5 * (left + right) * step;
+    }
+
+    if !norm.is_finite() || norm <= 0.0 {
+        return Err(ComplexRadialDiracError::NumericalInstability { index: 0 });
+    }
+
+    let scale = norm.sqrt();
+    for (large, small) in large_component.iter_mut().zip(small_component.iter_mut()) {
+        *large /= scale;
+        *small /= scale;
+    }
+    Ok(())
+}
+
+fn rk4_step_complex(
+    radius_0: f64,
+    radius_1: f64,
+    potential_0: Complex64,
+    potential_1: Complex64,
+    large_0: Complex64,
+    small_0: Complex64,
+    energy: Complex64,
+    kappa: i32,
+) -> Option<(Complex64, Complex64)> {
+    let h = radius_1 - radius_0;
+    if !h.is_finite() || h.abs() <= f64::EPSILON {
+        return None;
+    }
+
+    let radius_mid = 0.5 * (radius_0 + radius_1);
+    let potential_mid = 0.5 * (potential_0 + potential_1);
+    let (k1_large, k1_small) =
+        dirac_rhs_complex(radius_0, potential_0, large_0, small_0, energy, kappa)?;
+    let (k2_large, k2_small) = dirac_rhs_complex(
+        radius_mid,
+        potential_mid,
+        large_0 + 0.5 * h * k1_large,
+        small_0 + 0.5 * h * k1_small,
+        energy,
+        kappa,
+    )?;
+    let (k3_large, k3_small) = dirac_rhs_complex(
+        radius_mid,
+        potential_mid,
+        large_0 + 0.5 * h * k2_large,
+        small_0 + 0.5 * h * k2_small,
+        energy,
+        kappa,
+    )?;
+    let (k4_large, k4_small) = dirac_rhs_complex(
+        radius_1,
+        potential_1,
+        large_0 + h * k3_large,
+        small_0 + h * k3_small,
+        energy,
+        kappa,
+    )?;
+
+    let next_large = large_0 + h * (k1_large + 2.0 * k2_large + 2.0 * k3_large + k4_large) / 6.0;
+    let next_small = small_0 + h * (k1_small + 2.0 * k2_small + 2.0 * k3_small + k4_small) / 6.0;
+    if complex_is_finite(next_large) && complex_is_finite(next_small) {
+        Some((next_large, next_small))
+    } else {
+        None
+    }
+}
+
+fn dirac_rhs_complex(
+    radius: f64,
+    potential: Complex64,
+    large: Complex64,
+    small: Complex64,
+    energy: Complex64,
+    kappa: i32,
+) -> Option<(Complex64, Complex64)> {
+    if !(radius.is_finite()
+        && complex_is_finite(potential)
+        && complex_is_finite(large)
+        && complex_is_finite(small)
+        && complex_is_finite(energy))
+    {
+        return None;
+    }
+
+    let radius = radius.max(MIN_RADIUS);
+    let kappa = kappa as f64;
+    let energy_over_c = energy / SPEED_OF_LIGHT_AU;
+    let d_large = -kappa * large / radius
+        + (Complex64::new(2.0 * SPEED_OF_LIGHT_AU, 0.0) + energy_over_c - potential) * small;
+    let d_small = kappa * small / radius - (energy_over_c - potential) * large;
+    if complex_is_finite(d_large) && complex_is_finite(d_small) {
+        Some((d_large, d_small))
+    } else {
+        None
+    }
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct RadialDiracInput<'a> {
@@ -2494,11 +2977,7 @@ fn feff_elimin(source: &[[f64; 8]; 8], row_and_column: usize, target: &mut [[f64
             let is_selected_row = row + 1 == row_and_column;
             let is_selected_column = column + 1 == row_and_column;
             target[row][column] = if is_selected_row {
-                if is_selected_column {
-                    1.0
-                } else {
-                    0.0
-                }
+                if is_selected_column { 1.0 } else { 0.0 }
             } else if is_selected_column {
                 0.0
             } else {
@@ -2683,9 +3162,11 @@ fn reverse_shell_over_radius_integral(radial_grid: &[f64], shell_density: &[f64]
 #[cfg(test)]
 mod tests {
     use super::{
-        compute_atom_scf_outputs, solve_atom_scf, solve_bound_state_dirac, AtomScfInput,
-        AtomScfKernelError, AtomScfOrbitalSpec, AtomScfOutputInput, BoundStateSolverState,
-        ComplexEnergySolverState, RadialDiracInput, RadialExtent, RadialGrid, SPEED_OF_LIGHT_AU,
+        AtomScfInput, AtomScfKernelError, AtomScfOrbitalSpec, AtomScfOutputInput,
+        BoundStateSolverState, ComplexEnergySolverState, ComplexRadialDiracError,
+        ComplexRadialDiracInput, RadialDiracInput, RadialExtent, RadialGrid, SPEED_OF_LIGHT_AU,
+        compute_atom_scf_outputs, solve_atom_scf, solve_bound_state_dirac,
+        solve_complex_energy_dirac,
     };
     use num_complex::Complex64;
 
@@ -2724,6 +3205,141 @@ mod tests {
         assert_eq!(state.energy(), Complex64::new(0.0, 0.0));
         assert_eq!(state.max_wave_number(), 1.0e-4);
         assert_eq!(state.channel_count_hint(), 1);
+    }
+
+    #[test]
+    fn complex_dirac_solver_rejects_invalid_quantum_inputs() {
+        let state = complex_reference_state(Complex64::new(3.0, 0.25));
+        let point_count = state.radial_grid().point_count();
+        let potential = complex_reference_potential(state.radial_grid().points(), 8.0, 0.15);
+
+        let invalid_kappa_error =
+            solve_complex_energy_dirac(ComplexRadialDiracInput::new(&state, &potential, 0))
+                .expect_err("kappa=0 must be rejected");
+        assert_eq!(
+            invalid_kappa_error,
+            ComplexRadialDiracError::InvalidKappa { kappa: 0 }
+        );
+
+        let invalid_index_error = solve_complex_energy_dirac(
+            ComplexRadialDiracInput::new(&state, &potential, -1)
+                .with_interstitial_index(point_count - 2),
+        )
+        .expect_err("interstitial index near boundary must be rejected");
+
+        match invalid_index_error {
+            ComplexRadialDiracError::InterstitialIndexOutOfRange { index, .. } => {
+                assert_eq!(index, point_count - 2);
+            }
+            other => panic!("unexpected complex-dirac error variant: {}", other),
+        }
+    }
+
+    #[test]
+    fn complex_dirac_solver_stabilizes_regular_and_irregular_channels() {
+        let channel_cases = [-1, 1, -2, 2];
+        let energy_cases = [Complex64::new(3.0, 0.2), Complex64::new(8.0, 0.45)];
+
+        for energy in energy_cases {
+            let state = complex_reference_state(energy);
+            let interstitial_index = state.radial_grid().point_count() * 2 / 3;
+            let potential = complex_reference_potential(state.radial_grid().points(), 12.0, 0.2);
+
+            for kappa in channel_cases {
+                let solution = solve_complex_energy_dirac(
+                    ComplexRadialDiracInput::new(&state, &potential, kappa)
+                        .with_interstitial_index(interstitial_index),
+                )
+                .expect("complex-energy Dirac channel should converge");
+
+                assert_eq!(solution.kappa(), kappa);
+                assert_eq!(solution.interstitial_index(), interstitial_index);
+                assert_eq!(
+                    solution.regular_large_component().len(),
+                    state.radial_grid().point_count()
+                );
+                assert_eq!(
+                    solution.irregular_large_component().len(),
+                    state.radial_grid().point_count()
+                );
+                assert!(
+                    solution.wave_number().norm() > 0.0,
+                    "wave number should remain finite and non-zero for kappa={kappa}"
+                );
+                assert!(
+                    solution
+                        .regular_large_component()
+                        .iter()
+                        .all(|value| value.re.is_finite() && value.im.is_finite())
+                );
+                assert!(
+                    solution
+                        .regular_small_component()
+                        .iter()
+                        .all(|value| value.re.is_finite() && value.im.is_finite())
+                );
+                assert!(
+                    solution
+                        .irregular_large_component()
+                        .iter()
+                        .all(|value| value.re.is_finite() && value.im.is_finite())
+                );
+                assert!(
+                    solution
+                        .irregular_small_component()
+                        .iter()
+                        .all(|value| value.re.is_finite() && value.im.is_finite())
+                );
+
+                let regular_norm = complex_wavefunction_norm(
+                    state.radial_grid().points(),
+                    solution.regular_large_component(),
+                    solution.regular_small_component(),
+                );
+                let irregular_norm = complex_wavefunction_norm(
+                    state.radial_grid().points(),
+                    solution.irregular_large_component(),
+                    solution.irregular_small_component(),
+                );
+                assert!(
+                    (regular_norm - 1.0).abs() < 1.0e-8,
+                    "regular spinor should remain normalized for kappa={kappa}, energy={energy}"
+                );
+                assert!(
+                    (irregular_norm - 1.0).abs() < 1.0e-8,
+                    "irregular spinor should remain normalized for kappa={kappa}, energy={energy}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn complex_dirac_solver_wave_number_increases_with_energy() {
+        let low_energy = Complex64::new(2.0, 0.2);
+        let high_energy = Complex64::new(9.0, 0.2);
+        let low_state = complex_reference_state(low_energy);
+        let high_state = complex_reference_state(high_energy);
+        let interstitial_index = low_state.radial_grid().point_count() * 2 / 3;
+        let low_potential =
+            complex_reference_potential(low_state.radial_grid().points(), 10.0, 0.1);
+        let high_potential =
+            complex_reference_potential(high_state.radial_grid().points(), 10.0, 0.1);
+
+        let low_solution = solve_complex_energy_dirac(
+            ComplexRadialDiracInput::new(&low_state, &low_potential, -1)
+                .with_interstitial_index(interstitial_index),
+        )
+        .expect("low-energy complex Dirac channel should solve");
+        let high_solution = solve_complex_energy_dirac(
+            ComplexRadialDiracInput::new(&high_state, &high_potential, -1)
+                .with_interstitial_index(interstitial_index),
+        )
+        .expect("high-energy complex Dirac channel should solve");
+
+        assert!(
+            high_solution.wave_number().norm() > low_solution.wave_number().norm(),
+            "higher complex photoelectron energy should produce larger asymptotic wave number"
+        );
     }
 
     #[test]
@@ -2874,6 +3490,50 @@ mod tests {
             .iter()
             .map(|radius| -nuclear_charge / (SPEED_OF_LIGHT_AU * radius.max(1.0e-8)))
             .collect()
+    }
+
+    fn complex_reference_state(energy: Complex64) -> ComplexEnergySolverState {
+        ComplexEnergySolverState::new(
+            RadialGrid::from_extent(RadialExtent::new(1.2, 1.8, 32.0), 257, 0.025),
+            energy,
+            energy.norm().max(0.25),
+            8,
+        )
+    }
+
+    fn complex_reference_potential(
+        radial_grid: &[f64],
+        nuclear_charge: f64,
+        imaginary_strength: f64,
+    ) -> Vec<Complex64> {
+        let radius_scale = radial_grid.last().copied().unwrap_or(1.0).max(1.0e-6);
+        radial_grid
+            .iter()
+            .copied()
+            .map(|radius| {
+                let radius = radius.max(1.0e-8);
+                let core = -nuclear_charge / (SPEED_OF_LIGHT_AU * radius);
+                let screened = (-radius / radius_scale).exp() * 0.35 / SPEED_OF_LIGHT_AU;
+                let damping = -imaginary_strength
+                    / (SPEED_OF_LIGHT_AU * (1.0 + (radius / radius_scale).powi(2)));
+                Complex64::new(core + screened, damping)
+            })
+            .collect()
+    }
+
+    fn complex_wavefunction_norm(
+        radial_grid: &[f64],
+        large: &[Complex64],
+        small: &[Complex64],
+    ) -> f64 {
+        let mut norm = 0.0_f64;
+        for index in 1..radial_grid.len() {
+            let step = radial_grid[index] - radial_grid[index - 1];
+            let left = large[index - 1].norm_sqr() + small[index - 1].norm_sqr();
+            let right = large[index].norm_sqr() + small[index].norm_sqr();
+            norm += 0.5 * (left + right) * step;
+        }
+        norm
     }
 
     fn solve_reference_1s_case(

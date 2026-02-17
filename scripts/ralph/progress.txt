@@ -6,6 +6,7 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - For new numerics domains, add `pub mod <domain>;` to `crates/feff-core/src/numerics/mod.rs` and re-export public APIs from `crates/feff-core/src/numerics/<domain>/mod.rs`.
 - For ATOM/FOVRG prep work, keep reusable radial mesh and solver-state carriers in `crates/feff-core/src/numerics/radial.rs`, then thread those states into module models (for example POT/XSPH) instead of recomputing radial stats ad hoc.
 - Radial Dirac shooting in this codebase should integrate outward/inward on `RadialGrid` and evaluate mismatch using the largest-amplitude point in a small window around the match index, which avoids unstable `small/large` ratios when the nominal match point is near a node.
+- FOVRG complex-energy kernels should flatten the potential tail to the interstitial (`v_mt`) value before integration and seed irregular channels from spherical Hankel asymptotics plus the relativistic factor `x*a/(1+sqrt(1+x^2))`.
 - FEFF special-function parity ports should mirror `besjh.f90` region cutoffs (`Re/|Im| < 1.0`, `< 7.51`) and use targeted `bjnser` seeding plus recursion per region.
 - FEFF Hankel parity follows `besjh.f90` conventions: use `hl = -nl + i*jl` in small/mid regions, and in the asymptotic branch select `exp(±i z)` plus `sjl ± i*cjl` based on the sign of `Im(z)`.
 - Spherical harmonics ports should use the Condon-Shortley convention with `Y_l^{-m} = (-1)^m * conj(Y_l^m)`, and regression tests should include the sum rule `sum_m |Y_lm|^2 = (2l+1)/(4*pi)`.
@@ -393,4 +394,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: oracle fixture policy coverage should assert both mode and `matched_category` in regression CLI tests, not only pass/fail status.
   - Gotchas encountered: capture outputs include seeded top-level fixture inputs before runner overlay; parity fixtures can fail with missing-artifact noise unless baseline and actual staging account for those seeded files.
   - Useful context: CRPA oracle fixtures that run `--run-crpa` without upstream module flags need pre-staged `crpa.inp`, `pot.inp`, and `geom.dat` in `actual/<fixture>/actual`.
+---
+## 2026-02-18 02:22:05 JST - US-032
+- Implemented FOVRG-oriented complex-energy Dirac solver APIs in `crates/feff-core/src/numerics/radial.rs`: `ComplexRadialDiracInput`, `ComplexRadialDiracSolution`, `ComplexRadialDiracError`, and `solve_complex_energy_dirac`, including regular/outgoing-irregular channel integration over `RadialGrid`.
+- Ported key FEFF solver mechanics needed for photoelectron states: interstitial-tail potential flattening, relativistic asymptotic wave-number construction, Hankel-seeded irregular boundary conditions, and complex RK4 Dirac integration with normalization/instability guards.
+- Added regression-style unit coverage in `numerics::radial` for representative energies and angular-momentum channels (`kappa = -1, 1, -2, 2`), plus validation of invalid quantum input handling and energy-to-wave-number scaling.
+- Re-exported the new complex Dirac APIs from `crates/feff-core/src/numerics/mod.rs`.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/radial.rs`, `crates/feff-core/src/numerics/mod.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: for complex-energy channels, a shared solver output carrying both regular and irregular spinors is a clean handoff point for upcoming XSPH/FOVRG model integration.
+  - Gotchas encountered: `rustfmt` on `numerics/mod.rs` can reorder unrelated imports/re-exports across sibling numerics files; keep formatting scoped and trim reorder-only churn before commit.
+  - Useful context: complex-channel stability tests are robust when they assert finite components, normalization preservation, and monotonic wave-number trends across representative energy cases.
 ---

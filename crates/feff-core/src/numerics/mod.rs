@@ -9,11 +9,13 @@ pub use exchange::{
 pub use radial::{
     atom_s02_from_overlap, atom_total_energy_from_terms, compute_atom_scf_outputs,
     estimate_atom_total_energy_terms, solve_atom_scf, solve_bound_state_dirac,
-    update_atom_charge_density, update_muffin_tin_potential, AtomChargeDensityUpdate,
-    AtomRadialOrbitalInput, AtomS02Input, AtomScfInput, AtomScfIteration, AtomScfKernelError,
-    AtomScfOrbitalSpec, AtomScfOutputInput, AtomScfOutputs, AtomScfResult, AtomTotalEnergyTerms,
-    BoundStateSolverState, ComplexEnergySolverState, MuffinTinPotentialUpdate, RadialDiracError,
-    RadialDiracInput, RadialDiracSolution, RadialExtent, RadialGrid,
+    solve_complex_energy_dirac, update_atom_charge_density, update_muffin_tin_potential,
+    AtomChargeDensityUpdate, AtomRadialOrbitalInput, AtomS02Input, AtomScfInput, AtomScfIteration,
+    AtomScfKernelError, AtomScfOrbitalSpec, AtomScfOutputInput, AtomScfOutputs, AtomScfResult,
+    AtomTotalEnergyTerms, BoundStateSolverState, ComplexEnergySolverState,
+    ComplexRadialDiracError, ComplexRadialDiracInput, ComplexRadialDiracSolution,
+    MuffinTinPotentialUpdate, RadialDiracError, RadialDiracInput, RadialDiracSolution,
+    RadialExtent, RadialGrid,
 };
 
 use serde::{Deserialize, Serialize};
