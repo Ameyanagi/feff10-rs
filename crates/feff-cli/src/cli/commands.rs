@@ -307,7 +307,8 @@ pub(super) fn run_feffmpi_command(process_count: usize) -> Result<i32, CliError>
     }
 
     if process_count > 1 {
-        eprintln!(
+        tracing::warn!(
+            nprocs = process_count,
             "WARNING: [RUN.MPI_DEFERRED] MPI parity is deferred for Rust v1; executing serial compatibility chain instead (requested nprocs={}).",
             process_count
         );

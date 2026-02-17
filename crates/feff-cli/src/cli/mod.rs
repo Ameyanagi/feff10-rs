@@ -15,9 +15,9 @@ pub fn run_from_env() -> i32 {
         Ok(code) => code,
         Err(error) => {
             let compatibility_error = error.as_feff_error();
-            eprintln!("{}", compatibility_error.diagnostic_line());
+            tracing::error!("{}", compatibility_error.diagnostic_line());
             if let Some(summary_line) = compatibility_error.fatal_exit_line() {
-                eprintln!("{}", summary_line);
+                tracing::error!("{}", summary_line);
             }
             compatibility_error.exit_code()
         }
