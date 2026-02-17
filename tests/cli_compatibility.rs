@@ -143,6 +143,29 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
         temp.path().join("log2.dat").is_file(),
         "xsph should emit log2.dat"
     );
+
+    let path = run_cli_command(temp.path(), &["path"]);
+    assert!(
+        path.status.success(),
+        "path should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&path.stderr)
+    );
+    assert!(
+        temp.path().join("paths.dat").is_file(),
+        "path should emit paths.dat"
+    );
+    assert!(
+        temp.path().join("paths.bin").is_file(),
+        "path should emit paths.bin"
+    );
+    assert!(
+        temp.path().join("crit.dat").is_file(),
+        "path should emit crit.dat"
+    );
+    assert!(
+        temp.path().join("log4.dat").is_file(),
+        "path should emit log4.dat"
+    );
 }
 
 #[test]

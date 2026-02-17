@@ -5,6 +5,7 @@
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
 - During staged producer/consumer rewrites, stamp new producer binaries with a stable magic header (for POT: `POTBIN10`) and let downstream validation scaffolds accept that header while they still baseline-copy outputs.
 - During staged XSPH producer/consumer rewrites, stamp `phase.bin` with `XSPHBIN1` and let baseline-backed PATH/FMS/BAND scaffolds accept that header while they still materialize baseline outputs.
+- For PATH true-compute/parity coverage, run `RDINP -> POT -> XSPH -> PATH` and seed parity baselines from generated outputs so `paths.dat`, `paths.bin`, `crit.dat`, and `log4.dat` stay deterministic without baseline-copy runtime behavior.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
@@ -252,4 +253,17 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: For oracle parity stories that must prove binary and numeric outcomes in one report, assert `comparison.metrics.kind` on one binary artifact and one numeric artifact from the same fixture report.
   - Gotchas encountered: `xsect.dat` includes comment/header lines; numeric tolerance assertions need policy `numericParsing.commentPrefixes` (for example `["#"]`) or report entries degrade to parse-error `comparison: null`.
   - Useful context: Optional XSPH `wscrn.dat` behavior can be validated in a two-fixture oracle run by staging it for one fixture and omitting it for the other while still exercising `--run-xsph`.
+---
+## [2026-02-17 09:48:48 JST] - US-021
+- Replaced `src/pipelines/path.rs` baseline materialization with a true-compute PATH engine that parses staged `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` and deterministically computes `paths.dat`, `paths.bin`, `crit.dat`, and `log4.dat` without runtime baseline reads.
+- Enabled PATH as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring), added runtime dispatch coverage for PATH, and updated CLI compatibility coverage to assert `path` module command success/output files.
+- Updated PATH parity coverage in `tests/path_parity.rs` to the true-compute pattern (`RDINP -> POT -> XSPH -> PATH`) with deterministic output checks and regression baselines seeded from generated artifacts.
+- Updated README regression-hook documentation to describe `--run-path` as true-compute execution and include the expanded PATH output contract.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-021` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/pipelines/path.rs`, `src/pipelines/mod.rs`, `tests/path_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: PATH true-compute parity is most stable when the test harness generates prerequisite phase input via `POT -> XSPH` rather than staging baseline `phase.bin`.
+  - Gotchas encountered: Enabling PATH in runtime dispatch requires updating both availability checks and unavailable-module assertions so existing runtime-boundary tests keep validating an unsupported module.
+  - Useful context: The true-compute PATH pipeline now emits `paths.bin` and `crit.dat` in addition to legacy text artifacts; downstream stories should include these files in deterministic output contracts where relevant.
 ---

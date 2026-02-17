@@ -59,6 +59,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Screen
             | PipelineModule::Crpa
             | PipelineModule::Xsph
+            | PipelineModule::Path
     )
 }
 
@@ -92,6 +93,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Screen => RuntimeScreenExecutor.execute_runtime(request),
         PipelineModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
         PipelineModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
+        PipelineModule::Path => RuntimePathExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -138,6 +140,15 @@ struct RuntimeXsphExecutor;
 impl RuntimePipelineExecutor for RuntimeXsphExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         xsph::XsphPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimePathExecutor;
+
+impl RuntimePipelineExecutor for RuntimePathExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        path::PathPipelineScaffold.execute(request)
     }
 }
 
@@ -317,12 +328,13 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Screen));
         assert!(runtime_compute_engine_available(PipelineModule::Crpa));
         assert!(runtime_compute_engine_available(PipelineModule::Xsph));
+        assert!(runtime_compute_engine_available(PipelineModule::Path));
     }
 
     #[test]
     fn runtime_dispatch_rejects_modules_without_compute_engines() {
-        let request = PipelineRequest::new("FX-PATH-001", PipelineModule::Path, "paths.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Path, &request)
+        let request = PipelineRequest::new("FX-FMS-001", PipelineModule::Fms, "fms.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Fms, &request)
             .expect_err("unsupported runtime module should fail");
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -501,8 +513,73 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_path_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let output_dir = temp.path().join("outputs");
+        let rdinp_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Rdinp,
+            "feff10/examples/XANES/Cu/feff.inp",
+            &output_dir,
+        );
+        execute_runtime_pipeline(PipelineModule::Rdinp, &rdinp_request)
+            .expect("RDINP runtime execution should succeed");
+
+        let pot_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Pot,
+            output_dir.join("pot.inp"),
+            &output_dir,
+        );
+        execute_runtime_pipeline(PipelineModule::Pot, &pot_request)
+            .expect("POT runtime execution should succeed");
+
+        let xsph_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Xsph,
+            output_dir.join("xsph.inp"),
+            &output_dir,
+        );
+        execute_runtime_pipeline(PipelineModule::Xsph, &xsph_request)
+            .expect("XSPH runtime execution should succeed");
+
+        let path_request = PipelineRequest::new(
+            "FX-WORKFLOW-XAS-001",
+            PipelineModule::Path,
+            output_dir.join("paths.inp"),
+            &output_dir,
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Path, &path_request)
+            .expect("PATH runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("paths.dat")),
+            "PATH runtime should emit paths.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("paths.bin")),
+            "PATH runtime should emit paths.bin"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("crit.dat")),
+            "PATH runtime should emit crit.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("log4.dat")),
+            "PATH runtime should emit log4.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
-        let error = runtime_engine_unavailable_error(PipelineModule::Path);
+        let error = runtime_engine_unavailable_error(PipelineModule::Fms);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
