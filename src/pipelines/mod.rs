@@ -60,6 +60,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Crpa
             | PipelineModule::Xsph
             | PipelineModule::Path
+            | PipelineModule::Fms
     )
 }
 
@@ -94,6 +95,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Crpa => RuntimeCrpaExecutor.execute_runtime(request),
         PipelineModule::Xsph => RuntimeXsphExecutor.execute_runtime(request),
         PipelineModule::Path => RuntimePathExecutor.execute_runtime(request),
+        PipelineModule::Fms => RuntimeFmsExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -149,6 +151,15 @@ struct RuntimePathExecutor;
 impl RuntimePipelineExecutor for RuntimePathExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         path::PathPipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeFmsExecutor;
+
+impl RuntimePipelineExecutor for RuntimeFmsExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        fms::FmsPipelineScaffold.execute(request)
     }
 }
 
@@ -329,12 +340,13 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Crpa));
         assert!(runtime_compute_engine_available(PipelineModule::Xsph));
         assert!(runtime_compute_engine_available(PipelineModule::Path));
+        assert!(runtime_compute_engine_available(PipelineModule::Fms));
     }
 
     #[test]
     fn runtime_dispatch_rejects_modules_without_compute_engines() {
-        let request = PipelineRequest::new("FX-FMS-001", PipelineModule::Fms, "fms.inp", "out");
-        let error = execute_runtime_pipeline(PipelineModule::Fms, &request)
+        let request = PipelineRequest::new("FX-BAND-001", PipelineModule::Band, "band.inp", "out");
+        let error = execute_runtime_pipeline(PipelineModule::Band, &request)
             .expect_err("unsupported runtime module should fail");
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -578,8 +590,44 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_fms_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("fms.inp"), FMS_INPUT_FIXTURE)
+            .expect("fms input should be written");
+        std::fs::write(input_dir.join("geom.dat"), GEOM_INPUT_FIXTURE)
+            .expect("geom input should be written");
+        std::fs::write(input_dir.join("global.inp"), GLOBAL_INPUT_FIXTURE)
+            .expect("global input should be written");
+        std::fs::write(input_dir.join("phase.bin"), phase_fixture_bytes())
+            .expect("phase input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-FMS-001",
+            PipelineModule::Fms,
+            input_dir.join("fms.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Fms, &request)
+            .expect("FMS runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("gg.bin")),
+            "FMS runtime should emit gg.bin"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("log3.dat")),
+            "FMS runtime should emit log3.dat"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
-        let error = runtime_engine_unavailable_error(PipelineModule::Fms);
+        let error = runtime_engine_unavailable_error(PipelineModule::Band);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
         assert_eq!(error.placeholder(), "RUN.RUNTIME_ENGINE_UNAVAILABLE");
     }
@@ -626,4 +674,38 @@ rfms   4.00000000000000
  rcut   1.49000000000000
  l_crpa           3
 ";
+
+    const FMS_INPUT_FIXTURE: &str = "mfms, idwopt, minv
+   1  -1   0
+rfms2, rdirec, toler1, toler2
+      4.00000      8.00000      0.00100      0.00100
+tk, thetad, sig2g
+      0.00000      0.00000      0.00300
+ lmaxph(0:nph)
+   3   3
+ the number of decomposi
+   -1
+";
+
+    const GLOBAL_INPUT_FIXTURE: &str = " nabs, iphabs - CFAVERAGE data
+       1       0 100000.00000
+ ipol, ispin, le2, elpty, angks, l2lp, do_nrixs, ldecmx, lj
+    0    0    0      0.0000      0.0000    0    0   -1   -1
+evec xivec spvec
+      0.00000      0.00000      1.00000
+";
+
+    fn phase_fixture_bytes() -> Vec<u8> {
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(super::xsph::XSPH_PHASE_BINARY_MAGIC);
+        bytes.extend_from_slice(&1_u32.to_le_bytes());
+        bytes.extend_from_slice(&6_u32.to_le_bytes());
+        bytes.extend_from_slice(&128_u32.to_le_bytes());
+        bytes.extend_from_slice(&1_i32.to_le_bytes());
+        bytes.extend_from_slice(&0_i32.to_le_bytes());
+        bytes.extend_from_slice(&(-25.0_f64).to_le_bytes());
+        bytes.extend_from_slice(&(0.15_f64).to_le_bytes());
+        bytes.extend_from_slice(&(0.2_f64).to_le_bytes());
+        bytes
+    }
 }

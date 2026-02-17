@@ -4,7 +4,7 @@ use std::process::{Command, Output};
 use tempfile::{Builder, TempDir};
 
 #[test]
-fn feff_command_fails_when_chain_includes_unported_runtime_module() {
+fn feff_command_executes_available_serial_workflow_modules() {
     let temp = fixture_tempdir();
     stage_baseline_artifact(
         "FX-WORKFLOW-XAS-001",
@@ -14,31 +14,35 @@ fn feff_command_fails_when_chain_includes_unported_runtime_module() {
 
     let output = run_cli_command(temp.path(), &["feff"]);
 
-    assert_eq!(
-        output.status.code(),
-        Some(4),
-        "feff should fail with computation category when runtime engine is unavailable, stderr: {}",
+    assert!(
+        output.status.success(),
+        "feff should succeed for serial workflow modules with runtime engines, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
-    let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("RUN.RUNTIME_ENGINE_UNAVAILABLE"),
-        "missing runtime-engine diagnostic token, stderr: {}",
-        stderr
+        String::from_utf8_lossy(&output.stdout).contains("Completed serial workflow"),
+        "feff should print serial workflow completion summary"
     );
     assert!(
-        stderr.contains("FATAL EXIT CODE: 4"),
-        "missing fatal exit summary for runtime-engine failure, stderr: {}",
-        stderr
+        temp.path().join("pot.inp").is_file(),
+        "feff should materialize RDINP/POT chain artifacts"
     );
     assert!(
-        !temp.path().join("pot.inp").is_file(),
-        "feff should fail before writing partial artifacts when chain contains unsupported modules"
+        temp.path().join("phase.bin").is_file(),
+        "feff should materialize XSPH outputs in serial workflow mode"
+    );
+    assert!(
+        temp.path().join("paths.dat").is_file(),
+        "feff should materialize PATH outputs in serial workflow mode"
+    );
+    assert!(
+        temp.path().join("gg.bin").is_file(),
+        "feff should materialize FMS outputs in serial workflow mode"
     );
 }
 
 #[test]
-fn feffmpi_command_reports_runtime_engine_failure_after_warning() {
+fn feffmpi_command_runs_serial_workflow_after_warning() {
     let temp = fixture_tempdir();
     stage_baseline_artifact(
         "FX-WORKFLOW-XAS-001",
@@ -48,10 +52,9 @@ fn feffmpi_command_reports_runtime_engine_failure_after_warning() {
 
     let output = run_cli_command(temp.path(), &["feffmpi", "4"]);
 
-    assert_eq!(
-        output.status.code(),
-        Some(4),
-        "feffmpi should surface runtime compute-engine failure, stderr: {}",
+    assert!(
+        output.status.success(),
+        "feffmpi should run the serial compatibility workflow when engines are available, stderr: {}",
         String::from_utf8_lossy(&output.stderr)
     );
     let stderr = String::from_utf8_lossy(&output.stderr);
@@ -61,9 +64,8 @@ fn feffmpi_command_reports_runtime_engine_failure_after_warning() {
         stderr
     );
     assert!(
-        stderr.contains("RUN.RUNTIME_ENGINE_UNAVAILABLE"),
-        "stderr should include runtime compute-engine failure token, stderr: {}",
-        stderr
+        String::from_utf8_lossy(&output.stdout).contains("Completed serial workflow"),
+        "feffmpi should print serial workflow completion summary"
     );
 }
 
@@ -165,6 +167,21 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
     assert!(
         temp.path().join("log4.dat").is_file(),
         "path should emit log4.dat"
+    );
+
+    let fms = run_cli_command(temp.path(), &["fms"]);
+    assert!(
+        fms.status.success(),
+        "fms should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&fms.stderr)
+    );
+    assert!(
+        temp.path().join("gg.bin").is_file(),
+        "fms should emit gg.bin"
+    );
+    assert!(
+        temp.path().join("log3.dat").is_file(),
+        "fms should emit log3.dat"
     );
 }
 

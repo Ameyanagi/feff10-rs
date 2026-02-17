@@ -4,8 +4,9 @@
 - On macOS arm64, run Rust quality gates with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures in test binaries.
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
 - During staged producer/consumer rewrites, stamp new producer binaries with a stable magic header (for POT: `POTBIN10`) and let downstream validation scaffolds accept that header while they still baseline-copy outputs.
-- During staged XSPH producer/consumer rewrites, stamp `phase.bin` with `XSPHBIN1` and let baseline-backed PATH/FMS/BAND scaffolds accept that header while they still materialize baseline outputs.
+- Keep `phase.bin` compatibility through the `XSPHBIN1` header: true-compute consumers (PATH/FMS) parse header metadata, while remaining baseline-backed consumers (for now BAND) should still accept that header.
 - For PATH true-compute/parity coverage, run `RDINP -> POT -> XSPH -> PATH` and seed parity baselines from generated outputs so `paths.dat`, `paths.bin`, `crit.dat`, and `log4.dat` stay deterministic without baseline-copy runtime behavior.
+- For FMS true-compute/parity coverage, run `RDINP -> POT -> XSPH -> FMS` and seed parity baselines from generated outputs so `gg.bin` and `log3.dat` stay deterministic without baseline-copy runtime behavior.
 - For PATH oracle parity coverage, stage `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-path`, and assert `paths.dat` resolves `comparison.mode=exact_text` with `matched_category=path_listing_reports`.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
@@ -279,4 +280,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: PATH oracle parity can run with module-local staged inputs (`paths.inp`, `geom.dat`, `global.inp`, `phase.bin`) plus `--run-path`; RDINP/POT/XSPH hooks are not required in this validation flow.
   - Gotchas encountered: Oracle PATH tests that invoke `ci-oracle-capture-runner.sh` still require `GITHUB_WORKSPACE=<repo-root>` when run from temp directories, or capture baseline resolution fails early.
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions should continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 10:06:27 JST] - US-023
+- Replaced baseline-materialized FMS scaffold with true-compute execution in `src/pipelines/fms.rs`: parse staged `fms.inp`/`geom.dat`/`global.inp`/`phase.bin` and deterministically compute `gg.bin` plus `log3.dat` via shared serialization helpers.
+- Enabled FMS runtime dispatch in `src/pipelines/mod.rs` and updated CLI compatibility expectations so `feff`/`feffmpi` serial workflow and `fms` module command reflect the `RDINP -> POT -> XSPH -> PATH -> FMS` success path.
+- Reworked FMS parity coverage in `tests/fms_parity.rs` to true-compute determinism/regression patterns with baselines seeded from generated outputs, and updated README notes for FMS runtime/regression compute-path behavior.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `src/pipelines/fms.rs`, `tests/fms_parity.rs`, `src/pipelines/mod.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FMS parity/regression stability should reuse generated prerequisites (`RDINP -> POT -> XSPH`) and seed baselines from generated outputs rather than staging legacy `phase.bin` snapshots.
+  - Gotchas encountered: Enabling an additional runtime module can flip `feff`/`feffmpi` compatibility tests from fail-fast to success; those tests must assert real serial-workflow artifact outcomes instead of fixed unavailable-engine failures.
+  - Useful context: No repository-local `AGENTS.md` files exist in this project tree, so reusable module/testing conventions were captured in `scripts/ralph/progress.txt`.
 ---
