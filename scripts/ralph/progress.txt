@@ -6,6 +6,7 @@
 - During staged producer/consumer rewrites, stamp new producer binaries with a stable magic header (for POT: `POTBIN10`) and let downstream validation scaffolds accept that header while they still baseline-copy outputs.
 - During staged XSPH producer/consumer rewrites, stamp `phase.bin` with `XSPHBIN1` and let baseline-backed PATH/FMS/BAND scaffolds accept that header while they still materialize baseline outputs.
 - For PATH true-compute/parity coverage, run `RDINP -> POT -> XSPH -> PATH` and seed parity baselines from generated outputs so `paths.dat`, `paths.bin`, `crit.dat`, and `log4.dat` stay deterministic without baseline-copy runtime behavior.
+- For PATH oracle parity coverage, stage `paths.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-path`, and assert `paths.dat` resolves `comparison.mode=exact_text` with `matched_category=path_listing_reports`.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
@@ -266,4 +267,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: PATH true-compute parity is most stable when the test harness generates prerequisite phase input via `POT -> XSPH` rather than staging baseline `phase.bin`.
   - Gotchas encountered: Enabling PATH in runtime dispatch requires updating both availability checks and unavailable-module assertions so existing runtime-boundary tests keep validating an unsupported module.
   - Useful context: The true-compute PATH pipeline now emits `paths.bin` and `crit.dat` in addition to legacy text artifacts; downstream stories should include these files in deterministic output contracts where relevant.
+---
+## [2026-02-17 09:53:10 JST] - US-022
+- Added oracle CLI parity coverage in `tests/regression_cli.rs` for both required fixtures (`FX-PATH-001`, `FX-WORKFLOW-XAS-001`) by running `feff10-rs oracle` with `--run-path` and CI capture-runner plumbing.
+- Staged required PATH inputs (`paths.inp`, `geom.dat`, `global.inp`, `phase.bin`) for each fixture, then asserted true-compute PATH outputs (`paths.dat`, `paths.bin`, `crit.dat`, `log4.dat`) are materialized under `actual-root/<fixture>/actual`.
+- Added deterministic report assertions that `paths.dat` comparisons use `comparison.mode = exact_text` and `matched_category = path_listing_reports` for both fixtures, while also validating fixture-level mismatch summary/details.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-022` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: PATH oracle parity can run with module-local staged inputs (`paths.inp`, `geom.dat`, `global.inp`, `phase.bin`) plus `--run-path`; RDINP/POT/XSPH hooks are not required in this validation flow.
+  - Gotchas encountered: Oracle PATH tests that invoke `ci-oracle-capture-runner.sh` still require `GITHUB_WORKSPACE=<repo-root>` when run from temp directories, or capture baseline resolution fails early.
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions should continue to be captured in `scripts/ralph/progress.txt`.
 ---
