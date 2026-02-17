@@ -9,6 +9,7 @@
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
 - For oracle parity tests that must cover optional module inputs, stage required artifacts directly into `actual-root/<fixture>/actual` and run only the target module hook (for example, `--run-screen`) so optional-file present/absent variants are deterministic.
+- For single-fixture oracle parity tests that must prove both tolerance reporting and contract-failure diagnostics, use a story-specific policy override for one artifact and stage one synthetic actual-only artifact to assert deterministic `Missing baseline artifact` reasons.
 - Regression JSON reports now expose `mismatch_fixtures` with per-artifact reason/path detail; use that section (and `render_human_summary`) for actionable oracle mismatch diagnostics.
 - For multi-fixture oracle parity stories, assert `mismatch_fixtures` per required fixture (not only aggregate mismatch counts) so artifact-level reason coverage remains deterministic.
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
@@ -214,4 +215,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: When module fixture entry decks cannot be consumed by RDINP, stage that module's declared inputs directly for module parity/validation tests and keep RDINP dependencies out of the module test contract.
   - Gotchas encountered: `FX-CRPA-001`'s source `feff.inp` is CIF-driven and fails current RDINP POTENTIALS requirements (`INPUT.RDINP_POTENTIALS`), so CRPA tests must stage `crpa.inp`/`pot.inp`/`geom.dat` directly.
   - Useful context: CRPA and SCREEN both emit `wscrn.dat`, but CRPA's log artifact is `logscrn.dat` while SCREEN uses `logscreen.dat`; assertions and fixture expectations must keep those names distinct.
+---
+## [2026-02-17 09:14:31 JST] - US-018
+- Added CRPA oracle CLI parity coverage in `tests/regression_cli.rs` for `FX-CRPA-001` by running `feff10-rs oracle` with `--run-crpa` and the repository `ci-oracle-capture-runner.sh` capture flow.
+- Staged required CRPA inputs (`crpa.inp`, `pot.inp`, `geom.dat`) in `actual-root/<fixture>/actual`, then asserted generated `wscrn.dat`/`logscrn.dat` outputs and fixture-level mismatch summary reporting.
+- Added deterministic report assertions for both comparison modes required by this story: numeric tolerance metadata for `wscrn.dat` via a story-local policy override and per-artifact contract failure diagnostics via a synthetic actual-only artifact that maps to `Missing baseline artifact`.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked --test regression_cli`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: For module-parity stories where fixture artifacts default to exact-text policy, a local policy override inside the test is a low-impact way to validate numeric-tolerance report fields without changing global tolerance contracts.
+  - Gotchas encountered: The capture runner command in oracle CLI tests still needs `GITHUB_WORKSPACE=<repo-root>` when invoked from temp directories, or fixture baseline resolution fails before comparisons run.
+  - Useful context: This repository has no in-tree `AGENTS.md`; reusable story learnings were added to `scripts/ralph/progress.txt` instead.
 ---
