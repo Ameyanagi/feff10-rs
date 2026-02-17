@@ -1,0 +1,94 @@
+{
+  "energyCases": [
+    {
+      "id": "etotal-stub-case-1",
+      "occupations": [2.0, 2.0, 4.0, 3.0],
+      "orbitalEnergies": [-0.65, -0.44, -0.22, -0.08],
+      "terms": {
+        "directCoulomb": 0.01025562488598527,
+        "exchangeCoulomb": -0.0006833999990298182,
+        "magnetic": 0.0008619983333453381,
+        "retardation": 0.0003415282148699758
+      },
+      "expectedTotalEnergy": -3.308368698452381,
+      "absTol": 2e-7,
+      "relTol": 2e-7
+    },
+    {
+      "id": "etotal-stub-case-2",
+      "occupations": [2.0, 1.5, 2.0, 3.5, 2.5],
+      "orbitalEnergies": [-0.90, -0.55, -0.31, -0.19, -0.11],
+      "terms": {
+        "directCoulomb": 0.019786874954890225,
+        "exchangeCoulomb": -0.0009137499965088156,
+        "magnetic": 0.0013043583284003512,
+        "retardation": 0.0005627981379566119
+      },
+      "expectedTotalEnergy": -4.202005968511905,
+      "absTol": 2e-7,
+      "relTol": 2e-7
+    },
+    {
+      "id": "etotal-stub-case-3",
+      "occupations": [2.0, 2.0, 1.0],
+      "orbitalEnergies": [-0.72, -0.48, -0.18],
+      "terms": {
+        "directCoulomb": 0.00303937501038168,
+        "exchangeCoulomb": -0.000866150013031305,
+        "magnetic": 0.00038119334267157774,
+        "retardation": 0.00013284250098745393
+      },
+      "expectedTotalEnergy": -2.581659189166667,
+      "absTol": 2e-7,
+      "relTol": 2e-7
+    }
+  ],
+  "s02Cases": [
+    {
+      "id": "s02-no-hole",
+      "kappa": [-1, -1, 1, 1],
+      "coreOccupations": [2.0, 1.0, 2.0, 1.0],
+      "coreHoleOrbital": null,
+      "overlapMatrix": [
+        0.991, 0.034, 0.0, 0.0,
+        0.034, 0.973, 0.0, 0.0,
+        0.0, 0.0, 0.982, 0.027,
+        0.0, 0.0, 0.027, 0.968
+      ],
+      "expectedS02": 0.7925170908596712,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "s02-hole-last-orbital",
+      "kappa": [-1, -1, 1, 1],
+      "coreOccupations": [2.0, 1.0, 2.0, 1.0],
+      "coreHoleOrbital": 1,
+      "overlapMatrix": [
+        0.989, 0.041, 0.0, 0.0,
+        0.041, 0.965, 0.0, 0.0,
+        0.0, 0.0, 0.984, 0.023,
+        0.0, 0.0, 0.023, 0.969
+      ],
+      "expectedS02": 0.8412616412025725,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    },
+    {
+      "id": "s02-hole-middle-orbital",
+      "kappa": [-1, -1, -1, 1, 2],
+      "coreOccupations": [2.0, 1.0, 0.5, 2.0, 1.0],
+      "coreHoleOrbital": 1,
+      "overlapMatrix": [
+        0.993, 0.028, 0.016, 0.0, 0.0,
+        0.028, 0.977, 0.022, 0.0, 0.0,
+        0.016, 0.022, 0.969, 0.0, 0.0,
+        0.0, 0.0, 0.0, 0.981, 0.0,
+        0.0, 0.0, 0.0, 0.0, 0.972
+      ],
+      "expectedS02": 0.7839758485551501,
+      "absTol": 1e-12,
+      "relTol": 1e-12
+    }
+  ]
+}

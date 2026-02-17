@@ -28,6 +28,8 @@ Started: Tue Feb 17 21:53:52 JST 2026
 - Keep COMMON regression baselines in `tasks/common-regression-fixtures.json` and validate constants/config/getorb/edge APIs together from `crates/feff-core/tests/common_regression.rs`.
 - ATOM radial SCF updates should use shell density `sigma(r)=4*pi*r^2*rho(r)`: normalize `sigma` to target charge via radial trapezoid integration, then build muffin-tin Coulomb potentials from cumulative/tail integrals and anchor `V(r_mt)=0` with a constant outer tail.
 - ATOM SCF orchestration should flow through `solve_atom_scf` in `crates/feff-core/src/numerics/radial.rs`: define orbitals via `AtomScfOrbitalSpec`, solve radial Dirac states each iteration, and mix `V_new - V_old` residuals with the built-in limited-memory Broyden mixer (seeded by `BoundStateSolverState::mixing_parameter`).
+- FEFF `s02at.f90` parity depends on its in-place determinant flow (`determ(m1,morb)` followed by `determ(m1,morb-1)` on the mutated matrix) plus the 8x8 per-kappa subshell cap and `elimin` branch for non-terminal core holes.
+- FEFF ATOM total-energy output uses `etotal.f90` sign convention `E_tot = sum(occ_i*e_i) - (E_coul + E_exch) + E_mag + E_ret`; keep this assembly rule explicit when wiring SCF-derived energy terms into downstream POT outputs.
 
 ## 2026-02-17 22:00:24 JST - US-001
 - Implemented `crates/feff-core/src/numerics/special/` scaffolding with public API surfaces for Bessel, spherical harmonics, and Wigner functions (`bessel.rs`, `harmonics.rs`, `wigner.rs`, `mod.rs`).
@@ -312,4 +314,16 @@ Started: Tue Feb 17 21:53:52 JST 2026
   - Patterns discovered: SCF loop convergence in this codebase should jointly track potential residual RMS (`V_new - V_old`) and charge-normalization delta, then expose per-iteration metrics for downstream diagnostics.
   - Gotchas encountered: unconstrained SCF updates can drive the Dirac subsolver outside easy bracketing ranges; regression tests are more stable when seeded from the known hydrogenic reference setup used by existing radial Dirac tests.
   - Useful context: there are still no repository-local `AGENTS.md` files in this workspace, so reusable module guidance remains centralized in `scripts/ralph/progress.txt`.
+---
+## 2026-02-18 01:11:51 JST - US-026
+- Implemented ATOM output APIs in `crates/feff-core/src/numerics/radial.rs` for total-energy and amplitude-reduction reporting: `AtomTotalEnergyTerms`, `atom_total_energy_from_terms`, FEFF-parity `atom_s02_from_overlap`, and `compute_atom_scf_outputs`/`estimate_atom_total_energy_terms` for SCF-state output assembly.
+- Ported FEFF `s02at.f90` determinant/elimination logic (including subshell handling by kappa and core-hole branches) into the new Rust S02 kernel and added typed validation errors for overlap shape/core-hole indexing.
+- Added FEFF reference fixtures in `tasks/atom-energy-s02-fixtures.json` and a new regression suite `crates/feff-core/tests/atom_energy_s02_regression.rs` validating both ETOTAL sign convention outputs and S02 amplitudes against reference vectors generated from FEFF Fortran harnesses (`etotal.f90`, `s02at.f90`).
+- Re-exported the new ATOM output APIs from `crates/feff-core/src/numerics/mod.rs` and added a radial unit test (`atom_scf_outputs_report_finite_energy_and_s02`) to ensure SCF-output estimation remains numerically stable in existing reference scenarios.
+- Verified quality gates with `cargo check -p feff-core` and `cargo test -p feff-core`.
+- Files changed: `crates/feff-core/src/numerics/radial.rs`, `crates/feff-core/src/numerics/mod.rs`, `crates/feff-core/tests/atom_energy_s02_regression.rs`, `tasks/atom-energy-s02-fixtures.json`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: keep FEFF parity fixtures for atom-energy/S02 in `tasks/atom-energy-s02-fixtures.json` and assert them through one integration test (`crates/feff-core/tests/atom_energy_s02_regression.rs`) so sign-convention and amplitude regressions are caught together.
+  - Gotchas encountered: FEFF `s02at` determinant calls mutate matrices in place; reproducing parity requires preserving that destructive call order instead of recomputing determinants from fresh copies.
+  - Useful context: `compute_atom_scf_outputs` accepts optional reference orbitals for overlap-based S02; when omitted it falls back to self-overlaps from converged SCF orbitals, which keeps output generation deterministic for current module scaffolds.
 ---

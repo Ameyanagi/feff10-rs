@@ -639,6 +639,189 @@ impl AtomScfResult {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct AtomTotalEnergyTerms {
+    direct_coulomb: f64,
+    exchange_coulomb: f64,
+    magnetic: f64,
+    retardation: f64,
+}
+
+impl AtomTotalEnergyTerms {
+    pub fn new(
+        direct_coulomb: f64,
+        exchange_coulomb: f64,
+        magnetic: f64,
+        retardation: f64,
+    ) -> Self {
+        Self {
+            direct_coulomb: if direct_coulomb.is_finite() {
+                direct_coulomb
+            } else {
+                0.0
+            },
+            exchange_coulomb: if exchange_coulomb.is_finite() {
+                exchange_coulomb
+            } else {
+                0.0
+            },
+            magnetic: if magnetic.is_finite() { magnetic } else { 0.0 },
+            retardation: if retardation.is_finite() {
+                retardation
+            } else {
+                0.0
+            },
+        }
+    }
+
+    pub fn direct_coulomb(&self) -> f64 {
+        self.direct_coulomb
+    }
+
+    pub fn exchange_coulomb(&self) -> f64 {
+        self.exchange_coulomb
+    }
+
+    pub fn magnetic(&self) -> f64 {
+        self.magnetic
+    }
+
+    pub fn retardation(&self) -> f64 {
+        self.retardation
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomScfOutputs {
+    total_energy: f64,
+    s02: f64,
+    orbital_energy_sum: f64,
+    energy_terms: AtomTotalEnergyTerms,
+}
+
+impl AtomScfOutputs {
+    pub fn total_energy(&self) -> f64 {
+        self.total_energy
+    }
+
+    pub fn s02(&self) -> f64 {
+        self.s02
+    }
+
+    pub fn orbital_energy_sum(&self) -> f64 {
+        self.orbital_energy_sum
+    }
+
+    pub fn energy_terms(&self) -> AtomTotalEnergyTerms {
+        self.energy_terms
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomScfOutputInput<'a> {
+    state: &'a BoundStateSolverState,
+    result: &'a AtomScfResult,
+    orbitals: &'a [AtomScfOrbitalSpec],
+    nuclear_charge: f64,
+    core_hole_orbital: Option<usize>,
+    reference_orbitals: Option<&'a [RadialDiracSolution]>,
+}
+
+impl<'a> AtomScfOutputInput<'a> {
+    pub fn new(
+        state: &'a BoundStateSolverState,
+        result: &'a AtomScfResult,
+        orbitals: &'a [AtomScfOrbitalSpec],
+        nuclear_charge: f64,
+    ) -> Self {
+        Self {
+            state,
+            result,
+            orbitals,
+            nuclear_charge,
+            core_hole_orbital: None,
+            reference_orbitals: None,
+        }
+    }
+
+    pub fn with_core_hole_orbital(mut self, core_hole_orbital: usize) -> Self {
+        self.core_hole_orbital = Some(core_hole_orbital);
+        self
+    }
+
+    pub fn with_reference_orbitals(
+        mut self,
+        reference_orbitals: &'a [RadialDiracSolution],
+    ) -> Self {
+        self.reference_orbitals = Some(reference_orbitals);
+        self
+    }
+
+    pub fn state(&self) -> &BoundStateSolverState {
+        self.state
+    }
+
+    pub fn result(&self) -> &AtomScfResult {
+        self.result
+    }
+
+    pub fn orbitals(&self) -> &[AtomScfOrbitalSpec] {
+        self.orbitals
+    }
+
+    pub fn nuclear_charge(&self) -> f64 {
+        self.nuclear_charge
+    }
+
+    pub fn core_hole_orbital(&self) -> Option<usize> {
+        self.core_hole_orbital
+    }
+
+    pub fn reference_orbitals(&self) -> Option<&[RadialDiracSolution]> {
+        self.reference_orbitals
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AtomS02Input<'a> {
+    kappa: &'a [i32],
+    core_occupations: &'a [f64],
+    overlap_matrix: &'a [f64],
+    core_hole_orbital: Option<usize>,
+}
+
+impl<'a> AtomS02Input<'a> {
+    pub fn new(kappa: &'a [i32], core_occupations: &'a [f64], overlap_matrix: &'a [f64]) -> Self {
+        Self {
+            kappa,
+            core_occupations,
+            overlap_matrix,
+            core_hole_orbital: None,
+        }
+    }
+
+    pub fn with_core_hole_orbital(mut self, core_hole_orbital: usize) -> Self {
+        self.core_hole_orbital = Some(core_hole_orbital);
+        self
+    }
+
+    pub fn kappa(&self) -> &[i32] {
+        self.kappa
+    }
+
+    pub fn core_occupations(&self) -> &[f64] {
+        self.core_occupations
+    }
+
+    pub fn overlap_matrix(&self) -> &[f64] {
+        self.overlap_matrix
+    }
+
+    pub fn core_hole_orbital(&self) -> Option<usize> {
+        self.core_hole_orbital
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, thiserror::Error)]
 pub enum AtomScfKernelError {
     #[error("bound-state radial grid requires at least 2 points, got {actual}")]
@@ -679,6 +862,28 @@ pub enum AtomScfKernelError {
         iterations: usize,
         last_residual_rms: f64,
         last_charge_delta: f64,
+    },
+    #[error(
+        "atom total-energy input length mismatch for {field}: expected {expected}, got {actual}"
+    )]
+    TotalEnergyLengthMismatch {
+        field: &'static str,
+        expected: usize,
+        actual: usize,
+    },
+    #[error("atom total-energy estimate requires finite positive nuclear charge, got {value}")]
+    InvalidEnergyNuclearCharge { value: f64 },
+    #[error(
+        "S02 overlap matrix shape mismatch: expected square matrix with {expected} entries, got {actual}"
+    )]
+    S02OverlapMatrixShapeMismatch { expected: usize, actual: usize },
+    #[error("S02 core-hole orbital index {index} out of range for {orbital_count} orbitals")]
+    S02InvalidCoreHoleOrbital { index: usize, orbital_count: usize },
+    #[error("S02 kappa subshell {kappa} has {count} orbitals (max supported {max})")]
+    S02SubshellOverflow {
+        kappa: i32,
+        count: usize,
+        max: usize,
     },
     #[error("charge-density integral is non-positive for target charge {target_charge}")]
     NonPositiveChargeIntegral { target_charge: f64 },
@@ -1025,6 +1230,222 @@ pub fn solve_atom_scf(input: AtomScfInput<'_>) -> Result<AtomScfResult, AtomScfK
         last_residual_rms,
         last_charge_delta,
     })
+}
+
+pub fn compute_atom_scf_outputs(
+    input: AtomScfOutputInput<'_>,
+) -> Result<AtomScfOutputs, AtomScfKernelError> {
+    let orbital_count = input.orbitals().len();
+    if input.result().orbitals().len() != orbital_count {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "result.orbitals",
+            expected: orbital_count,
+            actual: input.result().orbitals().len(),
+        });
+    }
+    if let Some(reference_orbitals) = input.reference_orbitals() {
+        if reference_orbitals.len() != orbital_count {
+            return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+                field: "reference_orbitals",
+                expected: orbital_count,
+                actual: reference_orbitals.len(),
+            });
+        }
+    }
+
+    let terms = estimate_atom_total_energy_terms(
+        input.state(),
+        input.result(),
+        input.orbitals(),
+        input.nuclear_charge(),
+    )?;
+    let orbital_energies = input
+        .result()
+        .orbitals()
+        .iter()
+        .map(|orbital| orbital.energy())
+        .collect::<Vec<_>>();
+    let occupations = input
+        .orbitals()
+        .iter()
+        .map(|orbital| sanitize_positive(orbital.occupation()))
+        .collect::<Vec<_>>();
+    let orbital_energy_sum = orbital_energy_sum(&orbital_energies, &occupations)?;
+    let total_energy = atom_total_energy_from_terms(&orbital_energies, &occupations, terms)?;
+
+    let overlap_matrix = build_orbital_overlap_matrix(
+        input.state().radial_grid().points(),
+        input.result().orbitals(),
+        input
+            .reference_orbitals()
+            .unwrap_or(input.result().orbitals()),
+    )?;
+    let kappa = input
+        .orbitals()
+        .iter()
+        .map(|orbital| orbital.kappa())
+        .collect::<Vec<_>>();
+    let core_occupations = input
+        .orbitals()
+        .iter()
+        .map(|orbital| {
+            sanitize_positive(orbital.occupation())
+                - sanitize_positive(orbital.valence_occupation())
+        })
+        .collect::<Vec<_>>();
+
+    let mut s02_input = AtomS02Input::new(&kappa, &core_occupations, &overlap_matrix);
+    if let Some(core_hole_orbital) = input.core_hole_orbital() {
+        s02_input = s02_input.with_core_hole_orbital(core_hole_orbital);
+    }
+    let s02 = atom_s02_from_overlap(s02_input)?;
+
+    Ok(AtomScfOutputs {
+        total_energy,
+        s02,
+        orbital_energy_sum,
+        energy_terms: terms,
+    })
+}
+
+pub fn estimate_atom_total_energy_terms(
+    state: &BoundStateSolverState,
+    result: &AtomScfResult,
+    orbitals: &[AtomScfOrbitalSpec],
+    nuclear_charge: f64,
+) -> Result<AtomTotalEnergyTerms, AtomScfKernelError> {
+    if !nuclear_charge.is_finite() || nuclear_charge <= 0.0 {
+        return Err(AtomScfKernelError::InvalidEnergyNuclearCharge {
+            value: nuclear_charge,
+        });
+    }
+
+    let radial_grid = state.radial_grid().points();
+    let point_count = radial_grid.len();
+    if result.shell_density().len() != point_count {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "result.shell_density",
+            expected: point_count,
+            actual: result.shell_density().len(),
+        });
+    }
+    if result.valence_shell_density().len() != point_count {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "result.valence_shell_density",
+            expected: point_count,
+            actual: result.valence_shell_density().len(),
+        });
+    }
+    if result.potential().len() != point_count {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "result.potential",
+            expected: point_count,
+            actual: result.potential().len(),
+        });
+    }
+    if result.orbitals().len() != orbitals.len() {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "orbitals",
+            expected: result.orbitals().len(),
+            actual: orbitals.len(),
+        });
+    }
+
+    let mut direct_coulomb = 0.0_f64;
+    let mut exchange_coulomb = 0.0_f64;
+    let mut magnetic = 0.0_f64;
+
+    for index in 1..point_count {
+        let step = (radial_grid[index] - radial_grid[index - 1]).max(0.0);
+        if step <= 0.0 {
+            continue;
+        }
+
+        let left_radius = radial_grid[index - 1].max(MIN_RADIUS);
+        let right_radius = radial_grid[index].max(MIN_RADIUS);
+        let left_screening = (result.potential()[index - 1] + nuclear_charge / left_radius).abs();
+        let right_screening = (result.potential()[index] + nuclear_charge / right_radius).abs();
+        let left_shell = sanitize_positive(result.shell_density()[index - 1]);
+        let right_shell = sanitize_positive(result.shell_density()[index]);
+        let left_valence = sanitize_positive(result.valence_shell_density()[index - 1]);
+        let right_valence = sanitize_positive(result.valence_shell_density()[index]);
+        let left_core = (left_shell - left_valence).max(0.0);
+        let right_core = (right_shell - right_valence).max(0.0);
+
+        direct_coulomb +=
+            0.25 * step * (left_shell * left_screening + right_shell * right_screening);
+        exchange_coulomb +=
+            0.125 * step * (left_valence * left_screening + right_valence * right_screening);
+        magnetic += 0.0625 * step * (left_core * left_screening + right_core * right_screening);
+    }
+
+    let c2 = SPEED_OF_LIGHT_AU * SPEED_OF_LIGHT_AU;
+    let retardation = ((result.total_charge().abs() + result.valence_charge().abs()) / c2)
+        * 0.25
+        * (direct_coulomb + exchange_coulomb + magnetic);
+
+    Ok(AtomTotalEnergyTerms::new(
+        direct_coulomb,
+        exchange_coulomb,
+        magnetic,
+        retardation,
+    ))
+}
+
+pub fn atom_total_energy_from_terms(
+    orbital_energies: &[f64],
+    occupations: &[f64],
+    terms: AtomTotalEnergyTerms,
+) -> Result<f64, AtomScfKernelError> {
+    let orbital_energy_sum = orbital_energy_sum(orbital_energies, occupations)?;
+    Ok(
+        orbital_energy_sum - (terms.direct_coulomb() + terms.exchange_coulomb())
+            + terms.magnetic()
+            + terms.retardation(),
+    )
+}
+
+pub fn atom_s02_from_overlap(input: AtomS02Input<'_>) -> Result<f64, AtomScfKernelError> {
+    let orbital_count = input.kappa().len();
+    if input.core_occupations().len() != orbital_count {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "core_occupations",
+            expected: orbital_count,
+            actual: input.core_occupations().len(),
+        });
+    }
+    let expected_overlap_len = orbital_count.saturating_mul(orbital_count);
+    if input.overlap_matrix().len() != expected_overlap_len {
+        return Err(AtomScfKernelError::S02OverlapMatrixShapeMismatch {
+            expected: expected_overlap_len,
+            actual: input.overlap_matrix().len(),
+        });
+    }
+    if let Some(core_hole_orbital) = input.core_hole_orbital() {
+        if core_hole_orbital >= orbital_count {
+            return Err(AtomScfKernelError::S02InvalidCoreHoleOrbital {
+                index: core_hole_orbital,
+                orbital_count,
+            });
+        }
+    }
+
+    let mut dval = 1.0_f64;
+    for kappa in -5..=4 {
+        dval *= s02_subshell_factor(
+            input.kappa(),
+            input.core_occupations(),
+            input.overlap_matrix(),
+            input.core_hole_orbital(),
+            kappa,
+        )?;
+    }
+
+    if dval.is_finite() {
+        Ok(dval.max(0.0))
+    } else {
+        Ok(0.0)
+    }
 }
 
 const SPEED_OF_LIGHT_AU: f64 = 137.035_999_084_f64;
@@ -1855,6 +2276,253 @@ fn solve_atom_scf_orbitals(
     Ok(solved)
 }
 
+fn orbital_energy_sum(
+    orbital_energies: &[f64],
+    occupations: &[f64],
+) -> Result<f64, AtomScfKernelError> {
+    if orbital_energies.len() != occupations.len() {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "orbital_energies",
+            expected: occupations.len(),
+            actual: orbital_energies.len(),
+        });
+    }
+
+    let mut sum = 0.0_f64;
+    for (energy, occupation) in orbital_energies.iter().zip(occupations.iter().copied()) {
+        sum += sanitize_positive(occupation) * *energy;
+    }
+    Ok(sum)
+}
+
+fn build_orbital_overlap_matrix(
+    radial_grid: &[f64],
+    final_orbitals: &[RadialDiracSolution],
+    reference_orbitals: &[RadialDiracSolution],
+) -> Result<Vec<f64>, AtomScfKernelError> {
+    if final_orbitals.len() != reference_orbitals.len() {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "reference_orbitals",
+            expected: final_orbitals.len(),
+            actual: reference_orbitals.len(),
+        });
+    }
+
+    let orbital_count = final_orbitals.len();
+    let mut overlap = vec![0.0_f64; orbital_count * orbital_count];
+    for row in 0..orbital_count {
+        for column in 0..orbital_count {
+            overlap[row * orbital_count + column] = orbital_overlap_integral(
+                radial_grid,
+                &final_orbitals[row],
+                &reference_orbitals[column],
+            )?;
+        }
+    }
+    Ok(overlap)
+}
+
+fn orbital_overlap_integral(
+    radial_grid: &[f64],
+    lhs: &RadialDiracSolution,
+    rhs: &RadialDiracSolution,
+) -> Result<f64, AtomScfKernelError> {
+    let expected = radial_grid.len();
+    if lhs.large_component().len() != expected
+        || lhs.small_component().len() != expected
+        || rhs.large_component().len() != expected
+        || rhs.small_component().len() != expected
+    {
+        return Err(AtomScfKernelError::TotalEnergyLengthMismatch {
+            field: "orbital_component",
+            expected,
+            actual: lhs
+                .large_component()
+                .len()
+                .max(lhs.small_component().len())
+                .max(rhs.large_component().len())
+                .max(rhs.small_component().len()),
+        });
+    }
+
+    let mut integral = 0.0_f64;
+    for index in 1..expected {
+        let step = (radial_grid[index] - radial_grid[index - 1]).max(0.0);
+        let left = lhs.large_component()[index - 1] * rhs.large_component()[index - 1]
+            + lhs.small_component()[index - 1] * rhs.small_component()[index - 1];
+        let right = lhs.large_component()[index] * rhs.large_component()[index]
+            + lhs.small_component()[index] * rhs.small_component()[index];
+        integral += 0.5 * (left + right) * step;
+    }
+
+    Ok(integral)
+}
+
+fn s02_subshell_factor(
+    kappa: &[i32],
+    core_occupations: &[f64],
+    overlap_matrix: &[f64],
+    core_hole_orbital: Option<usize>,
+    target_kappa: i32,
+) -> Result<f64, AtomScfKernelError> {
+    const MAX_SUBSHELL_ORBITALS: usize = 8;
+    let orbital_count = kappa.len();
+
+    let mut m1 = [[0.0_f64; MAX_SUBSHELL_ORBITALS]; MAX_SUBSHELL_ORBITALS];
+    let mut m2 = [[0.0_f64; MAX_SUBSHELL_ORBITALS]; MAX_SUBSHELL_ORBITALS];
+    for diagonal in 0..MAX_SUBSHELL_ORBITALS {
+        m1[diagonal][diagonal] = 1.0;
+        m2[diagonal][diagonal] = 1.0;
+    }
+
+    let mut orbital_indices = [0_usize; MAX_SUBSHELL_ORBITALS];
+    let mut morb = 0_usize;
+    let mut nhole = 0_usize;
+
+    for orbital_index in 0..orbital_count {
+        if kappa[orbital_index] != target_kappa {
+            continue;
+        }
+        if morb == MAX_SUBSHELL_ORBITALS {
+            return Err(AtomScfKernelError::S02SubshellOverflow {
+                kappa: target_kappa,
+                count: morb + 1,
+                max: MAX_SUBSHELL_ORBITALS,
+            });
+        }
+
+        orbital_indices[morb] = orbital_index;
+        let current = morb;
+        morb += 1;
+
+        for j in 0..morb {
+            let left = orbital_indices[j];
+            let right = orbital_indices[current];
+            m1[j][current] = overlap_matrix[left * orbital_count + right];
+        }
+        for j in 0..current {
+            m1[current][j] = m1[j][current];
+        }
+
+        if core_hole_orbital == Some(orbital_index) {
+            nhole = morb;
+        }
+    }
+
+    if morb == 0 {
+        return Ok(1.0);
+    }
+
+    let mut m1_work = m1;
+    let dum1 = feff_determ_destructive(&mut m1_work, morb).powi(2);
+    let dum3 = feff_determ_destructive(&mut m1_work, morb.saturating_sub(1)).powi(2);
+    let xn = sanitize_positive(core_occupations[orbital_indices[morb - 1]]);
+    let nmax = (2 * target_kappa.abs()) as f64;
+    if nmax <= 0.0 {
+        return Ok(1.0);
+    }
+    let xnh = (nmax - xn).max(0.0);
+
+    let factor = if nhole == 0 {
+        feff_pow_nonnegative(dum1, xn) * feff_pow_nonnegative(dum3, xnh)
+    } else if nhole == morb {
+        feff_pow_nonnegative(dum1, xn - 1.0) * feff_pow_nonnegative(dum3, xnh + 1.0)
+    } else {
+        feff_elimin(&m1_work, nhole, &mut m2);
+        let mut m2_work = m2;
+        let dum2 = feff_determ_destructive(&mut m2_work, morb).powi(2);
+        let dum4 = feff_determ_destructive(&mut m2_work, morb.saturating_sub(1)).powi(2);
+        let dum5 = (dum4 * dum1 * xnh + dum2 * dum3 * xn) / nmax;
+        dum5 * feff_pow_nonnegative(dum1, xn - 1.0) * feff_pow_nonnegative(dum3, xnh - 1.0)
+    };
+
+    if factor.is_finite() {
+        Ok(factor.max(0.0))
+    } else {
+        Ok(0.0)
+    }
+}
+
+fn feff_determ_destructive(matrix: &mut [[f64; 8]; 8], nord: usize) -> f64 {
+    if nord == 0 {
+        return 1.0;
+    }
+
+    let mut determ = 1.0_f64;
+    for k in 0..nord {
+        if matrix[k][k] == 0.0 {
+            let mut swap_column = None;
+            for j in k..nord {
+                if matrix[k][j] != 0.0 {
+                    swap_column = Some(j);
+                    break;
+                }
+            }
+            if let Some(swap_column) = swap_column {
+                for row in k..nord {
+                    let saved = matrix[row][swap_column];
+                    matrix[row][swap_column] = matrix[row][k];
+                    matrix[row][k] = saved;
+                }
+                determ = -determ;
+            } else {
+                determ = 0.0;
+                break;
+            }
+        }
+
+        determ *= matrix[k][k];
+        if k + 1 >= nord {
+            continue;
+        }
+
+        let k1 = k + 1;
+        for row in k1..nord {
+            for column in k1..nord {
+                matrix[row][column] =
+                    matrix[row][column] - matrix[row][k] * matrix[k][column] / matrix[k][k];
+            }
+        }
+    }
+
+    determ
+}
+
+fn feff_elimin(source: &[[f64; 8]; 8], row_and_column: usize, target: &mut [[f64; 8]; 8]) {
+    for row in 0..8 {
+        for column in 0..8 {
+            let is_selected_row = row + 1 == row_and_column;
+            let is_selected_column = column + 1 == row_and_column;
+            target[row][column] = if is_selected_row {
+                if is_selected_column {
+                    1.0
+                } else {
+                    0.0
+                }
+            } else if is_selected_column {
+                0.0
+            } else {
+                source[row][column]
+            };
+        }
+    }
+}
+
+fn feff_pow_nonnegative(base: f64, exponent: f64) -> f64 {
+    let base = base.max(0.0);
+    if base == 0.0 {
+        if exponent > 0.0 {
+            0.0
+        } else if exponent == 0.0 {
+            1.0
+        } else {
+            f64::INFINITY
+        }
+    } else {
+        base.powf(exponent)
+    }
+}
+
 #[derive(Debug, Clone)]
 struct BroydenMixer {
     base_mixing: f64,
@@ -2015,9 +2683,9 @@ fn reverse_shell_over_radius_integral(radial_grid: &[f64], shell_density: &[f64]
 #[cfg(test)]
 mod tests {
     use super::{
-        solve_atom_scf, solve_bound_state_dirac, AtomScfInput, AtomScfKernelError,
-        AtomScfOrbitalSpec, BoundStateSolverState, ComplexEnergySolverState, RadialDiracInput,
-        RadialExtent, RadialGrid, SPEED_OF_LIGHT_AU,
+        compute_atom_scf_outputs, solve_atom_scf, solve_bound_state_dirac, AtomScfInput,
+        AtomScfKernelError, AtomScfOrbitalSpec, AtomScfOutputInput, BoundStateSolverState,
+        ComplexEnergySolverState, RadialDiracInput, RadialExtent, RadialGrid, SPEED_OF_LIGHT_AU,
     };
     use num_complex::Complex64;
 
@@ -2161,6 +2829,29 @@ mod tests {
             }
             other => panic!("unexpected SCF error variant: {}", other),
         }
+    }
+
+    #[test]
+    fn atom_scf_outputs_report_finite_energy_and_s02() {
+        let (state, initial_potential, orbitals) = reference_scf_case();
+        let result = solve_atom_scf(
+            AtomScfInput::new(&state, &initial_potential, &orbitals, 1.0)
+                .with_muffin_tin_radius(2.0)
+                .with_max_iterations(1)
+                .with_potential_tolerance(1.0e12)
+                .with_charge_tolerance(1.0e-6)
+                .with_broyden_history(6),
+        )
+        .expect("SCF loop should converge for output estimation");
+
+        let outputs =
+            compute_atom_scf_outputs(AtomScfOutputInput::new(&state, &result, &orbitals, 1.0))
+                .expect("ATOM outputs should be computable for converged SCF state");
+
+        assert!(outputs.total_energy().is_finite());
+        assert!(outputs.orbital_energy_sum().is_finite());
+        assert!(outputs.s02().is_finite());
+        assert!(outputs.s02() >= 0.0);
     }
 
     fn reference_scf_case() -> (BoundStateSolverState, Vec<f64>, [AtomScfOrbitalSpec; 1]) {
