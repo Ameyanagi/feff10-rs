@@ -1,4 +1,7 @@
-use crate::numerics::special::spherical_h;
+use crate::numerics::exchange::{
+    ExchangeEvaluationInput, ExchangeModel, ExchangePotential, ExchangePotentialApi,
+};
+use crate::numerics::special::{spherical_h, spherical_j, spherical_n};
 use num_complex::Complex64;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -1457,12 +1460,68 @@ const MIN_COMPONENT_MAGNITUDE: f64 = 1.0e-120_f64;
 const MAX_COMPONENT_MAGNITUDE: f64 = 1.0e120_f64;
 const RELATIVISTIC_ALPHA_AU: f64 = 1.0 / SPEED_OF_LIGHT_AU;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ComplexExchangeCoupling {
+    model: ExchangeModel,
+    electron_density: f64,
+    cycles: usize,
+    mixing: f64,
+}
+
+impl ComplexExchangeCoupling {
+    pub fn new(model: ExchangeModel, electron_density: f64) -> Self {
+        let electron_density = if electron_density.is_finite() && electron_density > 0.0 {
+            electron_density
+        } else {
+            1.0e-6
+        };
+
+        Self {
+            model,
+            electron_density,
+            cycles: 1,
+            mixing: 0.35,
+        }
+    }
+
+    pub fn with_cycles(mut self, cycles: usize) -> Self {
+        self.cycles = cycles.max(1);
+        self
+    }
+
+    pub fn with_mixing(mut self, mixing: f64) -> Self {
+        self.mixing = if mixing.is_finite() {
+            mixing.clamp(0.0, 1.0)
+        } else {
+            0.35
+        };
+        self
+    }
+
+    pub fn model(&self) -> ExchangeModel {
+        self.model
+    }
+
+    pub fn electron_density(&self) -> f64 {
+        self.electron_density
+    }
+
+    pub fn cycles(&self) -> usize {
+        self.cycles
+    }
+
+    pub fn mixing(&self) -> f64 {
+        self.mixing
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct ComplexRadialDiracInput<'a> {
     state: &'a ComplexEnergySolverState,
     potential: &'a [Complex64],
     kappa: i32,
     interstitial_index: Option<usize>,
+    exchange_coupling: Option<ComplexExchangeCoupling>,
 }
 
 impl<'a> ComplexRadialDiracInput<'a> {
@@ -1476,12 +1535,22 @@ impl<'a> ComplexRadialDiracInput<'a> {
             potential,
             kappa,
             interstitial_index: None,
+            exchange_coupling: None,
         }
     }
 
     pub fn with_interstitial_index(mut self, interstitial_index: usize) -> Self {
         self.interstitial_index = Some(interstitial_index);
         self
+    }
+
+    pub fn with_exchange_coupling(mut self, exchange_coupling: ComplexExchangeCoupling) -> Self {
+        self.exchange_coupling = Some(exchange_coupling);
+        self
+    }
+
+    pub fn exchange_coupling(&self) -> Option<ComplexExchangeCoupling> {
+        self.exchange_coupling
     }
 }
 
@@ -1491,6 +1560,12 @@ pub struct ComplexRadialDiracSolution {
     wave_number: Complex64,
     kappa: i32,
     interstitial_index: usize,
+    boundary_radius: f64,
+    boundary_phase_shift: Complex64,
+    boundary_phase_amplitude: Complex64,
+    boundary_regular_to_irregular_scale: Complex64,
+    boundary_continuity_residual: f64,
+    exchange_shift: Complex64,
     regular_large_component: Vec<Complex64>,
     regular_small_component: Vec<Complex64>,
     irregular_large_component: Vec<Complex64>,
@@ -1512,6 +1587,30 @@ impl ComplexRadialDiracSolution {
 
     pub fn interstitial_index(&self) -> usize {
         self.interstitial_index
+    }
+
+    pub fn boundary_radius(&self) -> f64 {
+        self.boundary_radius
+    }
+
+    pub fn boundary_phase_shift(&self) -> Complex64 {
+        self.boundary_phase_shift
+    }
+
+    pub fn boundary_phase_amplitude(&self) -> Complex64 {
+        self.boundary_phase_amplitude
+    }
+
+    pub fn boundary_regular_to_irregular_scale(&self) -> Complex64 {
+        self.boundary_regular_to_irregular_scale
+    }
+
+    pub fn boundary_continuity_residual(&self) -> f64 {
+        self.boundary_continuity_residual
+    }
+
+    pub fn exchange_shift(&self) -> Complex64 {
+        self.exchange_shift
     }
 
     pub fn regular_large_component(&self) -> &[Complex64] {
@@ -1556,6 +1655,16 @@ pub enum ComplexRadialDiracError {
         "numerical instability while integrating complex radial Dirac equation at grid index {index}"
     )]
     NumericalInstability { index: usize },
+    #[error("failed to match regular and irregular channels at boundary index {index}")]
+    BoundaryMatchingFailure { index: usize },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct ComplexBoundaryMatch {
+    phase_shift: Complex64,
+    phase_amplitude: Complex64,
+    regular_to_irregular_scale: Complex64,
+    continuity_residual: f64,
 }
 
 pub fn solve_complex_energy_dirac(
@@ -1578,8 +1687,15 @@ pub fn solve_complex_energy_dirac(
     }
 
     let interstitial_index = resolve_interstitial_index(input.state, input.interstitial_index)?;
-    let potential = sanitize_complex_potential(input.potential, interstitial_index);
     let energy = input.state.energy();
+    let mut potential = sanitize_complex_potential(input.potential, interstitial_index);
+    let exchange_shift = apply_complex_exchange_coupling(
+        radial_grid,
+        &mut potential,
+        energy,
+        interstitial_index,
+        input.exchange_coupling(),
+    )?;
     let wave_number = asymptotic_wave_number(
         energy,
         potential[interstitial_index],
@@ -1594,17 +1710,205 @@ pub fn solve_complex_energy_dirac(
         integrate_complex_regular(radial_grid, &potential, energy, input.kappa)?;
     let (irregular_large_component, irregular_small_component) =
         integrate_complex_irregular(radial_grid, &potential, energy, input.kappa, wave_number)?;
+    let boundary_match = compute_complex_boundary_match(
+        radial_grid,
+        interstitial_index,
+        input.kappa,
+        wave_number,
+        &regular_large_component,
+        &regular_small_component,
+        &irregular_large_component,
+        &irregular_small_component,
+    )
+    .ok_or(ComplexRadialDiracError::BoundaryMatchingFailure {
+        index: interstitial_index,
+    })?;
 
     Ok(ComplexRadialDiracSolution {
         energy,
         wave_number,
         kappa: input.kappa,
         interstitial_index,
+        boundary_radius: radial_grid[interstitial_index],
+        boundary_phase_shift: boundary_match.phase_shift,
+        boundary_phase_amplitude: boundary_match.phase_amplitude,
+        boundary_regular_to_irregular_scale: boundary_match.regular_to_irregular_scale,
+        boundary_continuity_residual: boundary_match.continuity_residual,
+        exchange_shift,
         regular_large_component,
         regular_small_component,
         irregular_large_component,
         irregular_small_component,
     })
+}
+
+fn apply_complex_exchange_coupling(
+    radial_grid: &[f64],
+    potential: &mut [Complex64],
+    energy: Complex64,
+    interstitial_index: usize,
+    exchange_coupling: Option<ComplexExchangeCoupling>,
+) -> Result<Complex64, ComplexRadialDiracError> {
+    let Some(exchange_coupling) = exchange_coupling else {
+        return Ok(Complex64::new(0.0, 0.0));
+    };
+
+    let exchange_api = ExchangePotential;
+    let boundary_radius = radial_grid
+        .get(interstitial_index)
+        .copied()
+        .unwrap_or(1.0)
+        .max(MIN_RADIUS);
+    let mut cumulative_shift = Complex64::new(0.0, 0.0);
+
+    for _ in 0..exchange_coupling.cycles() {
+        let tail_potential = potential[interstitial_index];
+        let wave_number = asymptotic_wave_number(energy, tail_potential, energy.norm().max(1.0e-6))
+            .ok_or(ComplexRadialDiracError::InvalidWaveNumber {
+                energy,
+                potential: tail_potential,
+            })?;
+        let exchange_evaluation = exchange_api.evaluate(ExchangeEvaluationInput::new(
+            exchange_coupling.model(),
+            exchange_coupling.electron_density(),
+            energy.re.max(0.0),
+            wave_number.norm().max(1.0e-8),
+        ));
+        let cycle_shift = Complex64::new(exchange_evaluation.real, exchange_evaluation.imaginary)
+            * exchange_coupling.mixing()
+            / SPEED_OF_LIGHT_AU;
+        if !complex_is_finite(cycle_shift) {
+            continue;
+        }
+
+        cumulative_shift += cycle_shift;
+        for index in 0..=interstitial_index {
+            let radius = radial_grid[index].max(MIN_RADIUS);
+            let radial_fraction = (radius / boundary_radius).clamp(0.0, 1.0);
+            let taper = (1.0 - radial_fraction).powi(2);
+            potential[index] += cycle_shift * taper;
+        }
+    }
+
+    Ok(cumulative_shift)
+}
+
+fn compute_complex_boundary_match(
+    radial_grid: &[f64],
+    interstitial_index: usize,
+    kappa: i32,
+    wave_number: Complex64,
+    regular_large_component: &[Complex64],
+    regular_small_component: &[Complex64],
+    irregular_large_component: &[Complex64],
+    irregular_small_component: &[Complex64],
+) -> Option<ComplexBoundaryMatch> {
+    let boundary_radius = radial_grid
+        .get(interstitial_index)
+        .copied()?
+        .max(MIN_RADIUS);
+    let boundary_regular_large = regular_large_component.get(interstitial_index).copied()?;
+    let boundary_regular_small = regular_small_component.get(interstitial_index).copied()?;
+    let boundary_irregular_large = irregular_large_component.get(interstitial_index).copied()?;
+    let boundary_irregular_small = irregular_small_component.get(interstitial_index).copied()?;
+    let irregular_norm = boundary_irregular_large.norm_sqr() + boundary_irregular_small.norm_sqr();
+    if !irregular_norm.is_finite() || irregular_norm <= MIN_COMPONENT_MAGNITUDE {
+        return None;
+    }
+
+    let regular_to_irregular_scale = (boundary_regular_large * boundary_irregular_large.conj()
+        + boundary_regular_small * boundary_irregular_small.conj())
+        / irregular_norm;
+    if !complex_is_finite(regular_to_irregular_scale) {
+        return None;
+    }
+
+    let matched_irregular_large = boundary_irregular_large * regular_to_irregular_scale;
+    let matched_irregular_small = boundary_irregular_small * regular_to_irregular_scale;
+    let denominator = (boundary_regular_large.norm() + boundary_regular_small.norm())
+        .max(MIN_COMPONENT_MAGNITUDE);
+    let continuity_residual = ((boundary_regular_large - matched_irregular_large).norm()
+        + (boundary_regular_small - matched_irregular_small).norm())
+        / denominator;
+    if !continuity_residual.is_finite() {
+        return None;
+    }
+
+    let (phase_shift, phase_amplitude) = compute_boundary_phase_shift(
+        boundary_radius,
+        wave_number,
+        kappa,
+        boundary_regular_large,
+        boundary_regular_small,
+    )?;
+
+    Some(ComplexBoundaryMatch {
+        phase_shift,
+        phase_amplitude,
+        regular_to_irregular_scale,
+        continuity_residual,
+    })
+}
+
+fn compute_boundary_phase_shift(
+    boundary_radius: f64,
+    wave_number: Complex64,
+    kappa: i32,
+    boundary_large: Complex64,
+    boundary_small: Complex64,
+) -> Option<(Complex64, Complex64)> {
+    let (large_order, small_order, sign) = kappa_to_orbital_orders(kappa)?;
+    let argument = ensure_positive_real_argument(wave_number * boundary_radius);
+    let jl = spherical_j(large_order, argument);
+    let nl = spherical_n(large_order, argument);
+    let jlp = spherical_j(small_order, argument);
+    let nlp = spherical_n(small_order, argument);
+
+    let relativistic_term = wave_number * RELATIVISTIC_ALPHA_AU;
+    let factor = sign * relativistic_term
+        / (Complex64::new(1.0, 0.0)
+            + (Complex64::new(1.0, 0.0) + relativistic_term * relativistic_term).sqrt());
+    if !complex_is_finite(factor) || factor.norm() <= MIN_COMPONENT_MAGNITUDE {
+        return None;
+    }
+
+    let a_coeff =
+        sign * wave_number * argument * (boundary_large * nlp - boundary_small * nl / factor);
+    let b_coeff =
+        sign * wave_number * argument * (boundary_small * jl / factor - boundary_large * jlp);
+    if !complex_is_finite(a_coeff) || !complex_is_finite(b_coeff) {
+        return None;
+    }
+
+    let mut phase_shift = if a_coeff.norm() > MIN_COMPONENT_MAGNITUDE {
+        (-b_coeff / a_coeff).atan()
+    } else {
+        Complex64::new(0.0, 0.0)
+    };
+    if !complex_is_finite(phase_shift) {
+        return None;
+    }
+
+    let cos_phase = phase_shift.cos();
+    let sin_phase = phase_shift.sin();
+    let mut phase_amplitude =
+        if cos_phase.norm() > sin_phase.norm() && cos_phase.norm() > MIN_COMPONENT_MAGNITUDE {
+            a_coeff / cos_phase
+        } else if sin_phase.norm() > MIN_COMPONENT_MAGNITUDE {
+            -b_coeff / sin_phase
+        } else {
+            Complex64::new(0.0, 0.0)
+        };
+    if !complex_is_finite(phase_amplitude) {
+        return None;
+    }
+
+    if phase_amplitude.re < 0.0 {
+        phase_amplitude = -phase_amplitude;
+        phase_shift += Complex64::new(std::f64::consts::PI, 0.0);
+    }
+
+    Some((phase_shift, phase_amplitude))
 }
 
 fn resolve_interstitial_index(
@@ -3163,11 +3467,12 @@ fn reverse_shell_over_radius_integral(radial_grid: &[f64], shell_density: &[f64]
 mod tests {
     use super::{
         AtomScfInput, AtomScfKernelError, AtomScfOrbitalSpec, AtomScfOutputInput,
-        BoundStateSolverState, ComplexEnergySolverState, ComplexRadialDiracError,
-        ComplexRadialDiracInput, RadialDiracInput, RadialExtent, RadialGrid, SPEED_OF_LIGHT_AU,
-        compute_atom_scf_outputs, solve_atom_scf, solve_bound_state_dirac,
-        solve_complex_energy_dirac,
+        BoundStateSolverState, ComplexEnergySolverState, ComplexExchangeCoupling,
+        ComplexRadialDiracError, ComplexRadialDiracInput, RadialDiracInput, RadialExtent,
+        RadialGrid, SPEED_OF_LIGHT_AU, compute_atom_scf_outputs, solve_atom_scf,
+        solve_bound_state_dirac, solve_complex_energy_dirac,
     };
+    use crate::numerics::exchange::ExchangeModel;
     use num_complex::Complex64;
 
     #[test]
@@ -3339,6 +3644,79 @@ mod tests {
         assert!(
             high_solution.wave_number().norm() > low_solution.wave_number().norm(),
             "higher complex photoelectron energy should produce larger asymptotic wave number"
+        );
+    }
+
+    #[test]
+    fn complex_dirac_solver_reports_boundary_phase_and_continuity_metrics() {
+        let state = complex_reference_state(Complex64::new(4.5, 0.3));
+        let interstitial_index = state.radial_grid().point_count() * 2 / 3;
+        let potential = complex_reference_potential(state.radial_grid().points(), 9.0, 0.18);
+
+        let solution = solve_complex_energy_dirac(
+            ComplexRadialDiracInput::new(&state, &potential, -1)
+                .with_interstitial_index(interstitial_index),
+        )
+        .expect("complex solver should provide boundary-matching diagnostics");
+
+        assert!(solution.boundary_radius().is_finite());
+        assert!(
+            solution.boundary_phase_shift().re.is_finite()
+                && solution.boundary_phase_shift().im.is_finite(),
+            "boundary phase shift should remain finite"
+        );
+        assert!(
+            solution.boundary_phase_amplitude().re.is_finite()
+                && solution.boundary_phase_amplitude().im.is_finite(),
+            "boundary phase amplitude should remain finite"
+        );
+        assert!(
+            solution.boundary_regular_to_irregular_scale().norm() > 0.0,
+            "boundary match should expose a non-zero regular/irregular scaling"
+        );
+        assert!(
+            solution.boundary_continuity_residual().is_finite()
+                && solution.boundary_continuity_residual() < 2.0,
+            "boundary continuity residual should stay bounded"
+        );
+    }
+
+    #[test]
+    fn complex_dirac_solver_exchange_coupling_shifts_boundary_phase() {
+        let state = complex_reference_state(Complex64::new(5.0, 0.35));
+        let interstitial_index = state.radial_grid().point_count() * 2 / 3;
+        let potential = complex_reference_potential(state.radial_grid().points(), 11.0, 0.2);
+
+        let uncoupled = solve_complex_energy_dirac(
+            ComplexRadialDiracInput::new(&state, &potential, -1)
+                .with_interstitial_index(interstitial_index),
+        )
+        .expect("uncoupled complex solver should converge");
+
+        let coupled = solve_complex_energy_dirac(
+            ComplexRadialDiracInput::new(&state, &potential, -1)
+                .with_interstitial_index(interstitial_index)
+                .with_exchange_coupling(
+                    ComplexExchangeCoupling::new(ExchangeModel::HedinLundqvist, 0.08)
+                        .with_cycles(3)
+                        .with_mixing(0.45),
+                ),
+        )
+        .expect("exchange-coupled complex solver should converge");
+
+        let phase_delta =
+            (coupled.boundary_phase_shift() - uncoupled.boundary_phase_shift()).norm();
+        assert!(
+            coupled.exchange_shift().norm() > 0.0,
+            "enabled exchange coupling should report a non-zero applied shift"
+        );
+        assert!(
+            phase_delta > 1.0e-8,
+            "exchange coupling should perturb muffin-tin boundary phase behavior"
+        );
+        assert!(
+            coupled.boundary_continuity_residual().is_finite()
+                && coupled.boundary_continuity_residual() < 2.0
         );
     }
 

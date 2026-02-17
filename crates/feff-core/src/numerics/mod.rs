@@ -12,7 +12,7 @@ pub use radial::{
     solve_complex_energy_dirac, update_atom_charge_density, update_muffin_tin_potential,
     AtomChargeDensityUpdate, AtomRadialOrbitalInput, AtomS02Input, AtomScfInput, AtomScfIteration,
     AtomScfKernelError, AtomScfOrbitalSpec, AtomScfOutputInput, AtomScfOutputs, AtomScfResult,
-    AtomTotalEnergyTerms, BoundStateSolverState, ComplexEnergySolverState,
+    AtomTotalEnergyTerms, BoundStateSolverState, ComplexEnergySolverState, ComplexExchangeCoupling,
     ComplexRadialDiracError, ComplexRadialDiracInput, ComplexRadialDiracSolution,
     MuffinTinPotentialUpdate, RadialDiracError, RadialDiracInput, RadialDiracSolution,
     RadialExtent, RadialGrid,
