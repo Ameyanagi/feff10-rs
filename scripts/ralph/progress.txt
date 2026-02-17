@@ -3,6 +3,7 @@
 - Treat `tasks/migration-contract-reference.md` as the single release-blocking contract index; update it whenever any linked contract artifact changes.
 - On macOS arm64, run Rust quality gates with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures in test binaries.
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
+- In runtime CLI guard tests, use a cwd-local `artifacts/fortran-baselines` trap file (not directory) to make accidental baseline path access fail deterministically while keeping validation-only baseline checks explicit via `regression` command inputs.
 - During staged producer/consumer rewrites, stamp new producer binaries with a stable magic header (for POT: `POTBIN10`) and let downstream validation scaffolds accept that header while they still baseline-copy outputs.
 - Keep `phase.bin` compatibility through the `XSPHBIN1` header: true-compute consumers (PATH/FMS/BAND) parse header metadata, while remaining baseline-backed consumers should continue accepting either canonical bytes or XSPH-magic headers during staged rewrites.
 - For PATH true-compute/parity coverage, run `RDINP -> POT -> XSPH -> PATH` and seed parity baselines from generated outputs so `paths.dat`, `paths.bin`, `crit.dat`, and `log4.dat` stay deterministic without baseline-copy runtime behavior.
@@ -546,4 +547,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Module commands can remain compatibility-stable outside repository workspaces by using deterministic per-module fixture fallbacks while retaining manifest-driven fixture resolution in workspace contexts.
   - Gotchas encountered: Previous module-command behavior hard-failed outside workspace roots due mandatory manifest lookup; keep fallback logic limited to module commands so `feff`/oracle/regression flows still require explicit workspace contracts.
   - Useful context: There are no repository-local `AGENTS.md` files under `feff10-rs`, so reusable implementation/testing patterns continue to be recorded in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 13:16:54 JST] - US-044
+- Added `runtime_module_chain_avoids_baseline_snapshots_and_regression_consumes_them` in `tests/cli_compatibility.rs` to guard runtime baseline-copy regressions and validation-only baseline usage.
+- The test creates a cwd-local trap file at `artifacts/fortran-baselines`, runs `rdinp -> pot -> xsph -> path -> fms`, and asserts runtime artifact emission; any runtime baseline path read/copy would fail deterministically.
+- The same test then seeds `artifacts/fortran-baselines/FX-PATH-001/baseline/paths.dat` with a marker, runs `feff10-rs regression` using a minimal manifest/policy, and asserts mismatch reporting to prove baseline artifacts are consumed in validation flow.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-044` as passing in `scripts/ralph/prd.json`.
+- Files changed: `tests/cli_compatibility.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: A trap file at `artifacts/fortran-baselines` is a low-noise runtime regression guard for accidental baseline-path reads in module commands.
+  - Gotchas encountered: `feff10-rs regression` mismatch outcomes return exit code `1` with a report, while fatal pre-compare hook failures use fatal exit codes and skip report emission.
+  - Useful context: There are still no repository-local `AGENTS.md` files under `feff10-rs`, so reusable patterns remain in `scripts/ralph/progress.txt`.
 ---

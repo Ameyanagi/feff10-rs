@@ -1,3 +1,4 @@
+use serde_json::Value;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
@@ -208,6 +209,190 @@ fn module_commands_enforce_runtime_compute_engine_boundary() {
     assert!(
         temp.path().join("log3.dat").is_file(),
         "fms should emit log3.dat"
+    );
+}
+
+#[test]
+fn runtime_module_chain_avoids_baseline_snapshots_and_regression_consumes_them() {
+    let temp = TempDir::new().expect("temp dir should be created");
+    stage_baseline_artifact(
+        "FX-WORKFLOW-XAS-001",
+        "feff.inp",
+        temp.path().join("feff.inp"),
+    );
+
+    let baseline_trap = temp.path().join("artifacts/fortran-baselines");
+    fs::create_dir_all(
+        baseline_trap
+            .parent()
+            .expect("baseline trap should have parent directory"),
+    )
+    .expect("baseline trap parent should exist");
+    fs::write(
+        &baseline_trap,
+        "US-044 runtime trap: baseline snapshots must not be read by module commands\n",
+    )
+    .expect("baseline trap file should be created");
+
+    let rdinp = run_cli_command(temp.path(), &["rdinp"]);
+    assert!(
+        rdinp.status.success(),
+        "rdinp should not depend on artifacts/fortran-baselines during runtime execution, stderr: {}",
+        String::from_utf8_lossy(&rdinp.stderr)
+    );
+    assert!(
+        temp.path().join("pot.inp").is_file(),
+        "rdinp should emit pot.inp"
+    );
+
+    let pot = run_cli_command(temp.path(), &["pot"]);
+    assert!(
+        pot.status.success(),
+        "pot should not depend on artifacts/fortran-baselines during runtime execution, stderr: {}",
+        String::from_utf8_lossy(&pot.stderr)
+    );
+    assert!(
+        temp.path().join("pot.bin").is_file(),
+        "pot should emit pot.bin"
+    );
+
+    let xsph = run_cli_command(temp.path(), &["xsph"]);
+    assert!(
+        xsph.status.success(),
+        "xsph should not depend on artifacts/fortran-baselines during runtime execution, stderr: {}",
+        String::from_utf8_lossy(&xsph.stderr)
+    );
+    assert!(
+        temp.path().join("phase.bin").is_file(),
+        "xsph should emit phase.bin"
+    );
+
+    let path = run_cli_command(temp.path(), &["path"]);
+    assert!(
+        path.status.success(),
+        "path should not depend on artifacts/fortran-baselines during runtime execution, stderr: {}",
+        String::from_utf8_lossy(&path.stderr)
+    );
+    assert!(
+        temp.path().join("paths.dat").is_file(),
+        "path should emit paths.dat"
+    );
+
+    let fms = run_cli_command(temp.path(), &["fms"]);
+    assert!(
+        fms.status.success(),
+        "fms should not depend on artifacts/fortran-baselines during runtime execution, stderr: {}",
+        String::from_utf8_lossy(&fms.stderr)
+    );
+    assert!(
+        temp.path().join("gg.bin").is_file(),
+        "fms should emit gg.bin"
+    );
+
+    let runtime_paths_dat = fs::read(temp.path().join("paths.dat"))
+        .expect("runtime-generated paths.dat should be readable");
+    assert!(
+        !runtime_paths_dat.is_empty(),
+        "runtime-generated paths.dat should be non-empty"
+    );
+
+    fs::remove_file(&baseline_trap).expect("baseline trap file should be removable");
+
+    let fixture_id = "FX-PATH-001";
+    let baseline_root = temp.path().join("artifacts/fortran-baselines");
+    let baseline_dir = baseline_root.join(fixture_id).join("baseline");
+    fs::create_dir_all(&baseline_dir).expect("baseline directory should be created");
+    let baseline_marker = b"US-044 baseline marker for validation flow\n";
+    fs::write(baseline_dir.join("paths.dat"), baseline_marker)
+        .expect("baseline paths.dat marker should be written");
+    assert_ne!(
+        runtime_paths_dat, baseline_marker,
+        "runtime PATH output should not equal the seeded baseline marker"
+    );
+
+    let actual_root = temp.path().join("actual-root");
+    let actual_dir = actual_root.join(fixture_id).join("actual");
+    fs::create_dir_all(&actual_dir).expect("actual output directory should exist");
+    fs::write(actual_dir.join("paths.dat"), &runtime_paths_dat)
+        .expect("actual paths.dat should be staged for regression");
+
+    let manifest_path = temp.path().join("manifest.json");
+    fs::write(
+        &manifest_path,
+        format!(r#"{{"fixtures":[{{"id":"{fixture_id}"}}]}}"#),
+    )
+    .expect("regression manifest should be written");
+
+    let policy_path = temp.path().join("policy.json");
+    fs::write(
+        &policy_path,
+        r#"{
+  "defaultMode": "exact_text",
+  "categories": []
+}"#,
+    )
+    .expect("comparator policy should be written");
+
+    let report_path = temp.path().join("report/regression.json");
+    let manifest_arg = manifest_path.to_string_lossy().into_owned();
+    let policy_arg = policy_path.to_string_lossy().into_owned();
+    let baseline_root_arg = baseline_root.to_string_lossy().into_owned();
+    let actual_root_arg = actual_root.to_string_lossy().into_owned();
+    let report_arg = report_path.to_string_lossy().into_owned();
+    let regression = run_cli_command(
+        temp.path(),
+        &[
+            "regression",
+            "--manifest",
+            manifest_arg.as_str(),
+            "--policy",
+            policy_arg.as_str(),
+            "--baseline-root",
+            baseline_root_arg.as_str(),
+            "--actual-root",
+            actual_root_arg.as_str(),
+            "--baseline-subdir",
+            "baseline",
+            "--actual-subdir",
+            "actual",
+            "--report",
+            report_arg.as_str(),
+        ],
+    );
+
+    assert_eq!(
+        regression.status.code(),
+        Some(1),
+        "regression should consume baseline artifacts and report mismatch status when baseline and actual differ, stderr: {}",
+        String::from_utf8_lossy(&regression.stderr)
+    );
+
+    let report_bytes =
+        fs::read_to_string(&report_path).expect("regression report should be emitted");
+    let report_json: Value =
+        serde_json::from_str(&report_bytes).expect("regression report should parse as JSON");
+
+    let mismatch_fixtures = report_json["mismatch_fixtures"]
+        .as_array()
+        .expect("mismatch_fixtures should be an array");
+    let fixture_mismatch = mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("fixture mismatch should include FX-PATH-001");
+    let artifact_mismatches = fixture_mismatch["artifacts"]
+        .as_array()
+        .expect("fixture mismatch should include artifact entries");
+    let paths_dat_mismatch = artifact_mismatches
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("paths.dat"))
+        .expect("paths.dat mismatch should be reported");
+    let reason = paths_dat_mismatch["reason"]
+        .as_str()
+        .expect("paths.dat mismatch should include reason text");
+    assert!(
+        reason.contains("Exact-text mismatch"),
+        "regression mismatch reason should show comparator baseline-vs-actual diff, reason: {}",
+        reason
     );
 }
 
