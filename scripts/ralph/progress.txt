@@ -22,6 +22,7 @@
 - Parser fixture coverage should resolve missing manifest `REFERENCE/*.inp` entries through `artifacts/fortran-baselines/<fixture-id>/baseline/<basename>` and treat unresolved `requires_fortran_capture` entries as expected capture prerequisites.
 - Parser invalid-input compatibility contracts are snapshot-locked in `tests/parser_validation_snapshots.rs` and `tests/snapshots/parser/*.snap`; update both when changing parser placeholders or diagnostic messages.
 - Numeric comparator D-3 enforcement is line-aware: treat line-count and per-line token-count mismatches as hard failures before numeric tolerance checks.
+- For artifacts compared under `numeric_tolerance`, keep metadata/comment lines prefixed with configured comment markers (`#`/`!`) so non-comment lines stay numeric-token-only and parse deterministically.
 - Use `src/pipelines/serialization.rs` helpers (`format_fixed_f64`, `write_text_artifact`, `write_binary_artifact`) for deterministic artifact formatting/writes instead of ad hoc `fs::write` calls in runtime/report generation paths.
 - For `geom.dat` contract checks, compare canonical atom-row content (with `nat/nph` headers) rather than raw row order, because true-compute RDINP can emit equivalent coordinate sets in a different deterministic order.
 - RDINP-generated `ldos.inp` can omit the legacy `neldos` field in the `mldos` control row; parsers for downstream compute modules should accept both 5-field and 6-field forms and apply a deterministic fallback when `neldos` is absent.
@@ -403,5 +404,18 @@ Started: Tue Feb 17 06:48:31 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Thermal-table parity assertions can use a test-local policy override with `numericParsing.commentPrefixes` to keep mixed header/data artifacts comparable under numeric tolerance policies.
   - Gotchas encountered: Without header-prefix overrides, DEBYE thermal artifacts can parse-fail and produce `comparison: null`, preventing tolerance metadata assertions.
+  - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 11:38:33 JST] - US-033
+- Replaced `src/pipelines/dmdw.rs` baseline materialization with a true-compute DMDW pipeline that parses staged `dmdw.inp` and `feff.dym` and deterministically computes `dmdw.out` without runtime baseline reads.
+- Enabled DMDW as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring) and added runtime dispatch coverage plus CLI module-command coverage for successful `dmdw` execution.
+- Reworked DMDW parity coverage in `tests/dmdw_parity.rs` to the true-compute pattern (required artifact checks, deterministic repeated runs, explicit `feff.dym` input influence checks, and regression baselines seeded from generated outputs).
+- Updated README runtime and regression-hook docs to describe DMDW as true-compute and include DMDW in runtime engine availability.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-033` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/pipelines/dmdw.rs`, `src/pipelines/mod.rs`, `tests/dmdw_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: For text artifacts that may flow through numeric-tolerance comparisons, keep metadata lines comment-prefixed and keep data rows numeric-token-only so comparator parsing remains deterministic.
+  - Gotchas encountered: Input-override tests should bypass baseline-copy staging helpers; otherwise fixture baselines can hide real input-dependency assertions.
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---

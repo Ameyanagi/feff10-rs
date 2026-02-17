@@ -332,6 +332,24 @@ fn ff2x_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn dmdw_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_dmdw_input(temp.path().join("dmdw.inp"));
+    stage_baseline_artifact("FX-DMDW-001", "feff.dym", temp.path().join("feff.dym"));
+
+    let dmdw = run_cli_command(temp.path(), &["dmdw"]);
+    assert!(
+        dmdw.status.success(),
+        "dmdw should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&dmdw.stderr)
+    );
+    assert!(
+        temp.path().join("dmdw.out").is_file(),
+        "dmdw should emit dmdw.out"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
@@ -540,6 +558,32 @@ fn stage_ff2x_input(destination: PathBuf) {
         "mchi, ispec, idwopt, ipr6, mbconv, absolu, iGammaCH\n   1   0   2   0   0   0   0\nvrcorr, vicorr, s02, critcw\n      0.00000      0.00000      1.00000      4.00000\ntk, thetad, alphat, thetae, sig2g\n    450.00000    315.00000      0.00000      0.00000      0.00000\nmomentum transfer\n      0.00000      0.00000      0.00000\n the number of decomposi\n   -1\n",
     )
     .expect("ff2x input should be staged");
+}
+
+fn stage_dmdw_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-DMDW-001")
+        .join("baseline")
+        .join("dmdw.inp");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("dmdw input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("dmdw input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "   1\n   6\n   1    450.000\n   0\nfeff.dym\n   1\n   2   1   0          29.78\n",
+    )
+    .expect("dmdw input should be staged");
 }
 
 fn workspace_root() -> PathBuf {

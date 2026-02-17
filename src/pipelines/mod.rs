@@ -65,6 +65,7 @@ pub fn runtime_compute_engine_available(module: PipelineModule) -> bool {
             | PipelineModule::Ldos
             | PipelineModule::Compton
             | PipelineModule::Debye
+            | PipelineModule::Dmdw
     )
 }
 
@@ -104,6 +105,7 @@ pub fn execute_runtime_pipeline(
         PipelineModule::Ldos => RuntimeLdosExecutor.execute_runtime(request),
         PipelineModule::Compton => RuntimeComptonExecutor.execute_runtime(request),
         PipelineModule::Debye => RuntimeDebyeExecutor.execute_runtime(request),
+        PipelineModule::Dmdw => RuntimeDmdwExecutor.execute_runtime(request),
         _ => Err(runtime_engine_unavailable_error(module)),
     }
 }
@@ -204,6 +206,15 @@ struct RuntimeDebyeExecutor;
 impl RuntimePipelineExecutor for RuntimeDebyeExecutor {
     fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
         debye::DebyePipelineScaffold.execute(request)
+    }
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct RuntimeDmdwExecutor;
+
+impl RuntimePipelineExecutor for RuntimeDmdwExecutor {
+    fn execute_runtime(&self, request: &PipelineRequest) -> PipelineResult<Vec<PipelineArtifact>> {
+        dmdw::DmdwPipelineScaffold.execute(request)
     }
 }
 
@@ -389,6 +400,7 @@ mod tests {
         assert!(runtime_compute_engine_available(PipelineModule::Ldos));
         assert!(runtime_compute_engine_available(PipelineModule::Compton));
         assert!(runtime_compute_engine_available(PipelineModule::Debye));
+        assert!(runtime_compute_engine_available(PipelineModule::Dmdw));
     }
 
     #[test]
@@ -879,6 +891,35 @@ mod tests {
     }
 
     #[test]
+    fn runtime_dispatch_executes_dmdw_compute_engine() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_dir = temp.path().join("inputs");
+        std::fs::create_dir_all(&input_dir).expect("input dir should exist");
+        std::fs::write(input_dir.join("dmdw.inp"), DMDW_INPUT_FIXTURE)
+            .expect("dmdw input should be written");
+        std::fs::write(
+            input_dir.join("feff.dym"),
+            [0_u8, 1_u8, 2_u8, 3_u8, 4_u8, 5_u8],
+        )
+        .expect("feff.dym input should be written");
+
+        let request = PipelineRequest::new(
+            "FX-DMDW-001",
+            PipelineModule::Dmdw,
+            input_dir.join("dmdw.inp"),
+            temp.path().join("outputs"),
+        );
+        let artifacts = execute_runtime_pipeline(PipelineModule::Dmdw, &request)
+            .expect("DMDW runtime execution should succeed");
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("dmdw.out")),
+            "DMDW runtime should emit dmdw.out"
+        );
+    }
+
+    #[test]
     fn runtime_engine_unavailable_error_uses_computation_category() {
         let error = runtime_engine_unavailable_error(PipelineModule::Rixs);
         assert_eq!(error.category(), FeffErrorCategory::ComputationError);
@@ -989,6 +1030,9 @@ momentum transfer
  the number of decomposi
    -1
 ";
+
+    const DMDW_INPUT_FIXTURE: &str =
+        "   1\n   6\n   1    450.000\n   0\nfeff.dym\n   1\n   2   1   0          29.78\n";
 
     const PATHS_INPUT_FIXTURE: &str =
         "PATH  Rmax= 8.000,  Keep_limit= 0.00, Heap_limit 0.00  Pwcrit= 2.50%
