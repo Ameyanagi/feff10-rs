@@ -28,10 +28,7 @@ pub struct PotContract {
 pub struct PotModule;
 
 impl PotModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<PotContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<PotContract> {
         validate_request_shape(request)?;
         Ok(PotContract {
             required_inputs: artifact_list(&POT_REQUIRED_INPUTS),
@@ -86,8 +83,8 @@ impl ModuleExecutor for PotModule {
 
 #[cfg(test)]
 mod tests {
-    use super::{POT_BINARY_MAGIC, PotModule};
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use super::{PotModule, POT_BINARY_MAGIC};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
@@ -96,12 +93,8 @@ mod tests {
 
     #[test]
     fn contract_exposes_required_inputs_and_outputs() {
-        let request = ComputeRequest::new(
-            "FX-POT-001",
-            ComputeModule::Pot,
-            "pot.inp",
-            "actual-output",
-        );
+        let request =
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, "pot.inp", "actual-output");
         let scaffold = PotModule;
         let contract = scaffold
             .contract_for_request(&request)
@@ -152,6 +145,54 @@ mod tests {
             fs::read_to_string(output_dir.join("pot.dat")).expect("pot.dat should be readable");
         assert!(pot_dat.contains("POT true-compute summary"));
         assert!(pot_dat.contains("index iz lmaxsc"));
+    }
+
+    #[test]
+    fn execute_populates_finite_atom_exchange_metrics() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join("pot.inp");
+        let output_dir = temp.path().join("actual");
+        stage_pot_inputs(&input_path, &temp.path().join("geom.dat"));
+
+        let request =
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, &input_path, &output_dir);
+        PotModule
+            .execute(&request)
+            .expect("POT execution should succeed");
+
+        let pot_dat =
+            fs::read_to_string(output_dir.join("pot.dat")).expect("pot.dat should be readable");
+        let metric_rows = pot_dat
+            .lines()
+            .filter(|line| {
+                line.trim_start()
+                    .chars()
+                    .next()
+                    .is_some_and(|character| character.is_ascii_digit())
+            })
+            .collect::<Vec<_>>();
+        assert!(
+            !metric_rows.is_empty(),
+            "pot.dat should include numeric potential metrics"
+        );
+
+        for row in metric_rows {
+            let columns = row.split_whitespace().collect::<Vec<_>>();
+            assert!(
+                columns.len() >= 10,
+                "expected at least 10 columns in potential metrics row '{}'",
+                row
+            );
+            for value in &columns[6..10] {
+                let parsed = value.parse::<f64>().unwrap_or(f64::NAN);
+                assert!(
+                    parsed.is_finite(),
+                    "metric value '{}' should be finite in row '{}'",
+                    value,
+                    row
+                );
+            }
+        }
     }
 
     #[test]
