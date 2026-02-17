@@ -27,7 +27,26 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
-## Regression Workflow
+## Runtime Execution Workflow (Production Path)
+
+Use runtime commands for production compute execution only:
+
+```bash
+cargo run -- feff
+cargo run -- feffmpi 4
+cargo run -- <module>
+```
+
+Runtime command behavior:
+
+- `feff` runs the serial compatibility chain in the current working directory.
+- `feffmpi <nprocs>` validates `<nprocs>`; when `nprocs > 1`, it emits `WARNING: [RUN.MPI_DEFERRED]` and runs the same serial chain as `feff`.
+- `<module>` commands run true-compute Rust engines in the current working directory and never use baseline snapshots to generate outputs.
+- If a workspace manifest is discoverable from the current directory, module commands resolve fixture IDs from `tasks/golden-fixture-manifest.json`; otherwise they fall back to deterministic module-default fixture IDs.
+
+Do not use runtime commands for parity validation workflows.
+
+## Validation Workflow: Regression
 
 Run fixture comparisons and emit a machine-readable report:
 
@@ -107,7 +126,7 @@ Use these flags when you need Rust pipelines to materialize module artifacts int
 `<actual-root>/<fixture-id>/<actual-subdir>` before comparison.
 These hooks are part of validation-only parity flows, not production runtime execution paths.
 
-## Oracle Dual-Run Workflow
+## Validation Workflow: Oracle Dual-Run
 
 Use the `oracle` command when you need one flow that:
 1. captures Fortran oracle outputs for the manifest fixture set, and

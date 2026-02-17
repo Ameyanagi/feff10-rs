@@ -13,6 +13,7 @@
 - For FMS oracle parity coverage, stage `fms.inp`, `geom.dat`, `global.inp`, and `phase.bin` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-fms`, and assert `gg.bin` reports `comparison.mode=exact_text` and `comparison.metrics.kind=exact_text`.
 - Route runtime CLI execution through `pipelines::execute_runtime_pipeline` plus `runtime_compute_engine_available`; keep baseline-backed module scaffolds isolated to regression/validation flows.
 - Runtime module commands should resolve fixture IDs from manifest context when available, but fall back to deterministic module-default fixture IDs when no workspace manifest can be discovered from the current working directory.
+- `INPUT.CLI_WORKSPACE` troubleshooting should be scoped to workspace-required commands (`feff`, `feffmpi`, `oracle`); module commands can run without workspace discovery when staged inputs are present.
 - For dual-run parity, use `feff10-rs oracle` to run `scripts/fortran/capture-baselines.sh --all-fixtures` and `run_regression` against the same manifest fixture set (`oracle-subdir` defaults to `outputs`).
 - CI oracle parity lanes can default `ORACLE_CAPTURE_RUNNER` to `scripts/fortran/ci-oracle-capture-runner.sh` so workflows exercise oracle plumbing/reporting even when Fortran binaries are not provisioned.
 - When invoking `scripts/fortran/ci-oracle-capture-runner.sh` outside GitHub Actions, set `GITHUB_WORKSPACE` to repository root so fixture baseline lookups resolve correctly.
@@ -571,4 +572,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: Regression rehearsal evidence that uses `cargo run -- regression` should evaluate PASS/FAIL from report/summary fields because Cargo compile/run traces are expected in stderr capture files.
   - Gotchas encountered: Asserting empty `regression-stderr.txt` is incorrect for `cargo run` flows; only smoke-command stderr files should be expected empty.
   - Useful context: There are still no repository-local `AGENTS.md` files under `feff10-rs`, so reusable conventions remain documented in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 13:36:43 JST] - US-046
+- Updated `docs/developer-workflows.md` to explicitly separate production runtime execution (`feff`, `feffmpi`, module commands) from validation-only parity workflows (`regression`, `oracle`), including module fixture resolution behavior inside vs outside workspace roots.
+- Updated `docs/operator-guide.md` to include `oracle` in the command surface/help list and to document true-compute runtime expectations, validation-only baseline usage, and deferred MPI behavior.
+- Updated `docs/troubleshooting.md` to correct `INPUT.CLI_WORKSPACE` scope and add deterministic oracle capture/parity failure guidance (`IO.ORACLE_CAPTURE_SCRIPT`, `IO.ORACLE_CAPTURE_EXEC`, `RUN.ORACLE_CAPTURE`, and capture-mode usage errors).
+- Quality checks passed: `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `docs/developer-workflows.md`, `docs/operator-guide.md`, `docs/troubleshooting.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep command-scope troubleshooting aligned with actual CLI dispatch rules; workspace-root requirements apply to `feff`/`feffmpi`/`oracle`, while module commands can run with deterministic default fixtures when no manifest is discoverable.
+  - Gotchas encountered: `oracle` argument validation failures (missing or dual capture modes) are usage errors, while capture script launch/run failures are deterministic D-4 diagnostics (`IO.*`/`RUN.*`) and should be documented separately.
+  - Useful context: There are still no repository-local `AGENTS.md` files under `feff10-rs`, so reusable documentation conventions continue to be captured in `scripts/ralph/progress.txt`.
 ---

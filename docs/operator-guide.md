@@ -9,6 +9,7 @@ Top-level commands:
 - `feff10-rs feff`
 - `feff10-rs feffmpi <nprocs>`
 - `feff10-rs regression [options]`
+- `feff10-rs oracle [options]`
 - `feff10-rs <module>`
 
 Module commands:
@@ -34,6 +35,7 @@ Help:
 
 - `feff10-rs --help`
 - `feff10-rs regression --help`
+- `feff10-rs oracle --help`
 - `feff10-rs <module> --help`
 
 ## Compatibility Guarantees
@@ -63,9 +65,11 @@ Exit code mapping:
 
 - `feffmpi <nprocs>` is available for compatibility, but MPI parity is deferred in v1.
 - When `nprocs > 1`, the command emits `WARNING: [RUN.MPI_DEFERRED]` and executes the serial compatibility chain.
-- Module selection and workflow resolution are driven by `tasks/golden-fixture-manifest.json`.
+- Runtime compute engines are available for all supported module commands (`rdinp`, `pot`, `xsph`, `path`, `fms`, `band`, `ldos`, `rixs`, `crpa`, `compton`, `ff2x`, `dmdw`, `screen`, `sfconv`, `eels`, `fullspectrum`).
+- Module command fixture selection uses `tasks/golden-fixture-manifest.json` when a workspace root is discoverable from the current directory, and falls back to deterministic module-default fixture IDs when no workspace manifest is available.
 - Runtime commands (`feff`, `feffmpi`, and module commands) must not read from `artifacts/fortran-baselines` to generate outputs.
-- Baseline snapshots are reserved for validation flows (`regression`) and test tooling only.
+- Baseline snapshots are reserved for validation flows (`regression`, `oracle`) and test tooling only.
+- `oracle` is validation-only and must not be used as a production runtime path.
 
 ## Known Limits
 
