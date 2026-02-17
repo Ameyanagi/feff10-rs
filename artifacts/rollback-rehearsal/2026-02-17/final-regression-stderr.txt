@@ -1,0 +1,2 @@
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.27s
+     Running `target/debug/feff10-rs regression --manifest tasks/golden-fixture-manifest.json --policy tasks/numeric-tolerance-policy.json --baseline-root artifacts/fortran-baselines --actual-root artifacts/fortran-baselines --baseline-subdir baseline --actual-subdir baseline --report artifacts/rollback-rehearsal/2026-02-17/final-regression-report.json`

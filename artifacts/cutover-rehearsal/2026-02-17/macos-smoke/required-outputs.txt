@@ -1,0 +1,15 @@
+geom.dat
+global.inp
+pot.inp
+xsph.inp
+paths.inp
+fms.inp
+pot.bin
+phase.bin
+paths.dat
+gg.bin
+log.dat
+log1.dat
+log2.dat
+log3.dat
+log4.dat

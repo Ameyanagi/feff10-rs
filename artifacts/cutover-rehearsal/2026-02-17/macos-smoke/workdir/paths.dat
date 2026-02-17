@@ -1,0 +1,6 @@
+PATH true-compute listing
+fixture FX-WORKFLOW-XAS-001
+rmax    -1.0000 rfms2     4.0000 pwcrit     2.5000 pcritk     0.0000 pcrith     0.0000
+phase magic=T channels=4 points=285 bytes=11476 checksum=c018050f5c2261be
+index nleg degeneracy reff amplitude beta eta legs
+   0    0          0      0.0000      0.0000      0.0000      0.0000 -

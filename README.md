@@ -8,8 +8,8 @@
 - Troubleshooting: `docs/troubleshooting.md`
 - Cutover rehearsal checklist: `docs/cutover-rehearsal-checklist.md`
 - Rollback rehearsal checklist: `docs/rollback-rehearsal-checklist.md`
-- Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-16.md`
-- Latest rollback rehearsal and GA sign-off report: `tasks/rollback-rehearsal-2026-02-16.md`
+- Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-17.md`
+- Latest rollback rehearsal and GA sign-off report: `tasks/rollback-rehearsal-2026-02-17.md`
 
 ## Rust Architecture Scaffolding
 

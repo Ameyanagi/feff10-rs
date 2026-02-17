@@ -1,0 +1,13 @@
+XSPH true-compute runtime
+fixture: FX-WORKFLOW-XAS-001
+input-artifacts: xsph.inp geom.dat global.inp pot.bin
+optional-input-wscrn: absent
+output-artifacts: phase.bin xsect.dat log2.dat
+nat: 531 nph: 1 atoms: 531
+pot-nat: 531 pot-nph: 1 npot: 2
+lmaxph-max: 3 n-poles: 100
+phase-channels: 4
+spectral-points: 285
+energy-start:    -38.38765
+energy-step:      0.24500
+xsnorm-base: 1.7278494243E1

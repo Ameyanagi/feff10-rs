@@ -1,0 +1,11 @@
+POT true-compute runtime
+ fixture: FX-WORKFLOW-XAS-001
+ title: Cu crystal
+ input-artifacts: pot.inp geom.dat
+ output-artifacts: pot.bin pot.dat log1.dat convergence.scf convergence.scf.fine
+ atom-count: 531
+ potential-count: 2
+ radius-mean:       8.56869
+ radius-max:      11.12677
+ average-zeff:      29.00000
+ scf-control: nmix=1 nohole=2 nscmt=30 rfms1=      4.00000 ca1=      0.20000

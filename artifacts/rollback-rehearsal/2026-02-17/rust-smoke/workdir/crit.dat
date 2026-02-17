@@ -1,0 +1,26 @@
+PATH criteria report
+fixture FX-WORKFLOW-XAS-001
+controls mpath=1 ms=1 nncrit=0 nlegxx=10 ipr4=0 ica=-1
+thresholds critpw=    2.5000 pcritk=    0.0000 pcrith=    0.0000 rmax=   -1.0000 rfms2=    4.0000
+geometry nat=531 nph=1 radius_mean=    8.5849 radius_rms=    8.8593 radius_max=   11.1268
+global token_count=45 mean= 2222.2000 rms=14907.1199 max_abs=100000.0000
+retained_paths 0
+shell_radius shell_multiplicity
+    2.5527 12
+    3.6100 6
+    4.4213 24
+    5.1053 12
+    5.7079 24
+    6.2527 8
+    6.7537 48
+    7.2200 6
+    7.6580 36
+    8.0722 24
+    8.4662 24
+    8.8427 24
+    9.2037 72
+    9.8864 48
+   10.2106 12
+   10.5249 48
+   10.8300 30
+   11.1268 72

@@ -1,0 +1,20 @@
+   Compiling proc-macro2 v1.0.106
+   Compiling quote v1.0.44
+   Compiling unicode-ident v1.0.24
+   Compiling memchr v2.8.0
+   Compiling serde_core v1.0.228
+   Compiling zmij v1.0.21
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.149
+   Compiling regex-syntax v0.8.9
+   Compiling log v0.4.29
+   Compiling itoa v1.0.17
+   Compiling aho-corasick v1.1.4
+   Compiling bstr v1.12.1
+   Compiling regex-automata v0.4.14
+   Compiling globset v0.4.18
+   Compiling syn v2.0.116
+   Compiling serde_derive v1.0.228
+   Compiling feff10-rs v0.1.0 (/Users/ryuichi/dev/feff10-rs)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 11.47s
+     Running `target/debug/feff10-rs regression --manifest artifacts/rollback-rehearsal/2026-02-17/workflow-manifest.json --policy tasks/numeric-tolerance-policy.json --baseline-root artifacts/fortran-baselines --actual-root artifacts/rollback-rehearsal/2026-02-17/deployment/current --baseline-subdir baseline --actual-subdir baseline --report artifacts/rollback-rehearsal/2026-02-17/regression-report.json`

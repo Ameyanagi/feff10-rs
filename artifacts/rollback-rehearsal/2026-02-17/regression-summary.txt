@@ -1,0 +1,7 @@
+Regression status: PASS
+Fixtures: 1 total (1 passed, 0 failed)
+Artifacts: 45 total (45 passed, 0 failed)
+Mismatches: 0 fixture(s), 0 artifact(s)
+Fixture FX-WORKFLOW-XAS-001: PASS (45/45 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+No artifact mismatches detected.
+JSON report: artifacts/rollback-rehearsal/2026-02-17/regression-report.json

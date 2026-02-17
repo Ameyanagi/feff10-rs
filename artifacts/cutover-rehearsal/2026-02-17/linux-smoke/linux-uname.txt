@@ -1,0 +1,1 @@
+Linux b20d7059867f 6.8.0-64-generic #67-Ubuntu SMP PREEMPT_DYNAMIC Sun Jun 15 20:23:40 UTC 2025 x86_64 x86_64 x86_64 GNU/Linux

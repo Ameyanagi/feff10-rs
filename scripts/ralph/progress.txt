@@ -2,6 +2,7 @@
 ## Codebase Patterns
 - Treat `tasks/migration-contract-reference.md` as the single release-blocking contract index; update it whenever any linked contract artifact changes.
 - On macOS arm64, run Rust quality gates with `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)"` to avoid `-liconv` linker failures in test binaries.
+- When capturing regression evidence through `cargo run -- regression`, expect Cargo compile/run traces in `*-stderr.txt`; determine pass/fail from summary/report status fields instead of treating non-empty stderr as failure.
 - Baseline snapshot access policy is governed by `tasks/migration-decision-log.md` D-5: runtime commands must not read/copy `artifacts/fortran-baselines`, while regression/capture/tests are the only approved baseline consumers.
 - In runtime CLI guard tests, use a cwd-local `artifacts/fortran-baselines` trap file (not directory) to make accidental baseline path access fail deterministically while keeping validation-only baseline checks explicit via `regression` command inputs.
 - During staged producer/consumer rewrites, stamp new producer binaries with a stable magic header (for POT: `POTBIN10`) and let downstream validation scaffolds accept that header while they still baseline-copy outputs.
@@ -559,4 +560,15 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: A trap file at `artifacts/fortran-baselines` is a low-noise runtime regression guard for accidental baseline-path reads in module commands.
   - Gotchas encountered: `feff10-rs regression` mismatch outcomes return exit code `1` with a report, while fatal pre-compare hook failures use fatal exit codes and skip report emission.
   - Useful context: There are still no repository-local `AGENTS.md` files under `feff10-rs`, so reusable patterns remain in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 13:31:40 JST] - US-045
+- Re-ran the cutover rehearsal checklist with true-compute Rust binaries on GA targets, capturing fresh evidence under `artifacts/cutover-rehearsal/2026-02-17` for macOS arm64 and Ubuntu 22.04 x86_64 (`linux/amd64` container) smoke validation.
+- Re-ran the rollback rehearsal checklist by staging deployment roots, switching `deployment/current` from `rust-current` to `fortran-stable`, verifying required rollback artifacts, and recording focused/full regression PASS evidence under `artifacts/rollback-rehearsal/2026-02-17`.
+- Published new dated reports (`tasks/cutover-rehearsal-2026-02-17.md`, `tasks/rollback-rehearsal-2026-02-17.md`), updated README latest-report links, and marked `US-045` as passing in `scripts/ralph/prd.json`.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Files changed: `README.md`, `tasks/cutover-rehearsal-2026-02-17.md`, `tasks/rollback-rehearsal-2026-02-17.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`, `artifacts/cutover-rehearsal/2026-02-17/*`, `artifacts/rollback-rehearsal/2026-02-17/*`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Regression rehearsal evidence that uses `cargo run -- regression` should evaluate PASS/FAIL from report/summary fields because Cargo compile/run traces are expected in stderr capture files.
+  - Gotchas encountered: Asserting empty `regression-stderr.txt` is incorrect for `cargo run` flows; only smoke-command stderr files should be expected empty.
+  - Useful context: There are still no repository-local `AGENTS.md` files under `feff10-rs`, so reusable conventions remain documented in `scripts/ralph/progress.txt`.
 ---

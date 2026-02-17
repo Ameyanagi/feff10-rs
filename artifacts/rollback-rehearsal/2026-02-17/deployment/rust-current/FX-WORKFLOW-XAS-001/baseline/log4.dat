@@ -1,0 +1,9 @@
+Preparing plane wave scattering amplitudes...
+Searching for paths...
+Rmax    -1.0000 keep and heap limits     0.0000     0.0000
+Path source xsph-true-compute (bytes=11476, checksum=c018050f5c2261be)
+Neighbor shell count 18
+Geometry atoms 531 absorber index 1
+Unique paths 0, total path instances 0
+Internal path finder limit exceeded -- negative/zero rmax disables path retention.
+Done with module 4: pathfinder.

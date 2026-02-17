@@ -1,0 +1,23 @@
+Regression status: PASS
+Fixtures: 17 total (17 passed, 0 failed)
+Artifacts: 921 total (921 passed, 0 failed)
+Mismatches: 0 fixture(s), 0 artifact(s)
+Fixture FX-RDINP-001: PASS (49/49 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-POT-001: PASS (49/49 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-PATH-001: PASS (49/49 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-FMS-001: PASS (45/45 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-XSPH-001: PASS (45/45 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-BAND-001: PASS (61/61 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-LDOS-001: PASS (97/97 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-RIXS-001: PASS (5/5 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-CRPA-001: PASS (39/39 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-COMPTON-001: PASS (63/63 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-DEBYE-001: PASS (41/41 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-DMDW-001: PASS (66/66 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-SCREEN-001: PASS (60/60 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-SELF-001: PASS (60/60 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-EELS-001: PASS (71/71 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-FULLSPECTRUM-001: PASS (76/76 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-WORKFLOW-XAS-001: PASS (45/45 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+No artifact mismatches detected.
+JSON report: artifacts/rollback-rehearsal/2026-02-17/final-regression-report.json

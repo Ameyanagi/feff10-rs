@@ -1,0 +1,72 @@
+{
+  "manifestVersion": "1.0.0",
+  "generatedOn": "2026-02-17",
+  "description": "Golden fixture manifest for FEFF10 parity validation during Fortran-to-Rust migration.",
+  "sourceContracts": {
+    "compatibilityMatrix": "tasks/feff10-compatibility-matrix.md",
+    "numericTolerancePolicy": "tasks/numeric-tolerance-policy.json"
+  },
+  "inScopeModules": [
+    "RDINP",
+    "POT",
+    "PATH",
+    "FMS",
+    "XSPH",
+    "BAND",
+    "LDOS",
+    "RIXS",
+    "CRPA",
+    "COMPTON",
+    "DEBYE",
+    "DMDW",
+    "SCREEN",
+    "SELF",
+    "EELS",
+    "FULLSPECTRUM"
+  ],
+  "defaultComparison": {
+    "mode": "policy_by_artifact",
+    "policyFile": "tasks/numeric-tolerance-policy.json",
+    "passFailThreshold": {
+      "minimumArtifactPassRate": 1.0,
+      "maxArtifactFailures": 0
+    }
+  },
+  "fixtures": [
+    {
+      "id": "FX-WORKFLOW-XAS-001",
+      "title": "End-to-end serial XAS workflow fixture",
+      "fixtureType": "workflow",
+      "modulesCovered": [
+        "RDINP",
+        "POT",
+        "XSPH",
+        "FMS",
+        "PATH"
+      ],
+      "inputDirectory": "feff10/examples/XANES/Cu",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/XANES/Cu/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "reference_archive_available",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": false,
+        "reason": ""
+      }
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+FMS true-compute runtime
+fixture: FX-WORKFLOW-XAS-001
+input-artifacts: fms.inp geom.dat global.inp phase.bin
+output-artifacts: gg.bin log3.dat
+nat: 531 nph: 1 atoms: 531
+phase-source: xsph_phase_magic
+phase-bytes: 11476
+phase-checksum: 13841819018251624894
+mfms: 1 idwopt: -1 minv: 0 decomposition: -1
+rfms2:    4.00000 rdirec:    8.00000
+toler1:   0.001000 toler2:   0.001000
+tk:    0.00000 thetad:    0.00000 sig2g:   0.000000
+radius-mean:    8.58485 radius-rms:    8.85933 radius-max:   11.12677
+global-tokens: 45 global-mean: 2222.20000 global-rms: 14907.11985
+channels: 4 k-points: 263
+energy-start:  -12.86788 energy-step:  19.195326
+damping:   0.037688 amplitude-scale: 298.792341

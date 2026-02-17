@@ -1,0 +1,943 @@
+{
+  "generated_at_unix_seconds": 1771302422,
+  "passed": true,
+  "manifest_path": "artifacts/rollback-rehearsal/2026-02-17/workflow-manifest.json",
+  "policy_path": "tasks/numeric-tolerance-policy.json",
+  "baseline_root": "artifacts/fortran-baselines",
+  "actual_root": "artifacts/rollback-rehearsal/2026-02-17/deployment/current",
+  "baseline_subdir": "baseline",
+  "actual_subdir": "baseline",
+  "fixture_count": 1,
+  "passed_fixture_count": 1,
+  "failed_fixture_count": 0,
+  "artifact_count": 45,
+  "passed_artifact_count": 45,
+  "failed_artifact_count": 0,
+  "mismatch_fixture_count": 0,
+  "mismatch_artifact_count": 0,
+  "mismatch_fixtures": [],
+  "fixtures": [
+    {
+      "fixture_id": "FX-WORKFLOW-XAS-001",
+      "passed": true,
+      "artifact_count": 45,
+      "passed_artifact_count": 45,
+      "failed_artifact_count": 0,
+      "artifact_pass_rate": 1.0,
+      "threshold": {
+        "minimumArtifactPassRate": 1.0,
+        "maxArtifactFailures": 0
+      },
+      "artifacts": [
+        {
+          "artifact_path": "apot.bin",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/apot.bin",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/apot.bin",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "apot.bin",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 1580423,
+              "actual_bytes": 1580423,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "atoms.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/atoms.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/atoms.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "atoms.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 30318,
+              "actual_bytes": 30318,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "config.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/config.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/config.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "config.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 1383,
+              "actual_bytes": 1383,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "dmdw.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/dmdw.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/dmdw.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "dmdw.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 5,
+              "actual_bytes": 5,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "dmdw.out",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/dmdw.out",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/dmdw.out",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "dmdw.out",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 0,
+              "actual_bytes": 0,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "eels.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/eels.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/eels.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "eels.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 530,
+              "actual_bytes": 530,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "feff.bin",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/feff.bin",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/feff.bin",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "feff.bin",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 5106,
+              "actual_bytes": 5106,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "feff.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/feff.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/feff.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "feff.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 34265,
+              "actual_bytes": 34265,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "ff2x.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/ff2x.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/ff2x.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "ff2x.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 351,
+              "actual_bytes": 351,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "fms.bin",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/fms.bin",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/fms.bin",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "fms.bin",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 2028,
+              "actual_bytes": 2028,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "fms.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/fms.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/fms.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "fms.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 228,
+              "actual_bytes": 228,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "fpf0.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/fpf0.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/fpf0.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "fpf0.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 1548,
+              "actual_bytes": 1548,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "genfmt.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/genfmt.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/genfmt.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "genfmt.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 102,
+              "actual_bytes": 102,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "geom.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/geom.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/geom.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "geom.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 27758,
+              "actual_bytes": 27758,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "gg.bin",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/gg.bin",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/gg.bin",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "gg.bin",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 1315512,
+              "actual_bytes": 1315512,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "gg.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/gg.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/gg.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "gg.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 1315512,
+              "actual_bytes": 1315512,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "global.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/global.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/global.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "global.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 855,
+              "actual_bytes": 855,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "gtr.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/gtr.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/gtr.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "gtr.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 6413,
+              "actual_bytes": 6413,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "ldos.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/ldos.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/ldos.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "ldos.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 236,
+              "actual_bytes": 236,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "list.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/list.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/list.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "list.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 206,
+              "actual_bytes": 206,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "log.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/log.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/log.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "log.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 87,
+              "actual_bytes": 87,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "log1.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/log1.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/log1.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "log1.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 5560,
+              "actual_bytes": 5560,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "log2.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/log2.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/log2.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "log2.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 202,
+              "actual_bytes": 202,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "log3.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/log3.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/log3.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "log3.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 579,
+              "actual_bytes": 579,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "log4.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/log4.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/log4.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "log4.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 450,
+              "actual_bytes": 450,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "log5.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/log5.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/log5.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "log5.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 234,
+              "actual_bytes": 234,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "log6.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/log6.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/log6.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "log6.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 155,
+              "actual_bytes": 155,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "logdos.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/logdos.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/logdos.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "logdos.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 0,
+              "actual_bytes": 0,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "logeels.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/logeels.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/logeels.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "logeels.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 0,
+              "actual_bytes": 0,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "logscrn.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/logscrn.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/logscrn.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "logscrn.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 43,
+              "actual_bytes": 43,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "logsfconv.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/logsfconv.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/logsfconv.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "logsfconv.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 0,
+              "actual_bytes": 0,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "mpse.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/mpse.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/mpse.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "mpse.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 15089,
+              "actual_bytes": 15089,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "opcons.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/opcons.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/opcons.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "opcons.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 262,
+              "actual_bytes": 262,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "paths.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/paths.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/paths.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "paths.dat",
+            "mode": "exact_text",
+            "matched_category": "path_listing_reports",
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 142,
+              "actual_bytes": 142,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "paths.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/paths.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/paths.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "paths.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 165,
+              "actual_bytes": 165,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "phase.bin",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/phase.bin",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/phase.bin",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "phase.bin",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 71558,
+              "actual_bytes": 71558,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "pot.bin",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/pot.bin",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/pot.bin",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "pot.bin",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 287044,
+              "actual_bytes": 287044,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "pot.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/pot.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/pot.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "pot.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 637,
+              "actual_bytes": 637,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "reciprocal.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/reciprocal.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/reciprocal.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "reciprocal.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 11,
+              "actual_bytes": 11,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "sfconv.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/sfconv.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/sfconv.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "sfconv.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 112,
+              "actual_bytes": 112,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "vtot.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/vtot.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/vtot.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "vtot.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 12383,
+              "actual_bytes": 12383,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "wscrn.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/wscrn.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/wscrn.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "wscrn.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 12383,
+              "actual_bytes": 12383,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "xmu.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/xmu.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/xmu.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "xmu.dat",
+            "mode": "numeric_tolerance",
+            "matched_category": "columnar_spectra",
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "numeric_tolerance",
+              "baseline_value_count": 600,
+              "actual_value_count": 600,
+              "compared_values": 600,
+              "failing_values": 0,
+              "max_abs_diff": 0.0,
+              "max_rel_diff": 0.0,
+              "tolerance": {
+                "absTol": 1e-8,
+                "relTol": 1e-6,
+                "relativeFloor": 1e-12
+              }
+            }
+          }
+        },
+        {
+          "artifact_path": "xsect.dat",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/xsect.dat",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/xsect.dat",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "xsect.dat",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 9031,
+              "actual_bytes": 9031,
+              "first_mismatch_offset": null
+            }
+          }
+        },
+        {
+          "artifact_path": "xsph.inp",
+          "baseline_path": "artifacts/fortran-baselines/FX-WORKFLOW-XAS-001/baseline/xsph.inp",
+          "actual_path": "artifacts/rollback-rehearsal/2026-02-17/deployment/current/FX-WORKFLOW-XAS-001/baseline/xsph.inp",
+          "passed": true,
+          "reason": null,
+          "comparison": {
+            "artifact_path": "xsph.inp",
+            "mode": "exact_text",
+            "matched_category": null,
+            "passed": true,
+            "reason": null,
+            "metrics": {
+              "kind": "exact_text",
+              "baseline_bytes": 517,
+              "actual_bytes": 517,
+              "first_mismatch_offset": null
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
