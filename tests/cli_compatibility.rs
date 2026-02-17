@@ -350,6 +350,40 @@ fn dmdw_module_command_succeeds_with_runtime_compute_engine() {
 }
 
 #[test]
+fn sfconv_module_command_succeeds_with_runtime_compute_engine() {
+    let temp = fixture_tempdir();
+    stage_sfconv_input(temp.path().join("sfconv.inp"));
+    stage_self_spectrum_input(temp.path().join("xmu.dat"));
+
+    let sfconv = run_cli_command(temp.path(), &["sfconv"]);
+    assert!(
+        sfconv.status.success(),
+        "sfconv should succeed once runtime compute engine is available, stderr: {}",
+        String::from_utf8_lossy(&sfconv.stderr)
+    );
+    assert!(
+        temp.path().join("selfenergy.dat").is_file(),
+        "sfconv should emit selfenergy.dat"
+    );
+    assert!(
+        temp.path().join("sigma.dat").is_file(),
+        "sfconv should emit sigma.dat"
+    );
+    assert!(
+        temp.path().join("specfunct.dat").is_file(),
+        "sfconv should emit specfunct.dat"
+    );
+    assert!(
+        temp.path().join("logsfconv.dat").is_file(),
+        "sfconv should emit logsfconv.dat"
+    );
+    assert!(
+        temp.path().join("xmu.dat").is_file(),
+        "sfconv should rewrite staged spectrum artifacts"
+    );
+}
+
+#[test]
 fn cli_argument_validation_matches_contract() {
     let temp = fixture_tempdir();
 
@@ -532,6 +566,58 @@ fn stage_gg_slice_input(destination: PathBuf) {
         fs::create_dir_all(parent).expect("destination parent should exist");
     }
     fs::write(&destination, [4_u8, 5_u8, 6_u8, 7_u8]).expect("gg_slice input should be staged");
+}
+
+fn stage_sfconv_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-SELF-001")
+        .join("baseline")
+        .join("sfconv.inp");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("sfconv input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("sfconv input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "msfconv, ipse, ipsk\n   1   0   0\nwsigk, cen\n      0.00000      0.00000\nispec, ipr6\n   1   0\ncfname\nNULL\n",
+    )
+    .expect("sfconv input should be staged");
+}
+
+fn stage_self_spectrum_input(destination: PathBuf) {
+    let source = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join("FX-SELF-001")
+        .join("baseline")
+        .join("xmu.dat");
+    if source.is_file() {
+        let source_bytes = fs::read(&source)
+            .unwrap_or_else(|_| panic!("xmu input should be readable: {}", source.display()));
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).expect("destination parent should exist");
+        }
+        fs::write(&destination, source_bytes).expect("xmu input should be staged");
+        return;
+    }
+
+    if let Some(parent) = destination.parent() {
+        fs::create_dir_all(parent).expect("destination parent should exist");
+    }
+    fs::write(
+        &destination,
+        "# fallback xmu\n1.0 0.0 0.0 0.01\n2.0 0.0 0.0 0.02\n3.0 0.0 0.0 0.03\n",
+    )
+    .expect("xmu input should be staged");
 }
 
 fn stage_ff2x_input(destination: PathBuf) {

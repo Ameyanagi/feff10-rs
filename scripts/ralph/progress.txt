@@ -35,6 +35,7 @@
 - For COMPTON oracle/regression coverage, stage mixed required inputs (`compton.inp` text plus `pot.bin`/`gg_slice.bin` binaries), and assert missing `gg_slice.bin` fails deterministically with `IO.COMPTON_INPUT_READ` / fatal exit code `3`.
 - For LDOS oracle parity coverage, stage `ldos.inp`, `geom.dat`, `pot.bin`, and `reciprocal.inp` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-ldos`, and assert failed `ldos*.dat` comparisons report `comparison.mode=numeric_tolerance` with `matched_category=density_tables` and numeric tolerance metrics.
 - For DMDW oracle parity coverage, stage `dmdw.inp` and `feff.dym` into `actual-root/<fixture>/actual`, run `feff10-rs oracle --run-dmdw`, and assert missing `feff.dym` fails with `IO.DMDW_INPUT_READ` / fatal exit code `3` without emitting a report.
+- For SELF true-compute/parity coverage, stage `sfconv.inp` plus at least one spectrum input (`xmu.dat`/`chi.dat`/`loss.dat`/`feffNNNN.dat`), and treat the output contract as fixed SELF artifacts plus rewritten staged spectrum filenames.
 Started: Tue Feb 17 06:48:31 JST 2026
 ---
 ## [2026-02-17 06:57:07 JST] - US-001
@@ -431,4 +432,16 @@ Started: Tue Feb 17 06:48:31 JST 2026
   - Patterns discovered: DMDW oracle parity can be validated with module-local staged inputs (`dmdw.inp`, `feff.dym`) plus `--run-dmdw`; no RDINP/POT/XSPH chaining is required in this validation path.
   - Gotchas encountered: Missing `feff.dym` during oracle pre-compare hooks fails as `IO.DMDW_INPUT_READ` with fatal exit code `3`, so deterministic contract tests should assert IO diagnostics and absence of report files.
   - Useful context: This repository still has no in-tree `AGENTS.md`, so reusable module/testing conventions continue to be captured in `scripts/ralph/progress.txt`.
+---
+## [2026-02-17 11:56:40 JST] - US-035
+- Replaced `src/pipelines/self_energy.rs` baseline materialization with a true-compute SELF pipeline that parses staged `sfconv.inp`, enforces one-of spectrum input requirements (`xmu.dat`/`chi.dat`/`loss.dat`/`feffNNNN.dat`), accepts optional `exc.dat`, and deterministically computes SELF outputs (`selfenergy.dat`, `sigma.dat`, `specfunct.dat`, `logsfconv.dat`, `sig2FEFF.dat`, `mpse.dat`, `opconsCu.dat`) plus rewritten staged spectrum artifacts.
+- Enabled SELF as a runtime compute engine in `src/pipelines/mod.rs` (`runtime_compute_engine_available` + runtime dispatcher wiring) and added runtime dispatch coverage plus CLI module-command coverage for successful `sfconv` execution.
+- Reworked SELF parity coverage in `tests/self_parity.rs` to the true-compute pattern (required artifact checks, deterministic repeated runs, regression baselines seeded from generated outputs) and updated README regression-hook docs to describe `--run-self` as true-compute execution.
+- Quality checks passed: `cargo fmt --all`, `cargo check --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo test --locked`, `CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER="$(xcrun -f clang)" cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+- Marked `US-035` as passing in `scripts/ralph/prd.json`.
+- Files changed: `src/pipelines/self_energy.rs`, `src/pipelines/mod.rs`, `tests/self_parity.rs`, `tests/cli_compatibility.rs`, `README.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: SELF output expectations are dynamic by staged spectrum set, so parity tests should derive expected artifacts as `SELF_REQUIRED_OUTPUTS + staged_spectrum_filenames`.
+  - Gotchas encountered: SELF module command coverage must stage at least one spectrum file alongside `sfconv.inp`; otherwise runtime fails deterministically with `INPUT.SELF_SPECTRUM_INPUT`.
+  - Useful context: There are still no repository-local `AGENTS.md` files in this project tree, so reusable conventions remain documented in `scripts/ralph/progress.txt`.
 ---

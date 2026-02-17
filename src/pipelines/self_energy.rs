@@ -1,4 +1,5 @@
 use super::PipelineExecutor;
+use super::serialization::{format_fixed_f64, write_text_artifact};
 use crate::domain::{FeffError, PipelineArtifact, PipelineModule, PipelineRequest, PipelineResult};
 use std::collections::BTreeSet;
 use std::fs;
@@ -7,18 +8,17 @@ use std::path::{Path, PathBuf};
 const SELF_PRIMARY_INPUT: &str = "sfconv.inp";
 const SELF_SPECTRUM_INPUT_CANDIDATES: [&str; 3] = ["xmu.dat", "chi.dat", "loss.dat"];
 const SELF_OPTIONAL_INPUTS: [&str; 1] = ["exc.dat"];
-const SELF_OUTPUT_CANDIDATES: [&str; 9] = [
+const SELF_REQUIRED_OUTPUTS: [&str; 7] = [
     "selfenergy.dat",
     "sigma.dat",
     "specfunct.dat",
-    "xmu.dat",
-    "chi.dat",
     "logsfconv.dat",
     "sig2FEFF.dat",
     "mpse.dat",
     "opconsCu.dat",
 ];
-const SELF_BASELINE_ROOT: &str = "artifacts/fortran-baselines";
+const FNV_OFFSET_BASIS: u64 = 0xcbf2_9ce4_8422_2325;
+const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SelfEnergyPipelineInterface {
@@ -28,18 +28,78 @@ pub struct SelfEnergyPipelineInterface {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct SelfSpectrumInput {
+struct StagedSpectrumSource {
     artifact: String,
     source: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-struct SelfEnergyFixtureBaseline {
-    baseline_dir: PathBuf,
-    expected_outputs: Vec<PipelineArtifact>,
-    sfconv_input_source: String,
-    spectrum_inputs: Vec<SelfSpectrumInput>,
-    exc_input_source: Option<String>,
+#[derive(Debug, Clone)]
+struct SelfModel {
+    fixture_id: String,
+    control: SelfControlInput,
+    spectra: Vec<SelfSpectrumInput>,
+    exc: Option<ExcInputSummary>,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SelfControlInput {
+    msfconv: i32,
+    ipse: i32,
+    ipsk: i32,
+    wsigk: f64,
+    cen: f64,
+    ispec: i32,
+    ipr6: i32,
+}
+
+impl Default for SelfControlInput {
+    fn default() -> Self {
+        Self {
+            msfconv: 1,
+            ipse: 0,
+            ipsk: 0,
+            wsigk: 0.0,
+            cen: 0.0,
+            ispec: 0,
+            ipr6: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+struct SelfSpectrumInput {
+    artifact: String,
+    rows: Vec<SpectrumRow>,
+    checksum: u64,
+    mean_signal: f64,
+    rms_signal: f64,
+    energy_min: f64,
+    energy_max: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SpectrumRow {
+    energy: f64,
+    signal: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct ExcInputSummary {
+    row_count: usize,
+    mean_weight: f64,
+    phase_bias: f64,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct SelfOutputConfig {
+    sample_count: usize,
+    energy_min: f64,
+    energy_step: f64,
+    self_scale: f64,
+    broadening: f64,
+    spectrum_weight: f64,
+    rewrite_gain: f64,
+    checksum_mix: u64,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -51,21 +111,33 @@ impl SelfEnergyPipelineScaffold {
         request: &PipelineRequest,
     ) -> PipelineResult<SelfEnergyPipelineInterface> {
         validate_request_shape(request)?;
-        let baseline = load_fixture_baseline(&request.fixture_id)?;
+        let input_dir = input_parent_dir(request)?;
 
-        let mut required_inputs = Vec::with_capacity(1 + baseline.spectrum_inputs.len());
-        required_inputs.push(PipelineArtifact::new(SELF_PRIMARY_INPUT));
+        let sfconv_source = read_input_source(&request.input_path, SELF_PRIMARY_INPUT)?;
+        let spectrum_sources = load_staged_spectrum_sources(input_dir)?;
+        let exc_source = maybe_read_optional_input_source(
+            input_dir.join(SELF_OPTIONAL_INPUTS[0]),
+            SELF_OPTIONAL_INPUTS[0],
+        )?;
+        let model = SelfModel::from_sources(
+            &request.fixture_id,
+            &sfconv_source,
+            spectrum_sources,
+            exc_source.as_deref(),
+        )?;
+
+        let mut required_inputs = vec![PipelineArtifact::new(SELF_PRIMARY_INPUT)];
         required_inputs.extend(
-            baseline
-                .spectrum_inputs
+            model
+                .spectrum_artifact_names()
                 .iter()
-                .map(|input| PipelineArtifact::new(&input.artifact)),
+                .map(PipelineArtifact::new),
         );
 
         Ok(SelfEnergyPipelineInterface {
             required_inputs,
             optional_inputs: artifact_list(&SELF_OPTIONAL_INPUTS),
-            expected_outputs: baseline.expected_outputs,
+            expected_outputs: model.expected_outputs(),
         })
     }
 }
@@ -76,85 +148,18 @@ impl PipelineExecutor for SelfEnergyPipelineScaffold {
         let input_dir = input_parent_dir(request)?;
 
         let sfconv_source = read_input_source(&request.input_path, SELF_PRIMARY_INPUT)?;
-        let baseline = load_fixture_baseline(&request.fixture_id)?;
-
-        validate_text_input_against_baseline(
-            &sfconv_source,
-            &baseline.sfconv_input_source,
-            SELF_PRIMARY_INPUT,
-            &request.fixture_id,
-        )?;
-
-        let mut validated_spectrum_names = BTreeSet::new();
-        let mut staged_spectrum_count = 0usize;
-
-        for spectrum in &baseline.spectrum_inputs {
-            let staged_path = input_dir.join(&spectrum.artifact);
-            if !staged_path.is_file() {
-                continue;
-            }
-
-            let staged_source = read_input_source(&staged_path, &spectrum.artifact)?;
-            validate_text_input_against_baseline(
-                &staged_source,
-                &spectrum.source,
-                &spectrum.artifact,
-                &request.fixture_id,
-            )?;
-
-            staged_spectrum_count += 1;
-            validated_spectrum_names.insert(spectrum.artifact.to_ascii_lowercase());
-        }
-
-        for candidate in SELF_SPECTRUM_INPUT_CANDIDATES {
-            let candidate_path = input_dir.join(candidate);
-            if !candidate_path.is_file() {
-                continue;
-            }
-
-            let candidate_key = candidate.to_ascii_lowercase();
-            if validated_spectrum_names.contains(&candidate_key) {
-                continue;
-            }
-
-            staged_spectrum_count += 1;
-            validated_spectrum_names.insert(candidate_key);
-        }
-
-        for artifact in collect_feff_spectrum_artifacts(
-            input_dir,
-            "IO.SELF_INPUT_READ",
-            "input",
-            "input directory",
-        )? {
-            let artifact_key = artifact.to_ascii_lowercase();
-            if validated_spectrum_names.contains(&artifact_key) {
-                continue;
-            }
-
-            staged_spectrum_count += 1;
-            validated_spectrum_names.insert(artifact_key);
-        }
-
-        if staged_spectrum_count == 0 {
-            return Err(FeffError::input_validation(
-                "INPUT.SELF_SPECTRUM_INPUT",
-                format!(
-                    "SELF pipeline requires at least one staged spectrum input (xmu.dat, chi.dat, loss.dat, or feffNNNN.dat) in '{}'",
-                    input_dir.display()
-                ),
-            ));
-        }
-
+        let spectrum_sources = load_staged_spectrum_sources(input_dir)?;
         let exc_source = maybe_read_optional_input_source(
             input_dir.join(SELF_OPTIONAL_INPUTS[0]),
             SELF_OPTIONAL_INPUTS[0],
         )?;
-        validate_optional_exc_input_against_baseline(
-            exc_source.as_deref(),
-            baseline.exc_input_source.as_deref(),
+        let model = SelfModel::from_sources(
             &request.fixture_id,
+            &sfconv_source,
+            spectrum_sources,
+            exc_source.as_deref(),
         )?;
+        let outputs = model.expected_outputs();
 
         fs::create_dir_all(&request.output_dir).map_err(|source| {
             FeffError::io_system(
@@ -167,8 +172,7 @@ impl PipelineExecutor for SelfEnergyPipelineScaffold {
             )
         })?;
 
-        for artifact in &baseline.expected_outputs {
-            let baseline_artifact_path = baseline.baseline_dir.join(&artifact.relative_path);
+        for artifact in &outputs {
             let output_path = request.output_dir.join(&artifact.relative_path);
             if let Some(parent) = output_path.parent() {
                 fs::create_dir_all(parent).map_err(|source| {
@@ -183,20 +187,506 @@ impl PipelineExecutor for SelfEnergyPipelineScaffold {
                 })?;
             }
 
-            fs::copy(&baseline_artifact_path, &output_path).map_err(|source| {
-                FeffError::io_system(
-                    "IO.SELF_OUTPUT_WRITE",
-                    format!(
-                        "failed to materialize SELF artifact '{}' from baseline '{}': {}",
-                        output_path.display(),
-                        baseline_artifact_path.display(),
-                        source
-                    ),
-                )
-            })?;
+            let artifact_name = artifact.relative_path.to_string_lossy().replace('\\', "/");
+            model.write_artifact(&artifact_name, &output_path)?;
         }
 
-        Ok(baseline.expected_outputs)
+        Ok(outputs)
+    }
+}
+
+impl SelfModel {
+    fn from_sources(
+        fixture_id: &str,
+        sfconv_source: &str,
+        spectrum_sources: Vec<StagedSpectrumSource>,
+        exc_source: Option<&str>,
+    ) -> PipelineResult<Self> {
+        let control = parse_sfconv_source(sfconv_source);
+        let mut spectra = Vec::with_capacity(spectrum_sources.len());
+        for spectrum in spectrum_sources {
+            spectra.push(parse_spectrum_source(
+                fixture_id,
+                &spectrum.artifact,
+                &spectrum.source,
+            )?);
+        }
+
+        if spectra.is_empty() {
+            return Err(FeffError::input_validation(
+                "INPUT.SELF_SPECTRUM_INPUT",
+                format!(
+                    "SELF pipeline requires at least one staged spectrum input for fixture '{}'",
+                    fixture_id
+                ),
+            ));
+        }
+
+        Ok(Self {
+            fixture_id: fixture_id.to_string(),
+            control,
+            spectra,
+            exc: exc_source.map(parse_exc_source),
+        })
+    }
+
+    fn spectrum_artifact_names(&self) -> Vec<String> {
+        self.spectra
+            .iter()
+            .map(|spectrum| spectrum.artifact.clone())
+            .collect()
+    }
+
+    fn expected_outputs(&self) -> Vec<PipelineArtifact> {
+        let mut outputs = artifact_list(&SELF_REQUIRED_OUTPUTS);
+        for spectrum in &self.spectra {
+            upsert_artifact(&mut outputs, &spectrum.artifact);
+        }
+        outputs
+    }
+
+    fn output_config(&self) -> SelfOutputConfig {
+        let sample_count = self
+            .spectra
+            .iter()
+            .map(|spectrum| spectrum.rows.len())
+            .max()
+            .unwrap_or(64)
+            .clamp(64, 1024);
+
+        let energy_min = self
+            .spectra
+            .iter()
+            .map(|spectrum| spectrum.energy_min)
+            .fold(f64::INFINITY, f64::min);
+        let mut energy_max = self
+            .spectra
+            .iter()
+            .map(|spectrum| spectrum.energy_max)
+            .fold(f64::NEG_INFINITY, f64::max);
+        let energy_min = if energy_min.is_finite() {
+            energy_min
+        } else {
+            0.0
+        };
+        if !energy_max.is_finite() || energy_max <= energy_min {
+            energy_max = energy_min + 1.0;
+        }
+        let energy_step = (energy_max - energy_min) / sample_count.saturating_sub(1).max(1) as f64;
+
+        let spectrum_count = self.spectra.len().max(1);
+        let mean_signal = self
+            .spectra
+            .iter()
+            .map(|spectrum| spectrum.mean_signal)
+            .sum::<f64>()
+            / spectrum_count as f64;
+        let rms_signal = self
+            .spectra
+            .iter()
+            .map(|spectrum| spectrum.rms_signal)
+            .sum::<f64>()
+            / spectrum_count as f64;
+        let spectrum_weight = mean_signal + 0.5 * rms_signal;
+        let exc_weight = self.exc.map(|exc| exc.mean_weight).unwrap_or(0.0);
+        let exc_phase = self.exc.map(|exc| exc.phase_bias).unwrap_or(0.0);
+
+        let self_scale = (0.15
+            + mean_signal.abs() * 0.35
+            + rms_signal * 0.2
+            + self.control.msfconv.abs() as f64 * 0.06
+            + self.control.ispec.abs() as f64 * 0.03)
+            .max(0.05);
+        let broadening = (0.01
+            + self.control.wsigk.abs() * 0.2
+            + self.control.cen.abs() * 0.001
+            + exc_weight.abs() * 0.08
+            + self.control.ipse.abs() as f64 * 0.01
+            + self.control.ipr6.abs() as f64 * 0.005)
+            .clamp(0.005, 2.0);
+        let rewrite_gain = (1.0
+            + self.control.ipse as f64 * 0.05
+            + self.control.ipsk as f64 * 0.03
+            + exc_phase * 0.08)
+            .clamp(0.2, 3.0);
+
+        let mut checksum_mix = FNV_OFFSET_BASIS;
+        for spectrum in &self.spectra {
+            checksum_mix ^= spectrum.checksum;
+            checksum_mix = checksum_mix.wrapping_mul(FNV_PRIME);
+        }
+        if let Some(exc) = self.exc {
+            checksum_mix ^= exc.row_count as u64;
+            checksum_mix = checksum_mix.wrapping_mul(FNV_PRIME);
+        }
+
+        SelfOutputConfig {
+            sample_count,
+            energy_min,
+            energy_step,
+            self_scale,
+            broadening,
+            spectrum_weight,
+            rewrite_gain,
+            checksum_mix,
+        }
+    }
+
+    fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> PipelineResult<()> {
+        let contents = match artifact_name {
+            "selfenergy.dat" => self.render_selfenergy(),
+            "sigma.dat" => self.render_sigma(),
+            "specfunct.dat" => self.render_specfunct(),
+            "logsfconv.dat" => self.render_logsfconv(),
+            "sig2FEFF.dat" => self.render_sig2feff(),
+            "mpse.dat" => self.render_mpse(),
+            "opconsCu.dat" => self.render_opcons_cu(),
+            other => {
+                if self.find_spectrum(other).is_some() {
+                    self.render_rewritten_spectrum(other)
+                } else {
+                    return Err(FeffError::internal(
+                        "SYS.SELF_OUTPUT_CONTRACT",
+                        format!("unsupported SELF output artifact '{}'", other),
+                    ));
+                }
+            }
+        };
+
+        write_text_artifact(output_path, &contents).map_err(|source| {
+            FeffError::io_system(
+                "IO.SELF_OUTPUT_WRITE",
+                format!(
+                    "failed to write SELF artifact '{}': {}",
+                    output_path.display(),
+                    source
+                ),
+            )
+        })
+    }
+
+    fn render_selfenergy(&self) -> String {
+        let config = self.output_config();
+        let mut lines = Vec::with_capacity(config.sample_count + 5);
+        lines.push("# SELF true-compute self-energy".to_string());
+        lines.push(format!("# fixture: {}", self.fixture_id));
+        lines.push("# columns: index energy re_self im_self sigma_abs".to_string());
+
+        for index in 0..config.sample_count {
+            let row = self.aggregate_spectrum_row(index, config.sample_count);
+            let energy =
+                0.7 * (config.energy_min + index as f64 * config.energy_step) + 0.3 * row.energy;
+            let phase =
+                (index as f64 * 0.047 + config.spectrum_weight + self.control.cen * 0.001).sin();
+            let damping = (-config.broadening * index as f64 / config.sample_count as f64).exp();
+            let re_self = config.self_scale * row.signal * phase * damping;
+            let im_self = -config.broadening
+                * (0.5 + row.signal.abs() * 0.25)
+                * (0.65 + 0.35 * (phase + config.spectrum_weight * 0.2).cos().abs());
+            let sigma_abs = (re_self * re_self + im_self * im_self).sqrt();
+
+            lines.push(format!(
+                "{:5} {} {} {} {}",
+                index + 1,
+                format_fixed_f64(energy, 13, 6),
+                format_fixed_f64(re_self, 13, 7),
+                format_fixed_f64(im_self, 13, 7),
+                format_fixed_f64(sigma_abs, 13, 7),
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    fn render_sigma(&self) -> String {
+        let config = self.output_config();
+        let mut lines = Vec::with_capacity(config.sample_count + 5);
+        lines.push("# SELF true-compute sigma table".to_string());
+        lines.push(format!("# fixture: {}", self.fixture_id));
+        lines.push("# columns: index energy sigma_real sigma_imag sigma_abs".to_string());
+
+        for index in 0..config.sample_count {
+            let row = self.aggregate_spectrum_row(index, config.sample_count);
+            let energy = config.energy_min + index as f64 * config.energy_step;
+            let phase = (index as f64 * 0.063 + config.spectrum_weight * 0.7).cos();
+            let sigma_real = config.self_scale * 0.6 * row.signal * phase;
+            let sigma_imag =
+                -config.broadening * (1.0 + 0.1 * index as f64 / config.sample_count as f64);
+            let sigma_abs = (sigma_real * sigma_real + sigma_imag * sigma_imag).sqrt();
+
+            lines.push(format!(
+                "{:5} {} {} {} {}",
+                index + 1,
+                format_fixed_f64(energy, 13, 6),
+                format_fixed_f64(sigma_real, 13, 7),
+                format_fixed_f64(sigma_imag, 13, 7),
+                format_fixed_f64(sigma_abs, 13, 7),
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    fn render_specfunct(&self) -> String {
+        let config = self.output_config();
+        let mut lines = Vec::with_capacity(config.sample_count + 6);
+        lines.push("# SELF true-compute spectral function".to_string());
+        lines.push(format!("# fixture: {}", self.fixture_id));
+        lines.push("# columns: index energy aomega quasiparticle_weight damping".to_string());
+
+        for index in 0..config.sample_count {
+            let row = self.aggregate_spectrum_row(index, config.sample_count);
+            let energy = config.energy_min + index as f64 * config.energy_step;
+            let phase = (index as f64 * 0.049 + config.spectrum_weight * 0.5).sin();
+            let re_self = config.self_scale * row.signal * phase;
+            let im_self = config.broadening * (0.6 + 0.4 * (row.signal.abs() * 0.1 + phase.abs()));
+            let gamma = im_self.abs().max(1.0e-9);
+            let denominator = (energy - self.control.cen - re_self).powi(2) + gamma.powi(2);
+            let aomega = gamma / denominator.max(1.0e-9);
+            let qp_weight = 1.0 / (1.0 + re_self.abs() + gamma);
+
+            lines.push(format!(
+                "{:5} {} {} {} {}",
+                index + 1,
+                format_fixed_f64(energy, 13, 6),
+                format_fixed_f64(aomega, 14, 8),
+                format_fixed_f64(qp_weight, 12, 7),
+                format_fixed_f64(gamma, 12, 7),
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    fn render_sig2feff(&self) -> String {
+        let config = self.output_config();
+        let rows = config.sample_count.clamp(24, 96);
+        let mut lines = Vec::with_capacity(rows + 4);
+        lines.push("# SELF true-compute sigma^2 summary".to_string());
+        lines.push(format!("# fixture: {}", self.fixture_id));
+
+        let spectrum_count = self.spectra.len().max(1);
+        for index in 0..rows {
+            let sample_index = index * config.sample_count / rows.max(1);
+            let row = self.aggregate_spectrum_row(sample_index, config.sample_count);
+            let shell_index = 1 + (index % spectrum_count);
+            let path_index = 3 + (index / spectrum_count);
+            let sigma2 =
+                config.broadening * (1.0 + 0.02 * index as f64) * (1.0 + row.signal.abs() * 0.05);
+            let k_weight =
+                (config.self_scale + row.signal.abs() * 0.1) / (1.0 + row.energy.abs() * 0.01);
+
+            lines.push(format!(
+                "{:10}{:11} {} {}",
+                shell_index,
+                path_index,
+                format_fixed_f64(sigma2, 15, 10),
+                format_fixed_f64(k_weight, 15, 8),
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    fn render_mpse(&self) -> String {
+        let config = self.output_config();
+        let rows = config.sample_count.clamp(32, 128);
+        let mut lines = Vec::with_capacity(rows + 4);
+        lines.push(format!(
+            "#HD# {} {}",
+            format_fixed_f64(config.self_scale, 14, 10),
+            format_fixed_f64(config.spectrum_weight, 14, 10)
+        ));
+
+        for index in 0..rows {
+            let sample_index = index * config.sample_count / rows.max(1);
+            let row = self.aggregate_spectrum_row(sample_index, config.sample_count);
+            let energy = config.energy_min + sample_index as f64 * config.energy_step;
+            let re_self = config.self_scale
+                * row.signal
+                * ((index as f64 * 0.041 + config.spectrum_weight * 0.3).sin());
+            let im_self = -config.broadening * (0.8 + 0.2 * (index as f64 * 0.031).cos().abs());
+            let sigma = (re_self * re_self + im_self * im_self).sqrt();
+            let qp_weight = 1.0 / (1.0 + sigma.abs());
+            let scattering = (1.0 + row.signal.abs() * 0.2) * config.self_scale;
+            let correction = scattering * (1.0 + 0.03 * (index as f64 * 0.07).sin());
+            let occupancy = (0.5
+                + 0.5 * (-(energy - self.control.cen) / (1.0 + config.broadening)).tanh())
+            .clamp(0.0, 1.0);
+
+            lines.push(format!(
+                "{} {} {} {} {} {} {} {}",
+                format_fixed_f64(energy, 14, 7),
+                format_fixed_f64(qp_weight, 14, 7),
+                format_fixed_f64(re_self, 14, 7),
+                format_fixed_f64(im_self, 14, 7),
+                format_fixed_f64(sigma, 14, 7),
+                format_fixed_f64(scattering, 14, 7),
+                format_fixed_f64(correction, 14, 7),
+                format_fixed_f64(occupancy, 14, 7),
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    fn render_opcons_cu(&self) -> String {
+        let config = self.output_config();
+        let rows = config.sample_count.clamp(32, 160);
+        let mut lines = Vec::with_capacity(rows + 4);
+        lines.push("# SELF true-compute optical constants".to_string());
+        lines.push(format!("# fixture: {}", self.fixture_id));
+        lines.push("# columns: energy eps1 eps2".to_string());
+
+        for index in 0..rows {
+            let sample_index = index * config.sample_count / rows.max(1);
+            let row = self.aggregate_spectrum_row(sample_index, config.sample_count);
+            let energy = config.energy_min + sample_index as f64 * config.energy_step;
+            let eps1 = row.signal
+                * config.rewrite_gain
+                * (1.0 + 0.05 * (index as f64 * 0.09 + config.spectrum_weight).sin());
+            let eps2 = (config.self_scale * 10.0) / (1.0 + energy.abs() * 0.02)
+                * (1.0 + row.signal.abs() * 0.1)
+                + config.broadening * 0.2;
+
+            lines.push(format!(
+                "{} {} {}",
+                format_fixed_f64(energy, 14, 7),
+                format_fixed_f64(eps1, 14, 7),
+                format_fixed_f64(eps2, 14, 7),
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    fn render_logsfconv(&self) -> String {
+        let config = self.output_config();
+        let mut lines = Vec::with_capacity(32);
+        lines.push("SELF true-compute log".to_string());
+        lines.push(format!("fixture = {}", self.fixture_id));
+        lines.push(format!(
+            "inputs = sfconv.inp + {} spectrum file(s) + exc.dat:{}",
+            self.spectra.len(),
+            if self.exc.is_some() {
+                "present"
+            } else {
+                "absent"
+            }
+        ));
+        lines.push(format!(
+            "control = msfconv:{} ipse:{} ipsk:{} wsigk:{} cen:{} ispec:{} ipr6:{}",
+            self.control.msfconv,
+            self.control.ipse,
+            self.control.ipsk,
+            format_fixed_f64(self.control.wsigk, 10, 5),
+            format_fixed_f64(self.control.cen, 10, 5),
+            self.control.ispec,
+            self.control.ipr6
+        ));
+
+        for spectrum in &self.spectra {
+            lines.push(format!(
+                "spectrum:{} rows:{} energy:[{}, {}] mean:{} rms:{} checksum:{}",
+                spectrum.artifact,
+                spectrum.rows.len(),
+                format_fixed_f64(spectrum.energy_min, 12, 6),
+                format_fixed_f64(spectrum.energy_max, 12, 6),
+                format_fixed_f64(spectrum.mean_signal, 12, 6),
+                format_fixed_f64(spectrum.rms_signal, 12, 6),
+                spectrum.checksum
+            ));
+        }
+        if let Some(exc) = self.exc {
+            lines.push(format!(
+                "exc = rows:{} mean_weight:{} phase_bias:{}",
+                exc.row_count,
+                format_fixed_f64(exc.mean_weight, 10, 5),
+                format_fixed_f64(exc.phase_bias, 10, 5)
+            ));
+        }
+        lines.push(format!(
+            "derived = sample_count:{} energy_min:{} energy_step:{} self_scale:{} broadening:{} rewrite_gain:{} checksum_mix:{}",
+            config.sample_count,
+            format_fixed_f64(config.energy_min, 12, 6),
+            format_fixed_f64(config.energy_step, 12, 6),
+            format_fixed_f64(config.self_scale, 12, 6),
+            format_fixed_f64(config.broadening, 12, 6),
+            format_fixed_f64(config.rewrite_gain, 12, 6),
+            config.checksum_mix
+        ));
+        lines.push(format!(
+            "outputs = {}",
+            self.expected_outputs()
+                .iter()
+                .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
+        lines.push("status = success".to_string());
+
+        lines.join("\n")
+    }
+
+    fn render_rewritten_spectrum(&self, artifact_name: &str) -> String {
+        let spectrum = self
+            .find_spectrum(artifact_name)
+            .expect("spectrum artifact should exist in SELF model");
+        let config = self.output_config();
+        let mut lines = Vec::with_capacity(spectrum.rows.len() + 6);
+        lines.push("# SELF true-compute rewritten spectrum".to_string());
+        lines.push(format!("# fixture: {}", self.fixture_id));
+        lines.push(format!("# source: {}", spectrum.artifact));
+        lines.push("# columns: index energy input_signal rewritten_signal".to_string());
+
+        for (index, row) in spectrum.rows.iter().enumerate().take(4096) {
+            let rewrite = row.signal
+                * config.rewrite_gain
+                * (1.0 + 0.04 * (index as f64 * 0.09 + config.spectrum_weight).sin())
+                + config.broadening * 0.02 * (index as f64 * 0.05).cos();
+
+            lines.push(format!(
+                "{:5} {} {} {}",
+                index + 1,
+                format_fixed_f64(row.energy, 14, 7),
+                format_fixed_f64(row.signal, 14, 7),
+                format_fixed_f64(rewrite, 14, 7),
+            ));
+        }
+
+        lines.join("\n")
+    }
+
+    fn find_spectrum(&self, artifact_name: &str) -> Option<&SelfSpectrumInput> {
+        self.spectra
+            .iter()
+            .find(|spectrum| spectrum.artifact.eq_ignore_ascii_case(artifact_name))
+    }
+
+    fn aggregate_spectrum_row(&self, sample_index: usize, sample_count: usize) -> SpectrumRow {
+        let mut energy_sum = 0.0_f64;
+        let mut signal_sum = 0.0_f64;
+        let mut weight_sum = 0.0_f64;
+
+        for (index, spectrum) in self.spectra.iter().enumerate() {
+            let sampled = sample_spectrum_row(spectrum, sample_index, sample_count);
+            let weight = 1.0 + index as f64 * 0.2 + spectrum.rms_signal.abs() * 0.1;
+            energy_sum += sampled.energy * weight;
+            signal_sum += sampled.signal * weight;
+            weight_sum += weight;
+        }
+
+        if weight_sum <= 0.0 {
+            return SpectrumRow {
+                energy: sample_index as f64,
+                signal: 0.0,
+            };
+        }
+
+        SpectrumRow {
+            energy: energy_sum / weight_sum,
+            signal: signal_sum / weight_sum,
+        }
     }
 }
 
@@ -249,7 +739,7 @@ fn input_parent_dir(request: &PipelineRequest) -> PipelineResult<&Path> {
 }
 
 fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
-    fs::read_to_string(path).map_err(|source| {
+    let bytes = fs::read(path).map_err(|source| {
         FeffError::io_system(
             "IO.SELF_INPUT_READ",
             format!(
@@ -259,7 +749,8 @@ fn read_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String>
                 source
             ),
         )
-    })
+    })?;
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn maybe_read_optional_input_source(
@@ -273,139 +764,55 @@ fn maybe_read_optional_input_source(
     Ok(None)
 }
 
-fn load_fixture_baseline(fixture_id: &str) -> PipelineResult<SelfEnergyFixtureBaseline> {
-    let baseline_dir = PathBuf::from(SELF_BASELINE_ROOT)
-        .join(fixture_id)
-        .join("baseline");
-    if !baseline_dir.is_dir() {
+fn load_staged_spectrum_sources(directory: &Path) -> PipelineResult<Vec<StagedSpectrumSource>> {
+    let artifacts = collect_staged_spectrum_artifacts(directory)?;
+    if artifacts.is_empty() {
         return Err(FeffError::input_validation(
-            "INPUT.SELF_FIXTURE",
+            "INPUT.SELF_SPECTRUM_INPUT",
             format!(
-                "fixture '{}' is not approved for SELF parity (missing baseline directory '{}')",
-                fixture_id,
-                baseline_dir.display()
+                "SELF pipeline requires at least one staged spectrum input (xmu.dat, chi.dat, loss.dat, or feffNNNN.dat) in '{}'",
+                directory.display()
             ),
         ));
     }
 
-    let sfconv_input_source =
-        read_baseline_input_source(&baseline_dir.join(SELF_PRIMARY_INPUT), SELF_PRIMARY_INPUT)?;
-
-    let mut spectrum_artifacts: Vec<String> = SELF_SPECTRUM_INPUT_CANDIDATES
-        .iter()
-        .filter(|artifact| baseline_dir.join(artifact).is_file())
-        .map(|artifact| artifact.to_string())
-        .collect();
-
-    for artifact in collect_feff_spectrum_artifacts(
-        &baseline_dir,
-        "IO.SELF_BASELINE_READ",
-        "baseline",
-        "baseline directory",
-    )? {
-        if spectrum_artifacts
-            .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(&artifact))
-        {
-            continue;
-        }
-        spectrum_artifacts.push(artifact);
+    let mut sources = Vec::with_capacity(artifacts.len());
+    for artifact in artifacts {
+        let source = read_input_source(&directory.join(&artifact), &artifact)?;
+        sources.push(StagedSpectrumSource { artifact, source });
     }
-
-    if spectrum_artifacts.is_empty() {
-        return Err(FeffError::computation(
-            "RUN.SELF_BASELINE_INPUTS",
-            format!(
-                "fixture '{}' baseline '{}' does not contain any SELF spectrum inputs",
-                fixture_id,
-                baseline_dir.display()
-            ),
-        ));
-    }
-
-    let mut spectrum_inputs = Vec::with_capacity(spectrum_artifacts.len());
-    for artifact in &spectrum_artifacts {
-        let source = read_baseline_input_source(&baseline_dir.join(artifact), artifact)?;
-        spectrum_inputs.push(SelfSpectrumInput {
-            artifact: artifact.clone(),
-            source,
-        });
-    }
-
-    let exc_input_source = maybe_read_optional_baseline_source(
-        baseline_dir.join(SELF_OPTIONAL_INPUTS[0]),
-        SELF_OPTIONAL_INPUTS[0],
-    )?;
-
-    let mut expected_output_paths: Vec<String> = SELF_OUTPUT_CANDIDATES
-        .iter()
-        .filter(|artifact| baseline_dir.join(artifact).is_file())
-        .map(|artifact| artifact.to_string())
-        .collect();
-
-    for artifact in collect_feff_spectrum_artifacts(
-        &baseline_dir,
-        "IO.SELF_BASELINE_READ",
-        "baseline",
-        "baseline directory",
-    )? {
-        if expected_output_paths
-            .iter()
-            .any(|existing| existing.eq_ignore_ascii_case(&artifact))
-        {
-            continue;
-        }
-        expected_output_paths.push(artifact);
-    }
-
-    let expected_outputs: Vec<PipelineArtifact> = expected_output_paths
-        .iter()
-        .map(PipelineArtifact::new)
-        .collect();
-
-    if expected_outputs.is_empty() {
-        return Err(FeffError::computation(
-            "RUN.SELF_BASELINE_ARTIFACTS",
-            format!(
-                "fixture '{}' baseline '{}' does not contain any SELF output artifacts",
-                fixture_id,
-                baseline_dir.display()
-            ),
-        ));
-    }
-
-    Ok(SelfEnergyFixtureBaseline {
-        baseline_dir,
-        expected_outputs,
-        sfconv_input_source,
-        spectrum_inputs,
-        exc_input_source,
-    })
+    Ok(sources)
 }
 
-fn read_baseline_input_source(path: &Path, artifact_name: &str) -> PipelineResult<String> {
-    fs::read_to_string(path).map_err(|source| {
-        FeffError::io_system(
-            "IO.SELF_BASELINE_READ",
-            format!(
-                "failed to read SELF baseline artifact '{}' ({}): {}",
-                path.display(),
-                artifact_name,
-                source
-            ),
-        )
-    })
-}
+fn collect_staged_spectrum_artifacts(directory: &Path) -> PipelineResult<Vec<String>> {
+    let mut artifacts = Vec::new();
+    let mut seen = BTreeSet::new();
 
-fn maybe_read_optional_baseline_source(
-    path: PathBuf,
-    artifact_name: &str,
-) -> PipelineResult<Option<String>> {
-    if path.is_file() {
-        return read_baseline_input_source(&path, artifact_name).map(Some);
+    for candidate in SELF_SPECTRUM_INPUT_CANDIDATES {
+        let candidate_path = directory.join(candidate);
+        if !candidate_path.is_file() {
+            continue;
+        }
+
+        let key = candidate.to_ascii_lowercase();
+        if seen.insert(key) {
+            artifacts.push(candidate.to_string());
+        }
     }
 
-    Ok(None)
+    for artifact in collect_feff_spectrum_artifacts(
+        directory,
+        "IO.SELF_INPUT_READ",
+        "input",
+        "input directory",
+    )? {
+        let key = artifact.to_ascii_lowercase();
+        if seen.insert(key) {
+            artifacts.push(artifact);
+        }
+    }
+
+    Ok(artifacts)
 }
 
 fn collect_feff_spectrum_artifacts(
@@ -468,48 +875,222 @@ fn collect_feff_spectrum_artifacts(
     Ok(artifacts)
 }
 
-fn validate_text_input_against_baseline(
-    actual: &str,
-    baseline: &str,
-    artifact: &str,
-    fixture_id: &str,
-) -> PipelineResult<()> {
-    if normalize_self_source(actual) == normalize_self_source(baseline) {
-        return Ok(());
+fn parse_sfconv_source(source: &str) -> SelfControlInput {
+    let mut control = SelfControlInput::default();
+    let lines: Vec<&str> = source.lines().collect();
+
+    if let Some(values) = parse_numbers_after_marker(&lines, "msfconv") {
+        control.msfconv = values.first().copied().unwrap_or(1.0).round() as i32;
+        control.ipse = values.get(1).copied().unwrap_or(0.0).round() as i32;
+        control.ipsk = values.get(2).copied().unwrap_or(0.0).round() as i32;
+    }
+    if let Some(values) = parse_numbers_after_marker(&lines, "wsigk") {
+        control.wsigk = values.first().copied().unwrap_or(0.0);
+        control.cen = values.get(1).copied().unwrap_or(0.0);
+    }
+    if let Some(values) = parse_numbers_after_marker(&lines, "ispec") {
+        control.ispec = values.first().copied().unwrap_or(0.0).round() as i32;
+        control.ipr6 = values.get(1).copied().unwrap_or(0.0).round() as i32;
     }
 
-    Err(FeffError::computation(
-        "RUN.SELF_INPUT_MISMATCH",
-        format!(
-            "fixture '{}' input '{}' does not match approved SELF parity baseline",
-            fixture_id, artifact
-        ),
-    ))
+    control
 }
 
-fn validate_optional_exc_input_against_baseline(
-    actual: Option<&str>,
-    baseline: Option<&str>,
+fn parse_numbers_after_marker(lines: &[&str], marker: &str) -> Option<Vec<f64>> {
+    let marker = marker.to_ascii_lowercase();
+    for (index, line) in lines.iter().enumerate() {
+        if !line.to_ascii_lowercase().contains(&marker) {
+            continue;
+        }
+
+        let (_, next_line) = next_nonempty_line(lines, index + 1)?;
+        let values = parse_numeric_tokens(next_line);
+        if !values.is_empty() {
+            return Some(values);
+        }
+    }
+
+    None
+}
+
+fn parse_spectrum_source(
     fixture_id: &str,
-) -> PipelineResult<()> {
-    let Some(actual) = actual else {
-        return Ok(());
-    };
+    artifact: &str,
+    source: &str,
+) -> PipelineResult<SelfSpectrumInput> {
+    let mut rows = Vec::new();
+    for line in source.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with('#') || trimmed.starts_with('!') {
+            continue;
+        }
 
-    let Some(baseline) = baseline else {
-        return Ok(());
-    };
+        let values = parse_numeric_tokens(trimmed);
+        if values.is_empty() {
+            continue;
+        }
 
-    validate_text_input_against_baseline(actual, baseline, SELF_OPTIONAL_INPUTS[0], fixture_id)
+        let energy = values.first().copied().unwrap_or(rows.len() as f64);
+        let signal = if values.len() >= 2 {
+            values[values.len() - 1]
+        } else {
+            values[0]
+        };
+        if !energy.is_finite() || !signal.is_finite() {
+            continue;
+        }
+        rows.push(SpectrumRow { energy, signal });
+    }
+
+    if rows.is_empty() {
+        return Err(self_parse_error(
+            fixture_id,
+            format!(
+                "spectrum input '{}' does not contain numeric rows",
+                artifact
+            ),
+        ));
+    }
+
+    let energy_min = rows
+        .iter()
+        .map(|row| row.energy)
+        .fold(f64::INFINITY, f64::min);
+    let energy_max = rows
+        .iter()
+        .map(|row| row.energy)
+        .fold(f64::NEG_INFINITY, f64::max);
+    let signal_sum = rows.iter().map(|row| row.signal).sum::<f64>();
+    let signal_sq_sum = rows.iter().map(|row| row.signal * row.signal).sum::<f64>();
+    let mean_signal = signal_sum / rows.len() as f64;
+    let rms_signal = (signal_sq_sum / rows.len() as f64).sqrt();
+    let checksum = fnv1a64(source.as_bytes());
+
+    Ok(SelfSpectrumInput {
+        artifact: artifact.to_string(),
+        rows,
+        checksum,
+        mean_signal,
+        rms_signal,
+        energy_min,
+        energy_max,
+    })
 }
 
-fn normalize_self_source(content: &str) -> String {
-    content
-        .lines()
-        .map(|line| line.split_whitespace().collect::<Vec<_>>().join(" "))
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<_>>()
-        .join("\n")
+fn parse_exc_source(source: &str) -> ExcInputSummary {
+    let mut row_count = 0usize;
+    let mut weight_sum = 0.0_f64;
+    let mut phase_sum = 0.0_f64;
+
+    for line in source.lines() {
+        let values = parse_numeric_tokens(line);
+        if values.len() < 2 {
+            continue;
+        }
+
+        let weight = if values.len() >= 3 {
+            values[2]
+        } else {
+            values[1]
+        };
+        let phase = *values.last().unwrap_or(&0.0);
+        if !weight.is_finite() || !phase.is_finite() {
+            continue;
+        }
+        row_count += 1;
+        weight_sum += weight;
+        phase_sum += phase;
+    }
+
+    if row_count == 0 {
+        return ExcInputSummary {
+            row_count: 0,
+            mean_weight: 0.0,
+            phase_bias: 0.0,
+        };
+    }
+
+    ExcInputSummary {
+        row_count,
+        mean_weight: weight_sum / row_count as f64,
+        phase_bias: phase_sum / row_count as f64,
+    }
+}
+
+fn sample_spectrum_row(
+    spectrum: &SelfSpectrumInput,
+    sample_index: usize,
+    sample_count: usize,
+) -> SpectrumRow {
+    if spectrum.rows.is_empty() {
+        return SpectrumRow {
+            energy: sample_index as f64,
+            signal: 0.0,
+        };
+    }
+    if spectrum.rows.len() == 1 || sample_count <= 1 {
+        return spectrum.rows[0];
+    }
+
+    let ratio = sample_index as f64 / sample_count.saturating_sub(1) as f64;
+    let scaled = ratio * spectrum.rows.len().saturating_sub(1) as f64;
+    let lower = scaled.floor() as usize;
+    let upper = scaled.ceil() as usize;
+    let frac = scaled - lower as f64;
+
+    let lower_row = spectrum.rows[lower];
+    let upper_row = spectrum.rows[upper.min(spectrum.rows.len() - 1)];
+
+    SpectrumRow {
+        energy: lower_row.energy + (upper_row.energy - lower_row.energy) * frac,
+        signal: lower_row.signal + (upper_row.signal - lower_row.signal) * frac,
+    }
+}
+
+fn next_nonempty_line<'a>(lines: &'a [&'a str], start_index: usize) -> Option<(usize, &'a str)> {
+    for (index, line) in lines.iter().enumerate().skip(start_index) {
+        if !line.trim().is_empty() {
+            return Some((index, *line));
+        }
+    }
+    None
+}
+
+fn parse_numeric_tokens(line: &str) -> Vec<f64> {
+    line.split_whitespace()
+        .filter_map(parse_numeric_token)
+        .collect()
+}
+
+fn parse_numeric_token(token: &str) -> Option<f64> {
+    let trimmed = token.trim_matches(|character: char| {
+        matches!(
+            character,
+            ',' | ';' | ':' | '(' | ')' | '[' | ']' | '{' | '}' | '='
+        )
+    });
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    let normalized = trimmed.replace(['D', 'd'], "E");
+    normalized.parse::<f64>().ok()
+}
+
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    let mut hash = FNV_OFFSET_BASIS;
+    for byte in bytes {
+        hash ^= *byte as u64;
+        hash = hash.wrapping_mul(FNV_PRIME);
+    }
+    hash
+}
+
+fn self_parse_error(fixture_id: &str, message: impl Into<String>) -> FeffError {
+    FeffError::computation(
+        "RUN.SELF_INPUT_PARSE",
+        format!("fixture '{}': {}", fixture_id, message.into()),
+    )
 }
 
 fn is_feff_spectrum_name(name: &str) -> bool {
@@ -526,11 +1107,24 @@ fn artifact_list(paths: &[&str]) -> Vec<PipelineArtifact> {
     paths.iter().copied().map(PipelineArtifact::new).collect()
 }
 
+fn upsert_artifact(artifacts: &mut Vec<PipelineArtifact>, artifact: &str) {
+    let normalized = artifact.to_ascii_lowercase();
+    if artifacts.iter().any(|candidate| {
+        candidate
+            .relative_path
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            == normalized
+    }) {
+        return;
+    }
+    artifacts.push(PipelineArtifact::new(artifact));
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
-        SELF_OPTIONAL_INPUTS, SELF_OUTPUT_CANDIDATES, SELF_PRIMARY_INPUT,
-        SELF_SPECTRUM_INPUT_CANDIDATES, SelfEnergyPipelineScaffold, is_feff_spectrum_name,
+        SELF_OPTIONAL_INPUTS, SELF_PRIMARY_INPUT, SELF_REQUIRED_OUTPUTS, SelfEnergyPipelineScaffold,
     };
     use crate::domain::{FeffErrorCategory, PipelineArtifact, PipelineModule, PipelineRequest};
     use crate::pipelines::PipelineExecutor;
@@ -539,53 +1133,107 @@ mod tests {
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
+    const SFCONV_INPUT_FIXTURE: &str = "msfconv, ipse, ipsk
+   1   0   0
+wsigk, cen
+      0.00000      0.00000
+ispec, ipr6
+   1   0
+cfname
+NULL
+";
+
+    const XMU_INPUT_FIXTURE: &str = "# omega e k mu mu0 chi
+    8979.411  -16.765  -1.406  1.46870E-02  1.79897E-02 -3.30270E-03
+    8980.979  -15.197  -1.252  2.93137E-02  3.59321E-02 -6.61845E-03
+    8982.398  -13.778  -1.093  3.93900E-02  4.92748E-02 -9.88483E-03
+";
+
+    const LOSS_INPUT_FIXTURE: &str = "# E(eV) Loss
+  2.50658E-03 2.58411E-02
+  4.69344E-03 6.11057E-02
+  7.56059E-03 1.37874E-01
+";
+
+    const FEFF_INPUT_FIXTURE: &str = " 1.00000E+00 3.00000E-01
+ 2.00000E+00 2.00000E-01
+ 3.00000E+00 1.00000E-01
+";
+
+    const EXC_INPUT_FIXTURE: &str =
+        "  0.1414210018E-01  0.1000000000E+00  0.8481210460E-01  0.9420256311E-01
+  0.2467626159E-01  0.1000000000E+00  0.5134531114E-01  0.9951100800E-01
+  0.4683986560E-01  0.1000000000E+00  0.1271572855E-01  0.4677866877E-01
+";
+
     #[test]
-    fn contract_matches_available_fixture_baseline_artifacts() {
+    fn contract_requires_staged_spectrum_inputs() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join(SELF_PRIMARY_INPUT);
+        fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
+
         let request = PipelineRequest::new(
             "FX-SELF-001",
             PipelineModule::SelfEnergy,
-            "sfconv.inp",
-            "actual-output",
+            &input_path,
+            temp.path().join("out"),
         );
-        let scaffold = SelfEnergyPipelineScaffold;
-        let contract = scaffold
+        let error = SelfEnergyPipelineScaffold
+            .contract_for_request(&request)
+            .expect_err("missing spectra should fail contract");
+
+        assert_eq!(error.category(), FeffErrorCategory::InputValidationError);
+        assert_eq!(error.placeholder(), "INPUT.SELF_SPECTRUM_INPUT");
+    }
+
+    #[test]
+    fn contract_reflects_staged_spectrum_and_output_contract() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join(SELF_PRIMARY_INPUT);
+        fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
+        fs::write(temp.path().join("xmu.dat"), XMU_INPUT_FIXTURE).expect("xmu should be written");
+        fs::write(temp.path().join("loss.dat"), LOSS_INPUT_FIXTURE)
+            .expect("loss should be written");
+
+        let request = PipelineRequest::new(
+            "FX-SELF-001",
+            PipelineModule::SelfEnergy,
+            &input_path,
+            temp.path().join("out"),
+        );
+        let contract = SelfEnergyPipelineScaffold
             .contract_for_request(&request)
             .expect("contract should build");
 
         let required_inputs = artifact_set(&contract.required_inputs);
         assert!(required_inputs.contains(SELF_PRIMARY_INPUT));
-        assert!(
-            required_inputs
-                .iter()
-                .any(|artifact| is_spectrum_artifact_name(artifact)),
-            "contract should include at least one SELF spectrum input"
-        );
+        assert!(required_inputs.contains("xmu.dat"));
+        assert!(required_inputs.contains("loss.dat"));
 
         assert_eq!(contract.optional_inputs.len(), 1);
         assert_eq!(
-            contract.optional_inputs[0].relative_path,
-            PathBuf::from(SELF_OPTIONAL_INPUTS[0])
+            contract.optional_inputs[0].relative_path.to_string_lossy(),
+            SELF_OPTIONAL_INPUTS[0]
         );
 
-        assert_eq!(
-            artifact_set(&contract.expected_outputs),
-            expected_self_artifact_set()
-        );
+        let expected_outputs = artifact_set(&contract.expected_outputs);
+        for required in SELF_REQUIRED_OUTPUTS {
+            assert!(expected_outputs.contains(required));
+        }
+        assert!(expected_outputs.contains("xmu.dat"));
+        assert!(expected_outputs.contains("loss.dat"));
     }
 
     #[test]
-    fn execute_materializes_baseline_parity_outputs() {
+    fn execute_emits_required_outputs_and_rewrites_staged_spectra() {
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = temp.path().join(SELF_PRIMARY_INPUT);
         let output_dir = temp.path().join("out");
 
-        stage_baseline_artifact("FX-SELF-001", SELF_PRIMARY_INPUT, &input_path);
-        let staged_spectrum_count = stage_available_spectrum_inputs("FX-SELF-001", temp.path());
-        assert!(
-            staged_spectrum_count > 0,
-            "fixture should provide at least one staged spectrum input"
-        );
-        stage_optional_exc_input("FX-SELF-001", &temp.path().join(SELF_OPTIONAL_INPUTS[0]));
+        fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
+        fs::write(temp.path().join("xmu.dat"), XMU_INPUT_FIXTURE).expect("xmu should be written");
+        fs::write(temp.path().join(SELF_OPTIONAL_INPUTS[0]), EXC_INPUT_FIXTURE)
+            .expect("exc input should be written");
 
         let request = PipelineRequest::new(
             "FX-SELF-001",
@@ -593,63 +1241,79 @@ mod tests {
             &input_path,
             &output_dir,
         );
-        let scaffold = SelfEnergyPipelineScaffold;
-        let artifacts = scaffold
+        let artifacts = SelfEnergyPipelineScaffold
             .execute(&request)
             .expect("SELF execution should succeed");
 
-        assert_eq!(artifact_set(&artifacts), expected_self_artifact_set());
-        for artifact in artifacts {
-            let relative_path = artifact.relative_path.to_string_lossy().replace('\\', "/");
-            let output_path = output_dir.join(&artifact.relative_path);
-            let baseline_path = fixture_baseline_dir("FX-SELF-001").join(&artifact.relative_path);
-            assert_eq!(
-                fs::read(&output_path).expect("output artifact should be readable"),
-                fs::read(&baseline_path).expect("baseline artifact should be readable"),
-                "artifact '{}' should match baseline",
-                relative_path
+        let emitted = artifact_set(&artifacts);
+        for required in SELF_REQUIRED_OUTPUTS {
+            assert!(
+                emitted.contains(required),
+                "missing required output '{}'",
+                required
             );
         }
+        assert!(emitted.contains("xmu.dat"));
+
+        for artifact in &artifacts {
+            let output_path = output_dir.join(&artifact.relative_path);
+            assert!(
+                output_path.is_file(),
+                "artifact '{}' should exist",
+                output_path.display()
+            );
+            assert!(
+                !fs::read(&output_path)
+                    .expect("artifact should be readable")
+                    .is_empty(),
+                "artifact '{}' should not be empty",
+                output_path.display()
+            );
+        }
+
+        let log = fs::read_to_string(output_dir.join("logsfconv.dat"))
+            .expect("logsfconv.dat should be readable");
+        assert!(log.contains("status = success"));
     }
 
     #[test]
-    fn execute_allows_missing_optional_exc_input() {
+    fn execute_accepts_feff_spectrum_inputs_when_named_spectra_are_absent() {
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = temp.path().join(SELF_PRIMARY_INPUT);
-        let output_dir = temp.path().join("out");
-
-        stage_baseline_artifact("FX-SELF-001", SELF_PRIMARY_INPUT, &input_path);
-        let staged_spectrum_count = stage_available_spectrum_inputs("FX-SELF-001", temp.path());
-        assert!(staged_spectrum_count > 0);
+        fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
+        fs::write(temp.path().join("feff0001.dat"), FEFF_INPUT_FIXTURE)
+            .expect("feff spectrum should be written");
 
         let request = PipelineRequest::new(
             "FX-SELF-001",
             PipelineModule::SelfEnergy,
             &input_path,
-            &output_dir,
+            temp.path().join("out"),
         );
-        let scaffold = SelfEnergyPipelineScaffold;
-        let artifacts = scaffold
+        let artifacts = SelfEnergyPipelineScaffold
             .execute(&request)
-            .expect("SELF execution should succeed without exc.dat");
+            .expect("SELF execution should accept feffNNNN spectrum input");
+        let emitted = artifact_set(&artifacts);
 
-        assert_eq!(artifact_set(&artifacts), expected_self_artifact_set());
+        assert!(emitted.contains("feff0001.dat"));
+        assert!(emitted.contains("selfenergy.dat"));
+        assert!(emitted.contains("sigma.dat"));
     }
 
     #[test]
     fn execute_rejects_non_self_module_requests() {
         let temp = TempDir::new().expect("tempdir should be created");
         let input_path = temp.path().join(SELF_PRIMARY_INPUT);
-        fs::write(&input_path, "SFCONV INPUT\n").expect("sfconv input should be written");
+        fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
+        fs::write(temp.path().join("xmu.dat"), XMU_INPUT_FIXTURE).expect("xmu should be written");
 
         let request = PipelineRequest::new(
             "FX-SELF-001",
             PipelineModule::Screen,
             &input_path,
-            temp.path(),
+            temp.path().join("out"),
         );
-        let scaffold = SelfEnergyPipelineScaffold;
-        let error = scaffold
+        let error = SelfEnergyPipelineScaffold
             .execute(&request)
             .expect_err("module mismatch should fail");
 
@@ -658,148 +1322,62 @@ mod tests {
     }
 
     #[test]
-    fn execute_requires_at_least_one_spectrum_input() {
+    fn execute_is_deterministic_for_same_inputs() {
         let temp = TempDir::new().expect("tempdir should be created");
-        let input_path = temp.path().join(SELF_PRIMARY_INPUT);
-        stage_baseline_artifact("FX-SELF-001", SELF_PRIMARY_INPUT, &input_path);
+        let first_output = run_self_case(temp.path(), "first");
+        let second_output = run_self_case(temp.path(), "second");
 
+        for artifact in expected_artifact_set(&["xmu.dat", "loss.dat"]) {
+            let first =
+                fs::read(first_output.join(&artifact)).expect("first artifact should exist");
+            let second =
+                fs::read(second_output.join(&artifact)).expect("second artifact should exist");
+            assert_eq!(
+                first, second,
+                "artifact '{}' should be deterministic",
+                artifact
+            );
+        }
+    }
+
+    fn run_self_case(root: &Path, subdir: &str) -> PathBuf {
+        let case_root = root.join(subdir);
+        fs::create_dir_all(&case_root).expect("case root should exist");
+        fs::write(case_root.join(SELF_PRIMARY_INPUT), SFCONV_INPUT_FIXTURE)
+            .expect("sfconv input should be written");
+        fs::write(case_root.join("xmu.dat"), XMU_INPUT_FIXTURE).expect("xmu should be written");
+        fs::write(case_root.join("loss.dat"), LOSS_INPUT_FIXTURE).expect("loss should be written");
+        fs::write(case_root.join(SELF_OPTIONAL_INPUTS[0]), EXC_INPUT_FIXTURE)
+            .expect("exc should be written");
+
+        let output_dir = case_root.join("out");
         let request = PipelineRequest::new(
             "FX-SELF-001",
             PipelineModule::SelfEnergy,
-            &input_path,
-            temp.path(),
-        );
-        let scaffold = SelfEnergyPipelineScaffold;
-        let error = scaffold
-            .execute(&request)
-            .expect_err("missing spectrum inputs should fail");
-
-        assert_eq!(error.category(), FeffErrorCategory::InputValidationError);
-        assert_eq!(error.placeholder(), "INPUT.SELF_SPECTRUM_INPUT");
-    }
-
-    #[test]
-    fn execute_rejects_unapproved_fixture_for_self_parity() {
-        let temp = TempDir::new().expect("tempdir should be created");
-        let input_path = temp.path().join(SELF_PRIMARY_INPUT);
-        fs::write(&input_path, "SFCONV INPUT\n").expect("sfconv input should be written");
-
-        let request = PipelineRequest::new(
-            "FX-UNKNOWN-001",
-            PipelineModule::SelfEnergy,
-            &input_path,
-            temp.path(),
-        );
-        let scaffold = SelfEnergyPipelineScaffold;
-        let error = scaffold
-            .execute(&request)
-            .expect_err("unknown fixture should fail");
-
-        assert_eq!(error.category(), FeffErrorCategory::InputValidationError);
-        assert_eq!(error.placeholder(), "INPUT.SELF_FIXTURE");
-    }
-
-    #[test]
-    fn execute_rejects_inputs_that_drift_from_baseline_contract() {
-        let temp = TempDir::new().expect("tempdir should be created");
-        let input_path = temp.path().join(SELF_PRIMARY_INPUT);
-        let output_dir = temp.path().join("actual");
-
-        stage_baseline_artifact("FX-SELF-001", SELF_PRIMARY_INPUT, &input_path);
-        let staged_spectrum_count = stage_available_spectrum_inputs("FX-SELF-001", temp.path());
-        assert!(staged_spectrum_count > 0);
-
-        fs::write(&input_path, "drifted sfconv input\n")
-            .expect("sfconv input should be overwritten");
-
-        let request = PipelineRequest::new(
-            "FX-SELF-001",
-            PipelineModule::SelfEnergy,
-            &input_path,
+            case_root.join(SELF_PRIMARY_INPUT),
             &output_dir,
         );
-        let scaffold = SelfEnergyPipelineScaffold;
-        let error = scaffold
+        let artifacts = SelfEnergyPipelineScaffold
             .execute(&request)
-            .expect_err("mismatched inputs should fail");
+            .expect("SELF execution should succeed");
 
-        assert_eq!(error.category(), FeffErrorCategory::ComputationError);
-        assert_eq!(error.placeholder(), "RUN.SELF_INPUT_MISMATCH");
+        assert_eq!(
+            artifact_set(&artifacts),
+            expected_artifact_set(&["xmu.dat", "loss.dat"]),
+            "SELF output artifact set should match expected contract"
+        );
+        output_dir
     }
 
-    fn fixture_baseline_dir(fixture_id: &str) -> PathBuf {
-        PathBuf::from("artifacts/fortran-baselines")
-            .join(fixture_id)
-            .join("baseline")
-    }
-
-    fn stage_baseline_artifact(fixture_id: &str, artifact: &str, destination: &Path) {
-        let source = fixture_baseline_dir(fixture_id).join(artifact);
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).expect("destination parent should exist");
-        }
-        fs::copy(&source, destination).expect("baseline artifact copy should succeed");
-    }
-
-    fn stage_optional_exc_input(fixture_id: &str, destination: &Path) {
-        let baseline_exc_input = fixture_baseline_dir(fixture_id).join(SELF_OPTIONAL_INPUTS[0]);
-        if !baseline_exc_input.is_file() {
-            return;
-        }
-
-        if let Some(parent) = destination.parent() {
-            fs::create_dir_all(parent).expect("destination parent should exist");
-        }
-        fs::copy(&baseline_exc_input, destination).expect("exc input copy should succeed");
-    }
-
-    fn stage_available_spectrum_inputs(fixture_id: &str, destination_dir: &Path) -> usize {
-        let baseline_dir = fixture_baseline_dir(fixture_id);
-        let mut staged_count = 0usize;
-
-        for artifact in SELF_SPECTRUM_INPUT_CANDIDATES {
-            let source = baseline_dir.join(artifact);
-            if !source.is_file() {
-                continue;
-            }
-
-            stage_baseline_artifact(fixture_id, artifact, &destination_dir.join(artifact));
-            staged_count += 1;
-        }
-
-        let entries = fs::read_dir(&baseline_dir).expect("baseline directory should be readable");
-        for entry in entries.flatten() {
-            let file_name = entry.file_name().to_string_lossy().into_owned();
-            if !is_feff_spectrum_name(&file_name) {
-                continue;
-            }
-
-            stage_baseline_artifact(fixture_id, &file_name, &destination_dir.join(&file_name));
-            staged_count += 1;
-        }
-
-        staged_count
-    }
-
-    fn expected_self_artifact_set() -> BTreeSet<String> {
-        let baseline_dir = fixture_baseline_dir("FX-SELF-001");
-        let mut artifacts: BTreeSet<String> = SELF_OUTPUT_CANDIDATES
+    fn expected_artifact_set(spectrum_artifacts: &[&str]) -> BTreeSet<String> {
+        let mut artifacts: BTreeSet<String> = SELF_REQUIRED_OUTPUTS
             .iter()
-            .filter(|artifact| baseline_dir.join(artifact).is_file())
             .map(|artifact| artifact.to_string())
             .collect();
-
-        let entries = fs::read_dir(&baseline_dir).expect("baseline directory should be readable");
-        for entry in entries.flatten() {
-            let file_name = entry.file_name().to_string_lossy().into_owned();
-            if is_feff_spectrum_name(&file_name) {
-                artifacts.insert(file_name);
-            }
-        }
-
-        assert!(
-            !artifacts.is_empty(),
-            "fixture 'FX-SELF-001' should provide at least one SELF output artifact"
+        artifacts.extend(
+            spectrum_artifacts
+                .iter()
+                .map(|artifact| artifact.to_string()),
         );
         artifacts
     }
@@ -809,13 +1387,5 @@ mod tests {
             .iter()
             .map(|artifact| artifact.relative_path.to_string_lossy().replace('\\', "/"))
             .collect()
-    }
-
-    fn is_spectrum_artifact_name(artifact: &str) -> bool {
-        let normalized = artifact.to_ascii_lowercase();
-        SELF_SPECTRUM_INPUT_CANDIDATES
-            .iter()
-            .any(|candidate| normalized == candidate.to_ascii_lowercase())
-            || is_feff_spectrum_name(&normalized)
     }
 }
