@@ -9,6 +9,7 @@ Started: Wed Feb 18 2026
 - RIXS output contract now includes deterministic `rixs.sh`; keep the canonical script template at `crates/feff-core/src/modules/rixs/rixs.sh.template` and wire it through module output assertions (core parity + CLI oracle checks) when touching RIXS artifacts.
 - Oracle baseline logs can be fixture-id sensitive; regenerate committed `*-ORACLE-*` baselines with the same fixture ID used by the oracle manifest to avoid deterministic `log*.dat` exact-text drift.
 - Comparator policy is first-match: place artifact-scoped categories before broad wildcard categories to prevent tolerance bleed (for example, explicit SELF `sigma.dat` mapping ahead of thermal `**/sig*.dat`).
+- Workflow-equivalent full-oracle parity currently runs canonical fixture IDs from `tasks/golden-fixture-manifest.json` (for example `FX-SELF-001`), so release summaries should report gate-level metrics from `artifacts/regression/oracle-report.json` instead of assuming `*-ORACLE-*` fixture IDs appear in that run.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -83,4 +84,14 @@ Started: Wed Feb 18 2026
   - Patterns discovered: First-match policy ordering is the enforcement point for keeping strict module contracts while preserving existing wildcard categories for unrelated modules.
   - Gotchas encountered: Running cargo checks in parallel still causes lock contention in this workspace; keep verification commands sequential.
   - Useful context: Before/after evidence is now codified in tests; `workspace_policy_keeps_targeted_globs_artifact_scoped` verifies removal of `**/rixs*.dat`, and `workspace_policy_resolves_targeted_contract_artifacts_first` verifies `rixsET.dat` resolves `rixs_contract_tables` (no longer generic `columnar_spectra`).
+---
+## 2026-02-18 12:22:57 JST - US-008
+- Ran the workflow-equivalent oracle parity gate (`scripts/fortran/ensure-feff10-reference.sh` + `cargo run --locked -- oracle ...`) and confirmed `PARITY_EXIT_CODE=0` with `passed=true`, `failed_fixture_count=0`, and `mismatch_fixture_count=0` in `artifacts/regression/oracle-report.json`.
+- Added `tasks/oracle-16-module-migration-summary.md` with the latest run timestamp, exact command path/arguments, gate counters, and per-module fixture status table for all in-scope modules plus workflow integration fixture coverage.
+- Quality checks: `cargo check --locked` passed, `cargo test --locked` passed, `cargo clippy --locked --all-targets -- -D warnings` passed; `cargo fmt --all -- --check` still fails due pre-existing repository-wide formatting drift outside this story scope.
+- Files changed: `tasks/oracle-16-module-migration-summary.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: The parity workflow’s release gate signal comes from top-level report counters (`passed`, failed/mismatch fixture counts) even when fixture IDs are canonical compatibility IDs.
+  - Gotchas encountered: Running the full oracle command emits large untracked runtime capture outputs under `artifacts/fortran-oracle-capture/` and report files under `artifacts/regression/`; keep commit scope limited to durable docs/metadata updates.
+  - Useful context: `tasks/oracle-16-module-migration-summary.md` is now the dated audit surface expected by `US-008`, sourced directly from `artifacts/regression/oracle-report.json`.
 ---
