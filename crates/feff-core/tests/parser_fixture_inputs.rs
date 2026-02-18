@@ -2,12 +2,14 @@ use feff_core::domain::InputCardKind;
 use feff_core::parser::parse_input_deck;
 use serde::Deserialize;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -122,8 +124,18 @@ fn read_fixture_entry_source(
 
 fn read_manifest(path: &str) -> FixtureManifest {
     let full_path = workspace_root().join(path);
-    let source = fs::read_to_string(&full_path)
-        .unwrap_or_else(|error| panic!("fixture manifest {} should be readable: {}", full_path.display(), error));
-    serde_json::from_str(&source)
-        .unwrap_or_else(|error| panic!("fixture manifest {} should parse: {}", full_path.display(), error))
+    let source = fs::read_to_string(&full_path).unwrap_or_else(|error| {
+        panic!(
+            "fixture manifest {} should be readable: {}",
+            full_path.display(),
+            error
+        )
+    });
+    serde_json::from_str(&source).unwrap_or_else(|error| {
+        panic!(
+            "fixture manifest {} should parse: {}",
+            full_path.display(),
+            error
+        )
+    })
 }

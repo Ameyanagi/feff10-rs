@@ -1,0 +1,203 @@
+{
+  "project": "feff10-rs",
+  "branchName": "ralph/runtime-support-migration-phase1",
+  "description": "Phase 1 full migration: eliminate runtime_support_dependency files module-by-module while keeping existing 16-module quality and oracle parity gates green; defer out_of_scope files to phase 2.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Add module-scoped runtime-support tracking",
+      "description": "As a maintainer, I want module-level gap visibility so each migration batch can prove end-to-end closure per module.",
+      "acceptanceCriteria": [
+        "Extend scripts/fortran/generate-gap-report.py to emit module-scoped support counts per runtime module",
+        "Add report output section with per-module runtime_support_dependency remaining count",
+        "Regenerated gap artifacts are deterministic across repeated runs",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Close POT runtime-support gap",
+      "description": "As a maintainer, I want POT to have no remaining runtime-support dependency files so POT runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "POT module-scoped support count reaches zero in generated gap artifacts",
+        "POT parity regression remains green in crates/feff-core/tests/pot_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Close DEBYE runtime-support gap",
+      "description": "As a maintainer, I want DEBYE to have no remaining runtime-support dependency files so DEBYE runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "DEBYE module-scoped support count reaches zero in generated gap artifacts",
+        "DEBYE parity regression remains green in crates/feff-core/tests/debye_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Close PATH runtime-support gap",
+      "description": "As a maintainer, I want PATH to have no remaining runtime-support dependency files so PATH runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "PATH module-scoped support count reaches zero in generated gap artifacts",
+        "PATH parity regression remains green in crates/feff-core/tests/path_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Close FMS runtime-support gap",
+      "description": "As a maintainer, I want FMS to have no remaining runtime-support dependency files so FMS runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "FMS module-scoped support count reaches zero in generated gap artifacts",
+        "FMS parity regression remains green in crates/feff-core/tests/fms_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Close LDOS runtime-support gap",
+      "description": "As a maintainer, I want LDOS to have no remaining runtime-support dependency files so LDOS runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "LDOS module-scoped support count reaches zero in generated gap artifacts",
+        "LDOS parity regression remains green in crates/feff-core/tests/ldos_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Close SELF runtime-support gap",
+      "description": "As a maintainer, I want SELF to have no remaining runtime-support dependency files so SELF runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "SELF module-scoped support count reaches zero in generated gap artifacts",
+        "SELF parity regression remains green in crates/feff-core/tests/self_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Close RIXS runtime-support gap",
+      "description": "As a maintainer, I want RIXS to have no remaining runtime-support dependency files so RIXS runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "RIXS module-scoped support count reaches zero in generated gap artifacts",
+        "RIXS parity regression remains green in crates/feff-core/tests/rixs_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Close EELS runtime-support gap",
+      "description": "As a maintainer, I want EELS to have no remaining runtime-support dependency files so EELS runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "EELS module-scoped support count reaches zero in generated gap artifacts",
+        "EELS parity regression remains green in crates/feff-core/tests/eels_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Close FULLSPECTRUM runtime-support gap",
+      "description": "As a maintainer, I want FULLSPECTRUM to have no remaining runtime-support dependency files so FULLSPECTRUM runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "FULLSPECTRUM module-scoped support count reaches zero in generated gap artifacts",
+        "FULLSPECTRUM parity regression remains green in crates/feff-core/tests/fullspectrum_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Close COMPTON runtime-support gap",
+      "description": "As a maintainer, I want COMPTON to have no remaining runtime-support dependency files so COMPTON runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "COMPTON module-scoped support count reaches zero in generated gap artifacts",
+        "COMPTON parity regression remains green in crates/feff-core/tests/compton_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Close XSPH runtime-support gap",
+      "description": "As a maintainer, I want XSPH to have no remaining runtime-support dependency files so XSPH runtime is self-contained in Rust scope.",
+      "acceptanceCriteria": [
+        "XSPH module-scoped support count reaches zero in generated gap artifacts",
+        "XSPH parity regression remains green in crates/feff-core/tests/xsph_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Burn down shared multi-module support remainder",
+      "description": "As a maintainer, I want shared support code used across multiple runtime modules to be migrated so no runtime-support dependencies remain.",
+      "acceptanceCriteria": [
+        "Shared support remainder across COMMON, KSPACE, MATH, TDLDA, FOVRG, EXCH, IOMODS, ERRORMODS, INPGEN, PAR, UTILITY, and RHORRP is migrated for runtime usage paths",
+        "Global runtime_support_dependency count reaches 0 in gap/fortran-to-rust-file-gap.csv",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Complete phase-1 docs and toolchain cleanup",
+      "description": "As a maintainer, I want migration docs and automation to reflect phase-1 closure so status is auditable and reproducible.",
+      "acceptanceCriteria": [
+        "Update tasks/migration-gap-analysis.md with phase-1 results and deferred phase-2 scope",
+        "Update README.md and docs/developer-workflows.md references to include the gap-report workflow",
+        "Add one reproducible command block for regenerating gap artifacts from a clean checkout",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

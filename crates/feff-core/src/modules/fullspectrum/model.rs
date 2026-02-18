@@ -1,6 +1,6 @@
 use super::parser::{
-    AuxiliarySpectrumSummary, FullSpectrumControlInput, XmuRow, XmuSummary,
-    parse_auxiliary_source, parse_fullspectrum_source, parse_xmu_source, summarize_xmu_rows,
+    AuxiliarySpectrumSummary, FullSpectrumControlInput, XmuRow, XmuSummary, parse_auxiliary_source,
+    parse_fullspectrum_source, parse_xmu_source, summarize_xmu_rows,
 };
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
@@ -53,7 +53,11 @@ impl FullSpectrumModel {
         })
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         let contents = match artifact_name {
             "xmu.dat" => self.render_xmu_dat(),
             "osc_str.dat" => self.render_osc_str_dat(),

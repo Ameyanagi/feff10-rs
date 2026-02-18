@@ -1,8 +1,5 @@
-use super::parser::{
-    GeomModel, PotControl, PotentialEntry,
-    parse_geom_input, parse_pot_input,
-};
 use super::POT_BINARY_MAGIC;
+use super::parser::{GeomModel, PotControl, PotentialEntry, parse_geom_input, parse_pot_input};
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
 use std::path::Path;
@@ -17,7 +14,11 @@ pub(super) struct PotModel {
 }
 
 impl PotModel {
-    pub(super) fn from_sources(fixture_id: &str, pot_source: &str, geom_source: &str) -> ComputeResult<Self> {
+    pub(super) fn from_sources(
+        fixture_id: &str,
+        pot_source: &str,
+        geom_source: &str,
+    ) -> ComputeResult<Self> {
         let (title, control, potentials) = parse_pot_input(fixture_id, pot_source)?;
         let geometry = parse_geom_input(fixture_id, geom_source)?;
         Ok(Self {
@@ -29,7 +30,11 @@ impl PotModel {
         })
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         match artifact_name {
             "pot.bin" => {
                 write_binary_artifact(output_path, &self.render_pot_binary()).map_err(|source| {

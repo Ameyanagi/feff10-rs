@@ -6,7 +6,10 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::SelfModel;
-use parser::{artifact_list, input_parent_dir, load_staged_spectrum_sources, maybe_read_optional_input_source, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, load_staged_spectrum_sources,
+    maybe_read_optional_input_source, read_input_source, validate_request_shape,
+};
 
 pub(crate) const SELF_PRIMARY_INPUT: &str = "sfconv.inp";
 pub(crate) const SELF_SPECTRUM_INPUT_CANDIDATES: [&str; 3] = ["xmu.dat", "chi.dat", "loss.dat"];
@@ -88,6 +91,7 @@ impl ModuleExecutor for SelfEnergyModule {
             exc_source.as_deref(),
         )?;
         let outputs = model.expected_outputs();
+        let state = model.compute_state()?;
 
         fs::create_dir_all(&request.output_dir).map_err(|source| {
             FeffError::io_system(
@@ -116,7 +120,7 @@ impl ModuleExecutor for SelfEnergyModule {
             }
 
             let artifact_name = artifact.relative_path.to_string_lossy().replace('\\', "/");
-            model.write_artifact(&artifact_name, &output_path)?;
+            model.write_artifact(&artifact_name, &output_path, &state)?;
         }
 
         Ok(outputs)
@@ -128,7 +132,7 @@ mod tests {
     use super::{
         SELF_OPTIONAL_INPUTS, SELF_PRIMARY_INPUT, SELF_REQUIRED_OUTPUTS, SelfEnergyModule,
     };
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;

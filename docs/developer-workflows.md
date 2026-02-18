@@ -30,6 +30,9 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo fmt --all -- --check
 ```
 
+These checks are release-blocking in `.github/workflows/rust-quality-gates.yml`; do not relax
+warnings or allow-failure behavior.
+
 `feff10/` is a reference checkout (not committed in this repository). The helper script clones
 the upstream FEFF10 examples needed by fixture-based tests and validates that `feff10/LICENSE`
 is present.
@@ -141,7 +144,7 @@ Use the `oracle` command when you need one flow that:
 
 ```bash
 scripts/fortran/ensure-feff10-reference.sh
-cargo run -- oracle \
+cargo run --locked -- oracle \
   --manifest tasks/golden-fixture-manifest.json \
   --policy tasks/numeric-tolerance-policy.json \
   --oracle-root artifacts/fortran-oracle-capture \
@@ -172,7 +175,14 @@ This command is validation-only and is intentionally isolated from runtime CLI p
 - `--actual-root artifacts/fortran-baselines --actual-subdir baseline`
 - `--capture-runner scripts/fortran/ci-oracle-capture-runner.sh`
 - `--capture-allow-missing-entry-files`
+- nonzero oracle exit codes gated to fail the job
 
 The default CI runner script replays committed fixture baselines into each capture output
 directory so the parity lane continuously validates oracle command plumbing and report artifacts
 without requiring a local Fortran toolchain on the primary Rust quality lane.
+
+On parity failure, CI uploads these diagnostics:
+- `artifacts/regression/oracle-report.json`
+- `artifacts/regression/oracle-diff.txt`
+- `artifacts/regression/oracle-summary.txt`
+- `artifacts/regression/oracle-stderr.txt`

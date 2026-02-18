@@ -1,9 +1,8 @@
 use super::parser::{
-    EelsControlInput, MagicInputSummary, XmuRow, XmuSummary,
-    parse_eels_source, parse_xmu_source, parse_magic_input_source,
-    summarize_xmu_rows, artifact_list,
+    EelsControlInput, MagicInputSummary, XmuRow, XmuSummary, artifact_list, parse_eels_source,
+    parse_magic_input_source, parse_xmu_source, summarize_xmu_rows,
 };
-use super::{EELS_REQUIRED_OUTPUTS, EELS_OPTIONAL_OUTPUT};
+use super::{EELS_OPTIONAL_OUTPUT, EELS_REQUIRED_OUTPUTS};
 use crate::domain::{ComputeArtifact, ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::path::Path;
@@ -66,7 +65,11 @@ impl EelsModel {
         outputs
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         let contents = match artifact_name {
             "eels.dat" => self.render_eels_dat(),
             "logeels.dat" => self.render_logeels(),
@@ -314,7 +317,6 @@ Module 8 true-compute execution finished.
         rows
     }
 }
-
 
 fn format_scientific_f64(value: f64) -> String {
     format!("{value:.10E}")

@@ -22,6 +22,8 @@ mod dispatch;
 mod helpers;
 mod traits;
 
-pub use dispatch::{execute_runtime_module, runtime_compute_engine_available, runtime_engine_unavailable_error};
+pub use dispatch::{
+    execute_runtime_module, runtime_compute_engine_available, runtime_engine_unavailable_error,
+};
 pub use helpers::{CoreModuleHelper, DistanceShell, cards_for_compute_request, is_core_module};
 pub use traits::{ModuleExecutor, RuntimeModuleExecutor, ValidationModuleExecutor};

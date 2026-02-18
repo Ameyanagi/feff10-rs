@@ -1,8 +1,8 @@
 pub mod errors;
 
 pub use errors::{
-    CompatibilityExitPlaceholder, FeffError, FeffErrorCategory, FeffResult, ParserResult,
-    ComputeResult,
+    CompatibilityExitPlaceholder, ComputeResult, FeffError, FeffErrorCategory, FeffResult,
+    ParserResult,
 };
 
 use std::fmt::{Display, Formatter};
@@ -300,10 +300,7 @@ impl InputCardKind {
     pub fn applies_to_module(&self, module: ComputeModule) -> bool {
         match self {
             Self::Compton | Self::Cgrid | Self::Rhozzp => {
-                matches!(
-                    module,
-                    ComputeModule::Compton | ComputeModule::FullSpectrum
-                )
+                matches!(module, ComputeModule::Compton | ComputeModule::FullSpectrum)
             }
             Self::Crpa => matches!(module, ComputeModule::Crpa | ComputeModule::FullSpectrum),
             Self::Rixs | Self::Xes => {
@@ -355,7 +352,7 @@ impl InputCardKind {
 #[cfg(test)]
 mod tests {
     use super::{
-        ExecutionMode, InputCard, InputCardKind, InputDeck, ComputeModule, ComputeRequest,
+        ComputeModule, ComputeRequest, ExecutionMode, InputCard, InputCardKind, InputDeck,
     };
 
     #[test]

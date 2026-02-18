@@ -1,4 +1,4 @@
-use crate::domain::{InputCard, InputDeck, ComputeModule, ComputeRequest};
+use crate::domain::{ComputeModule, ComputeRequest, InputCard, InputDeck};
 use crate::numerics::{deterministic_argsort, distance3, stable_weighted_mean};
 
 #[derive(Debug, Clone, PartialEq)]
@@ -74,7 +74,7 @@ pub fn cards_for_compute_request<'a>(
 #[cfg(test)]
 mod tests {
     use super::{CoreModuleHelper, cards_for_compute_request};
-    use crate::domain::{InputCard, InputCardKind, InputDeck, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeModule, ComputeRequest, InputCard, InputCardKind, InputDeck};
 
     #[test]
     fn module_helpers_consume_typed_input_cards() {

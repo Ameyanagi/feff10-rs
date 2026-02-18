@@ -21,10 +21,7 @@ pub struct CrpaContract {
 pub struct CrpaModule;
 
 impl CrpaModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<CrpaContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<CrpaContract> {
         validate_request_shape(request)?;
         Ok(CrpaContract {
             required_inputs: artifact_list(&CRPA_REQUIRED_INPUTS),
@@ -89,7 +86,7 @@ impl ModuleExecutor for CrpaModule {
 #[cfg(test)]
 mod tests {
     use super::CrpaModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
@@ -152,12 +149,8 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         let output_dir = temp.path().join("actual");
         let input_path = stage_crpa_inputs(temp.path(), CRPA_INPUT_FIXTURE);
 
-        let request = ComputeRequest::new(
-            "FX-CRPA-001",
-            ComputeModule::Crpa,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-CRPA-001", ComputeModule::Crpa, &input_path, &output_dir);
         let artifacts = CrpaModule
             .execute(&request)
             .expect("CRPA execution should succeed");
@@ -252,12 +245,8 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
         fs::write(temp.path().join("geom.dat"), GEOM_INPUT_FIXTURE)
             .expect("geom input should be staged");
 
-        let request = ComputeRequest::new(
-            "FX-CRPA-001",
-            ComputeModule::Crpa,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-CRPA-001", ComputeModule::Crpa, &input_path, temp.path());
         let error = CrpaModule
             .execute(&request)
             .expect_err("missing pot input should fail");
@@ -275,12 +264,8 @@ gamach, rgrd, ca1, ecv, totvol, rfms1, corval_emin
 ";
         let input_path = stage_crpa_inputs(temp.path(), disabled_crpa_input);
 
-        let request = ComputeRequest::new(
-            "FX-CRPA-001",
-            ComputeModule::Crpa,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-CRPA-001", ComputeModule::Crpa, &input_path, temp.path());
         let error = CrpaModule
             .execute(&request)
             .expect_err("disabled CRPA flag should fail");

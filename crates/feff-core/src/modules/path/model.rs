@@ -1,9 +1,8 @@
-use super::parser::{
-    GeomPathInput, GlobalPathInput, PathControlInput, PhasePathInput,
-    angle_between, distance, parse_geom_input, parse_global_input, parse_paths_input,
-    parse_phase_input, subtract,
-};
 use super::PATH_BINARY_MAGIC;
+use super::parser::{
+    GeomPathInput, GlobalPathInput, PathControlInput, PhasePathInput, angle_between, distance,
+    parse_geom_input, parse_global_input, parse_paths_input, parse_phase_input, subtract,
+};
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
 use std::path::Path;

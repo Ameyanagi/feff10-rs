@@ -1,4 +1,4 @@
-use super::{LDOS_REQUIRED_INPUTS, POT_BINARY_MAGIC, POT_CONTROL_I32_COUNT, POT_CONTROL_F64_COUNT};
+use super::{LDOS_REQUIRED_INPUTS, POT_BINARY_MAGIC, POT_CONTROL_F64_COUNT, POT_CONTROL_I32_COUNT};
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 use std::path::Path;
@@ -442,7 +442,10 @@ fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> ComputeResul
     })
 }
 
-pub(super) fn parse_reciprocal_source(fixture_id: &str, source: &str) -> ComputeResult<ReciprocalLdosInput> {
+pub(super) fn parse_reciprocal_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<ReciprocalLdosInput> {
     let values = source
         .lines()
         .flat_map(parse_numeric_tokens)

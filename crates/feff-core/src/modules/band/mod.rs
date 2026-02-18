@@ -6,9 +6,12 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::BandModel;
-use parser::{artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape,
+};
 
-pub(crate) const BAND_REQUIRED_INPUTS: [&str; 4] = ["band.inp", "geom.dat", "global.inp", "phase.bin"];
+pub(crate) const BAND_REQUIRED_INPUTS: [&str; 4] =
+    ["band.inp", "geom.dat", "global.inp", "phase.bin"];
 pub(crate) const BAND_REQUIRED_OUTPUTS: [&str; 2] = ["bandstructure.dat", "logband.dat"];
 
 #[cfg(test)]
@@ -24,10 +27,7 @@ pub struct BandContract {
 pub struct BandModule;
 
 impl BandModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<BandContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<BandContract> {
         validate_request_shape(request)?;
         Ok(BandContract {
             required_inputs: artifact_list(&BAND_REQUIRED_INPUTS),
@@ -101,7 +101,7 @@ impl ModuleExecutor for BandModule {
 #[cfg(test)]
 mod tests {
     use super::BandModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;

@@ -1,7 +1,6 @@
 use super::parser::{
-    GeomScreenInput, LdosScreenInput, PotScreenInput, ScreenOverrideInput,
-    format_scientific_f64, parse_geom_source, parse_ldos_source, parse_pot_source,
-    parse_screen_override_source,
+    GeomScreenInput, LdosScreenInput, PotScreenInput, ScreenOverrideInput, format_scientific_f64,
+    parse_geom_source, parse_ldos_source, parse_pot_source, parse_screen_override_source,
 };
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
@@ -57,7 +56,11 @@ impl ScreenModel {
         })
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         match artifact_name {
             "wscrn.dat" => {
                 write_text_artifact(output_path, &self.render_wscrn()).map_err(|source| {

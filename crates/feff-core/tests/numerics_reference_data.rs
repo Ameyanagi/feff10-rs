@@ -4,12 +4,13 @@ use feff_core::numerics::{
     load_numeric_tolerance_policy, stable_sum, stable_weighted_mean,
 };
 use std::fs;
-use std::path::PathBuf;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 

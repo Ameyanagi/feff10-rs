@@ -1,9 +1,9 @@
-use super::parser::{
-    GeomLdosInput, LdosControlInput, PotLdosInput, ReciprocalLdosInput,
-    expected_output_artifacts, parse_geom_source, parse_ldos_channel_name, parse_ldos_source,
-    parse_pot_source, parse_reciprocal_source,
-};
 use super::LDOS_LOG_OUTPUT;
+use super::parser::{
+    GeomLdosInput, LdosControlInput, PotLdosInput, ReciprocalLdosInput, expected_output_artifacts,
+    parse_geom_source, parse_ldos_channel_name, parse_ldos_source, parse_pot_source,
+    parse_reciprocal_source,
+};
 use crate::domain::{ComputeArtifact, ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::path::Path;
@@ -102,7 +102,11 @@ impl LdosModel {
         expected_output_artifacts(self.output_channel_count())
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         if artifact_name.eq_ignore_ascii_case(LDOS_LOG_OUTPUT) {
             return write_text_artifact(output_path, &self.render_logdos()).map_err(|source| {
                 FeffError::io_system(

@@ -524,6 +524,10 @@ fn rixs_module_command_succeeds_with_runtime_compute_engine() {
         temp.path().join("logrixs.dat").is_file(),
         "rixs should emit logrixs.dat"
     );
+    assert!(
+        temp.path().join("rixs.sh").is_file(),
+        "rixs should emit rixs.sh"
+    );
 }
 
 #[test]
@@ -1280,8 +1284,10 @@ fn stage_dmdw_input(destination: PathBuf) {
 
 fn workspace_root() -> PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 

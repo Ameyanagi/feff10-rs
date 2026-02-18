@@ -1,7 +1,7 @@
-use anyhow::Context;
 use super::CliError;
 use super::dispatch::ModuleCommandSpec;
-use feff_core::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
+use anyhow::Context;
+use feff_core::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use feff_core::modules::execute_runtime_module;
 use feff_core::modules::regression::RegressionRunnerConfig;
 use serde::Deserialize;
@@ -80,7 +80,9 @@ pub(super) fn load_cli_context() -> Result<CliContext, CliError> {
     })
 }
 
-pub(super) fn load_cli_context_if_available(working_dir: &Path) -> Result<Option<CliContext>, CliError> {
+pub(super) fn load_cli_context_if_available(
+    working_dir: &Path,
+) -> Result<Option<CliContext>, CliError> {
     let Some(workspace_root) = find_workspace_root(working_dir) else {
         return Ok(None);
     };
@@ -398,7 +400,10 @@ pub(super) fn resolve_cli_path(working_dir: &Path, path: &Path) -> PathBuf {
     }
 }
 
-pub(super) fn run_oracle_capture(workspace_root: &Path, config: &OracleCommandConfig) -> ComputeResult<()> {
+pub(super) fn run_oracle_capture(
+    workspace_root: &Path,
+    config: &OracleCommandConfig,
+) -> ComputeResult<()> {
     let capture_script = workspace_root.join("scripts/fortran/capture-baselines.sh");
     if !capture_script.is_file() {
         return Err(FeffError::io_system(
@@ -456,4 +461,3 @@ pub(super) fn run_oracle_capture(workspace_root: &Path, config: &OracleCommandCo
         format!("oracle capture step failed with {}", status_text),
     ))
 }
-

@@ -9,20 +9,14 @@ pub trait RuntimeModuleExecutor {
 }
 
 pub trait ValidationModuleExecutor {
-    fn execute_validation(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<Vec<ComputeArtifact>>;
+    fn execute_validation(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>>;
 }
 
 impl<T> ValidationModuleExecutor for T
 where
     T: ModuleExecutor,
 {
-    fn execute_validation(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<Vec<ComputeArtifact>> {
+    fn execute_validation(&self, request: &ComputeRequest) -> ComputeResult<Vec<ComputeArtifact>> {
         self.execute(request)
     }
 }
@@ -30,7 +24,9 @@ where
 #[cfg(test)]
 mod tests {
     use super::{ModuleExecutor, ValidationModuleExecutor};
-    use crate::domain::{FeffError, FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{
+        ComputeArtifact, ComputeModule, ComputeRequest, FeffError, FeffErrorCategory,
+    };
 
     struct FailingExecutor;
 

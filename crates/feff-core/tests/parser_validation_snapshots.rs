@@ -2,12 +2,13 @@ use feff_core::domain::{FeffError, InputDeck};
 use feff_core::parser::parse_input_deck;
 use serde_json::{Value, json};
 use std::fs;
-use std::path::PathBuf;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 

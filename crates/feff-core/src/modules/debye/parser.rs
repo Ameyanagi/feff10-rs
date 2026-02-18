@@ -1,4 +1,4 @@
-use super::{DEBYE_REQUIRED_INPUTS, CHECKSUM_OFFSET_BASIS, CHECKSUM_PRIME};
+use super::{CHECKSUM_OFFSET_BASIS, CHECKSUM_PRIME, DEBYE_REQUIRED_INPUTS};
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -78,10 +78,7 @@ pub(super) fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<
     if request.module != ComputeModule::Debye {
         return Err(FeffError::input_validation(
             "INPUT.DEBYE_MODULE",
-            format!(
-                "DEBYE module expects DEBYE, got {}",
-                request.module
-            ),
+            format!("DEBYE module expects DEBYE, got {}", request.module),
         ));
     }
 
@@ -150,7 +147,10 @@ pub(super) fn maybe_read_optional_input_source(
     Ok(None)
 }
 
-pub(super) fn parse_ff2x_source(fixture_id: &str, source: &str) -> ComputeResult<DebyeControlInput> {
+pub(super) fn parse_ff2x_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<DebyeControlInput> {
     let lines = source.lines().collect::<Vec<_>>();
     let mut control = DebyeControlInput::default();
 
@@ -265,7 +265,10 @@ pub(super) fn parse_ff2x_source(fixture_id: &str, source: &str) -> ComputeResult
     Ok(control)
 }
 
-pub(super) fn parse_paths_source(fixture_id: &str, source: &str) -> ComputeResult<PathInputSummary> {
+pub(super) fn parse_paths_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<PathInputSummary> {
     let checksum = checksum_bytes(source.as_bytes());
     let mut entries = Vec::new();
 
@@ -650,4 +653,3 @@ fn checksum_bytes(bytes: &[u8]) -> u64 {
 pub(super) fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
     paths.iter().copied().map(ComputeArtifact::new).collect()
 }
-

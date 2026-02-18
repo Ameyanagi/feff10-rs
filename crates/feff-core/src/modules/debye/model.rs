@@ -1,7 +1,6 @@
 use super::parser::{
-    DebyeControlInput, FeffInputSummary, PathInputSummary,
-    SpringInputSummary, parse_ff2x_source, parse_paths_source,
-    parse_feff_source, parse_optional_spring_source,
+    DebyeControlInput, FeffInputSummary, PathInputSummary, SpringInputSummary, parse_feff_source,
+    parse_ff2x_source, parse_optional_spring_source, parse_paths_source,
 };
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
@@ -58,7 +57,6 @@ struct DebyeSpectrumPoint {
     mag: f64,
     phase: f64,
 }
-
 
 impl DebyeModel {
     pub(super) fn from_sources(
@@ -282,7 +280,11 @@ impl DebyeModel {
         points
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         let contents = match artifact_name {
             "s2_em.dat" => self.render_s2_em(),
             "s2_rm1.dat" => self.render_s2_rm1(),
@@ -566,4 +568,3 @@ impl DebyeModel {
         lines.join("\n")
     }
 }
-

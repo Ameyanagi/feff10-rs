@@ -435,7 +435,6 @@ fn eels_parse_error(fixture_id: &str, message: impl Into<String>) -> FeffError {
     )
 }
 
-
 pub(super) fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
     paths.iter().copied().map(ComputeArtifact::new).collect()
 }

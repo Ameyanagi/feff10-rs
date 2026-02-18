@@ -1,0 +1,14 @@
+SELF sfconv-backed log
+fixture = FX-SELF-ORACLE-001
+inputs = sfconv.inp + 1 spectrum file(s) + exc.dat:present
+control = msfconv:1 ipse:0 ipsk:0 wsigk:   0.00000 cen:   0.00000 ispec:1 ipr6:0
+spectrum:loss.dat rows:271 energy:[    0.002507, 100000.000000] mean:    0.108634 rms:    0.222432 checksum:11813547060117880280
+exc = rows:86 mean_weight:   0.01092 phase_bias:   0.44712
+derived = sample_count:271 energy_min:    0.002507 energy_step:  370.370361 self_scale:    0.218419 broadening:    0.010546 rewrite_gain:    1.026827 checksum_mix:936464465243828675
+sfconv = spectral_source:loss.dat spectral_points:181 asymmetric:false cutoff:true plasma_frequency:  200.000000
+sfconv_weights = [  1.03440,   0.02236,   0.12033,   0.11000,   0.05000,   0.03000,   0.02000,   0.01462]
+sfconv_magnitude = min:   0.0000012 max:   0.9029060 rms:   0.2161526
+sfconv_real = min:   0.0000012 max:   0.9026952 rms:   0.2161022
+sfconv_imag = min:   0.0000000 max:   0.0195094 rms:   0.0046705
+outputs = selfenergy.dat, sigma.dat, specfunct.dat, logsfconv.dat, sig2FEFF.dat, mpse.dat, opconsCu.dat, loss.dat
+status = success

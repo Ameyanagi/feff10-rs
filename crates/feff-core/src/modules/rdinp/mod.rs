@@ -2,9 +2,7 @@ mod model;
 mod parser;
 
 use super::ModuleExecutor;
-use crate::domain::{
-    ComputeArtifact, ComputeRequest, ComputeResult, FeffError,
-};
+use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use crate::parser::parse_input_deck;
 use std::fs;
 
@@ -160,10 +158,7 @@ pub struct RdinpContract {
 pub struct RdinpModule;
 
 impl RdinpModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<RdinpContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<RdinpContract> {
         let model = model_for_request(request)?;
         Ok(RdinpContract {
             required_inputs: artifact_list(&RDINP_REQUIRED_INPUTS),
@@ -219,7 +214,7 @@ fn model_for_request(request: &ComputeRequest) -> ComputeResult<RdinpModel> {
 #[cfg(test)]
 mod tests {
     use super::{RdinpModule, model::expected_outputs_for_screen_card};
-    use crate::domain::{FeffErrorCategory, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::fs;
     use std::path::{Path, PathBuf};

@@ -1,12 +1,12 @@
 use super::parser::{
-    AtomSite, PotentialEntry, card_value, deck_edge_label, deck_title, has_card,
-    parse_atoms, parse_potentials, required_card_value, sort_atoms_by_distance, first_card,
+    AtomSite, PotentialEntry, card_value, deck_edge_label, deck_title, first_card, has_card,
+    parse_atoms, parse_potentials, required_card_value, sort_atoms_by_distance,
 };
 use super::{
-    RDINP_BASE_OUTPUTS_PREFIX, RDINP_BASE_OUTPUTS_SUFFIX, RDINP_OPTIONAL_SCREEN_OUTPUT,
     BAND_INP_TEMPLATE, COMPTON_INP_TEMPLATE, CRPA_INP_TEMPLATE, DMDW_INP_TEMPLATE,
-    EELS_INP_TEMPLATE, FULLSPECTRUM_INP_TEMPLATE, GENFMT_INP_TEMPLATE,
-    GLOBAL_INP_TEMPLATE, RECIPROCAL_INP_TEMPLATE, RIXS_INP_TEMPLATE,
+    EELS_INP_TEMPLATE, FULLSPECTRUM_INP_TEMPLATE, GENFMT_INP_TEMPLATE, GLOBAL_INP_TEMPLATE,
+    RDINP_BASE_OUTPUTS_PREFIX, RDINP_BASE_OUTPUTS_SUFFIX, RDINP_OPTIONAL_SCREEN_OUTPUT,
+    RECIPROCAL_INP_TEMPLATE, RIXS_INP_TEMPLATE,
 };
 use crate::domain::{ComputeArtifact, ComputeResult, FeffError, InputDeck};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};

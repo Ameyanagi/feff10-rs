@@ -35,7 +35,11 @@ impl DmdwModel {
         })
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         let contents = match artifact_name {
             "dmdw.out" => self.render_dmdw_out(),
             other => {

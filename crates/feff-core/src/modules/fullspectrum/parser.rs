@@ -1,4 +1,4 @@
-use super::{FULLSPECTRUM_REQUIRED_INPUTS};
+use super::FULLSPECTRUM_REQUIRED_INPUTS;
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 use std::path::{Path, PathBuf};

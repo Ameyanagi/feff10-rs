@@ -10,8 +10,10 @@ use tempfile::TempDir;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -25,7 +27,7 @@ const APPROVED_RIXS_FIXTURES: [FixtureCase; 1] = [FixtureCase {
     input_directory: "feff10/examples/RIXS",
 }];
 
-const RIXS_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
+const RIXS_REQUIRED_OUTPUT_ARTIFACTS: [&str; 8] = [
     "rixs0.dat",
     "rixs1.dat",
     "rixsET.dat",
@@ -33,6 +35,7 @@ const RIXS_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
     "rixsET-sat.dat",
     "rixsEE-sat.dat",
     "logrixs.dat",
+    "rixs.sh",
 ];
 
 #[test]
@@ -58,6 +61,25 @@ fn approved_rixs_fixtures_emit_required_true_compute_artifacts() {
                 output_path.display()
             );
         }
+    }
+}
+
+#[test]
+fn approved_rixs_fixture_emits_committed_shell_script() {
+    for fixture in &APPROVED_RIXS_FIXTURES {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let (output_dir, _) = run_rixs_for_fixture(fixture, temp.path(), "actual", false);
+
+        let generated_script = fs::read(output_dir.join("rixs.sh"))
+            .expect("generated rixs.sh should exist and be readable");
+        let baseline_script = fs::read(baseline_artifact_path(fixture.id, Path::new("rixs.sh")))
+            .expect("committed baseline rixs.sh should be readable");
+
+        assert_eq!(
+            generated_script, baseline_script,
+            "fixture '{}' should emit deterministic rixs.sh content matching committed baseline",
+            fixture.id
+        );
     }
 }
 

@@ -7,8 +7,8 @@ use std::fs;
 
 use model::EelsModel;
 use parser::{
-    artifact_list, input_parent_dir, maybe_read_optional_input_source,
-    read_input_source, validate_request_shape,
+    artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_source,
+    validate_request_shape,
 };
 
 pub(crate) const EELS_REQUIRED_INPUTS: [&str; 2] = ["eels.inp", "xmu.dat"];
@@ -26,12 +26,8 @@ pub struct EelsContract {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct EelsModule;
 
-
 impl EelsModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<EelsContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<EelsContract> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
 
@@ -115,11 +111,10 @@ impl ModuleExecutor for EelsModule {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::EelsModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;

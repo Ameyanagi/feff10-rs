@@ -1,4 +1,4 @@
-use super::{SELF_PRIMARY_INPUT, SELF_SPECTRUM_INPUT_CANDIDATES, FNV_OFFSET_BASIS, FNV_PRIME};
+use super::{FNV_OFFSET_BASIS, FNV_PRIME, SELF_PRIMARY_INPUT, SELF_SPECTRUM_INPUT_CANDIDATES};
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use std::collections::BTreeSet;
 use std::fs;
@@ -133,7 +133,9 @@ pub(super) fn maybe_read_optional_input_source(
     Ok(None)
 }
 
-pub(super) fn load_staged_spectrum_sources(directory: &Path) -> ComputeResult<Vec<StagedSpectrumSource>> {
+pub(super) fn load_staged_spectrum_sources(
+    directory: &Path,
+) -> ComputeResult<Vec<StagedSpectrumSource>> {
     let artifacts = collect_staged_spectrum_artifacts(directory)?;
     if artifacts.is_empty() {
         return Err(FeffError::input_validation(

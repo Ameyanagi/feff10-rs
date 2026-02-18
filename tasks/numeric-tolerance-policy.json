@@ -34,16 +34,70 @@
       ]
     },
     {
+      "id": "self_contract_outputs",
+      "description": "SELF output contract artifacts remain exact-text stable, including sigma outputs that would otherwise match thermal wildcards.",
+      "mode": "exact_text",
+      "fileGlobs": [
+        "**/selfenergy.dat",
+        "**/sigma.dat",
+        "**/specfunct.dat",
+        "**/loss.dat",
+        "**/mpse.dat",
+        "**/opconsCu.dat",
+        "**/sig2FEFF.dat",
+        "**/logsfconv.dat"
+      ]
+    },
+    {
+      "id": "fullspectrum_contract_outputs",
+      "description": "FULLSPECTRUM artifact-specific tables and diagnostics must stay exact-text stable.",
+      "mode": "exact_text",
+      "fileGlobs": [
+        "**/osc_str.dat",
+        "**/eps.dat",
+        "**/drude.dat",
+        "**/background.dat",
+        "**/fine_st.dat",
+        "**/logfullspectrum.dat"
+      ]
+    },
+    {
+      "id": "rixs_contract_exact_outputs",
+      "description": "RIXS non-table contract artifacts remain exact-text stable.",
+      "mode": "exact_text",
+      "fileGlobs": [
+        "**/logrixs.dat",
+        "**/rixs.sh"
+      ]
+    },
+    {
+      "id": "rixs_contract_tables",
+      "description": "RIXS table outputs use strict numeric tolerance via artifact-scoped mappings.",
+      "mode": "numeric_tolerance",
+      "fileGlobs": [
+        "**/rixs0.dat",
+        "**/rixs1.dat",
+        "**/rixsET.dat",
+        "**/rixsEE.dat",
+        "**/rixsET-sat.dat",
+        "**/rixsEE-sat.dat"
+      ],
+      "tolerance": {
+        "absTol": 1e-8,
+        "relTol": 1e-6,
+        "relativeFloor": 1e-12
+      }
+    },
+    {
       "id": "columnar_spectra",
-      "description": "Primary spectral outputs for XANES/EXAFS/EELS/DANES/COMPTON/RIXS flows.",
+      "description": "Primary spectral outputs for XANES/EXAFS/EELS/DANES/COMPTON flows.",
       "mode": "numeric_tolerance",
       "fileGlobs": [
         "**/xmu.dat",
         "**/chi.dat",
         "**/danes.dat",
         "**/eels.dat",
-        "**/compton.dat",
-        "**/rixs*.dat"
+        "**/compton.dat"
       ],
       "tolerance": {
         "absTol": 1e-8,

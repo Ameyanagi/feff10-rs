@@ -38,25 +38,43 @@ Use this checklist before GA sign-off to validate rollback from Rust release art
 
 ## Rehearsal Steps
 
-1. Run release quality gates:
+1. Run CI-equivalent quality gate commands from `.github/workflows/rust-quality-gates.yml`:
+   - `scripts/fortran/ensure-feff10-reference.sh`
    - `cargo check --locked`
    - `cargo test --locked`
    - `cargo clippy --locked --all-targets -- -D warnings`
    - `cargo fmt --all -- --check`
-2. Build the Rust release artifact:
+2. Run CI-equivalent parity gate commands from `.github/workflows/rust-parity-gates.yml`:
+   - Run `cargo run --locked -- oracle` with:
+     - `--manifest tasks/golden-fixture-manifest.json`
+     - `--policy tasks/numeric-tolerance-policy.json`
+     - `--oracle-root artifacts/fortran-oracle-capture`
+     - `--oracle-subdir outputs`
+     - `--actual-root artifacts/fortran-baselines`
+     - `--actual-subdir baseline`
+     - `--capture-runner scripts/fortran/ci-oracle-capture-runner.sh`
+     - `--capture-allow-missing-entry-files`
+   - Capture diagnostics:
+     - `oracle-report.json`
+     - `oracle-diff.txt`
+     - `oracle-summary.txt`
+     - `oracle-stderr.txt`
+   - Expect oracle exit code `0`, `passed=true`, `failed_fixture_count=0`, and `mismatch_fixture_count=0`.
+3. Build the Rust release artifact:
    - `cargo build --locked --release`
-3. Validate pre-rollback Rust smoke behavior:
+4. Validate pre-rollback Rust smoke behavior:
    - Run `feff10-rs feff` in a workspace-descendant smoke directory seeded with the fixture `feff.inp`.
    - Verify required workflow artifacts are present and stderr is empty.
-4. Stage rollback deployment roots:
+5. Stage rollback deployment roots:
    - `deployment/rust-current` for the active Rust release state.
    - `deployment/fortran-stable` for the last stable Fortran artifact bundle.
-5. Simulate rollback by switching deployment pointer:
+6. Simulate rollback by switching deployment pointer:
+   - Use absolute symlink targets when wiring `deployment/current` so comparator path resolution is stable.
    - Before: `deployment/current -> deployment/rust-current`
    - After: `deployment/current -> deployment/fortran-stable`
-6. Verify rollback smoke artifacts:
+7. Verify rollback smoke artifacts:
    - Confirm all required workflow artifacts exist under `deployment/current/FX-WORKFLOW-XAS-001/baseline/`.
-7. Run focused rollback parity validation:
+8. Run focused rollback parity validation:
    - Generate a single-fixture manifest for `FX-WORKFLOW-XAS-001`.
    - Run `feff10-rs regression` with:
      - `--baseline-root artifacts/fortran-baselines`
@@ -64,6 +82,6 @@ Use this checklist before GA sign-off to validate rollback from Rust release art
      - `--baseline-subdir baseline`
      - `--actual-subdir baseline`
    - Expect regression status `PASS`.
-8. Record final rollback evidence and GA decision under `tasks/`:
+9. Record final rollback evidence and GA decision under `tasks/`:
    - `tasks/rollback-rehearsal-YYYY-MM-DD.md`
    - Include sign-off outcome (`GO` or `NO-GO`) and explicit rationale.

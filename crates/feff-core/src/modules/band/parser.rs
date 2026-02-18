@@ -1,4 +1,4 @@
-use super::{BAND_REQUIRED_INPUTS};
+use super::BAND_REQUIRED_INPUTS;
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use crate::modules::xsph::XSPH_PHASE_BINARY_MAGIC;
 use std::f64::consts::PI;
@@ -259,7 +259,10 @@ pub(super) fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult
     })
 }
 
-pub(super) fn parse_global_source(fixture_id: &str, source: &str) -> ComputeResult<GlobalBandInput> {
+pub(super) fn parse_global_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<GlobalBandInput> {
     let values = source
         .lines()
         .flat_map(parse_numeric_tokens)

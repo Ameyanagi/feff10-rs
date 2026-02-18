@@ -6,9 +6,12 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::FmsModel;
-use parser::{artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape,
+};
 
-pub(crate) const FMS_REQUIRED_INPUTS: [&str; 4] = ["fms.inp", "geom.dat", "global.inp", "phase.bin"];
+pub(crate) const FMS_REQUIRED_INPUTS: [&str; 4] =
+    ["fms.inp", "geom.dat", "global.inp", "phase.bin"];
 pub(crate) const FMS_REQUIRED_OUTPUTS: [&str; 2] = ["gg.bin", "log3.dat"];
 pub const FMS_GG_BINARY_MAGIC: &[u8; 8] = b"FMSGBIN1";
 
@@ -22,10 +25,7 @@ pub struct FmsContract {
 pub struct FmsModule;
 
 impl FmsModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<FmsContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<FmsContract> {
         validate_request_shape(request)?;
         Ok(FmsContract {
             required_inputs: artifact_list(&FMS_REQUIRED_INPUTS),
@@ -99,7 +99,7 @@ impl ModuleExecutor for FmsModule {
 #[cfg(test)]
 mod tests {
     use super::{FMS_GG_BINARY_MAGIC, FmsModule};
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use crate::modules::xsph::XSPH_PHASE_BINARY_MAGIC;
     use std::collections::BTreeSet;
@@ -109,12 +109,8 @@ mod tests {
 
     #[test]
     fn contract_reports_required_true_compute_artifacts() {
-        let request = ComputeRequest::new(
-            "FX-FMS-001",
-            ComputeModule::Fms,
-            "fms.inp",
-            "actual-output",
-        );
+        let request =
+            ComputeRequest::new("FX-FMS-001", ComputeModule::Fms, "fms.inp", "actual-output");
         let contract = FmsModule
             .contract_for_request(&request)
             .expect("contract should build");

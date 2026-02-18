@@ -6,7 +6,9 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::ComptonModel;
-use parser::{artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape,
+};
 
 pub(crate) const COMPTON_REQUIRED_INPUTS: [&str; 3] = ["compton.inp", "pot.bin", "gg_slice.bin"];
 pub(crate) const COMPTON_REQUIRED_OUTPUTS: [&str; 4] =
@@ -25,10 +27,7 @@ pub struct ComptonContract {
 pub struct ComptonModule;
 
 impl ComptonModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<ComptonContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<ComptonContract> {
         validate_request_shape(request)?;
         Ok(ComptonContract {
             required_inputs: artifact_list(&COMPTON_REQUIRED_INPUTS),
@@ -97,7 +96,7 @@ impl ModuleExecutor for ComptonModule {
 #[cfg(test)]
 mod tests {
     use super::ComptonModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;

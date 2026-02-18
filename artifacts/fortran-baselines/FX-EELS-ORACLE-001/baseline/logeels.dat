@@ -1,0 +1,13 @@
+Starting EELS true-compute module.
+fixture: FX-EELS-ORACLE-001
+run_mode: 1
+average=0 relativistic=1 cross_terms=1
+beam_energy_ev=300000.0000
+beam_direction=(0.00000, 1.00000, 0.00000)
+collection_mrad=2.4000 convergence_mrad=0.0000
+qmesh=5x3
+detector_angles_rad=(0.000000, 0.000000)
+xmu_rows=63 energy_range=[8979.411, 9049.102]
+mu_mean=1.7729453746E-4 mu0_mean=1.8648146032E-4 chi_rms=3.2148084162E-5
+magic_requested=false magic_input_present=false
+Module 8 true-compute execution finished.

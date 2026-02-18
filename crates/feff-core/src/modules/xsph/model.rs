@@ -117,7 +117,11 @@ impl XsphModel {
         }
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         match artifact_name {
             "phase.bin" => {
                 write_binary_artifact(output_path, &self.render_phase_binary()).map_err(|source| {

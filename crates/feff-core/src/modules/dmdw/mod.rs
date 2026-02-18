@@ -6,7 +6,9 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::DmdwModel;
-use parser::{artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape,
+};
 
 pub(crate) const DMDW_REQUIRED_INPUTS: [&str; 2] = ["dmdw.inp", "feff.dym"];
 pub(crate) const DMDW_REQUIRED_OUTPUTS: [&str; 1] = ["dmdw.out"];
@@ -21,10 +23,7 @@ pub struct DmdwContract {
 pub struct DmdwModule;
 
 impl DmdwModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<DmdwContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<DmdwContract> {
         validate_request_shape(request)?;
         Ok(DmdwContract {
             required_inputs: artifact_list(&DMDW_REQUIRED_INPUTS),
@@ -127,12 +126,8 @@ mod tests {
             &[0_u8, 1_u8, 2_u8, 3_u8],
         );
 
-        let request = ComputeRequest::new(
-            "FX-DMDW-001",
-            ComputeModule::Dmdw,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-DMDW-001", ComputeModule::Dmdw, &input_path, &output_dir);
         let artifacts = DmdwModule
             .execute(&request)
             .expect("DMDW execution should succeed");
@@ -263,12 +258,8 @@ mod tests {
         let input_path = temp.path().join("dmdw.inp");
         fs::write(&input_path, DMDW_INPUT_FIXTURE).expect("dmdw input should be written");
 
-        let request = ComputeRequest::new(
-            "FX-DMDW-001",
-            ComputeModule::Dmdw,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-DMDW-001", ComputeModule::Dmdw, &input_path, temp.path());
         let error = DmdwModule
             .execute(&request)
             .expect_err("missing feff.dym should fail");
@@ -285,12 +276,8 @@ mod tests {
         fs::write(temp.path().join("feff.dym"), [0_u8, 1_u8, 2_u8])
             .expect("feff.dym should be written");
 
-        let request = ComputeRequest::new(
-            "FX-DMDW-001",
-            ComputeModule::Dmdw,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-DMDW-001", ComputeModule::Dmdw, &input_path, temp.path());
         let error = DmdwModule
             .execute(&request)
             .expect_err("empty input should fail");

@@ -1,0 +1,11 @@
+FULLSPECTRUM true-compute runtime
+fixture: FX-FULLSPECTRUM-ORACLE-001
+input-artifacts: fullspectrum.inp xmu.dat [prexmu.dat] [referencexmu.dat]
+output-artifacts: xmu.dat osc_str.dat eps.dat drude.dat background.dat fine_st.dat logfullspectrum.dat
+run-mode: 0
+broadening-ev: 0.35000 drude-scale: 1.00000 oscillator-scale: 1.00000 epsilon-shift: 0.00000
+xmu-rows: 94 energy-range=[8956.1761, 8996.3798]
+mu-mean: 1.390979E-1 mu0-mean: 1.086227E-1 chi-mean: 3.047517E-2 chi-rms: 1.101093E-1
+prexmu-present: true rows=94 mean-energy=     -0.7313 mean-signal=  -1.943241E-4 rms-signal=   2.551850E-4
+referencexmu-present: true rows=94 mean-energy=   8976.2763 mean-signal=   -1.989978E1 rms-signal=    2.309877E1
+Module 9 true-compute execution finished.
