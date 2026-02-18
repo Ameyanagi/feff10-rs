@@ -5,6 +5,7 @@ Started: Wed Feb 18 2026
 - For SELF oracle fixtures, stage runtime SELF inputs from compatibility baseline `FX-SELF-001` and use only `loss.dat` as the staged spectrum source; staging oracle rewritten `loss.dat` (or extra `xmu.dat`) introduces deterministic parity drift.
 - Fixture-scoped regression compares every artifact present in the baseline directory; if baseline includes staged entry files such as `feff.inp`, stage the same file under `<actual-root>/<fixture>/<actual-subdir>/` to avoid false missing-artifact mismatches.
 - For FULLSPECTRUM oracle fixtures, stage runtime inputs from compatibility baseline `FX-FULLSPECTRUM-001`; using oracle rewritten `xmu.dat` as the next input collapses input/output separation and introduces deterministic parity drift.
+- Oracle parity requires a committed baseline file for every module-owned output artifact (including diagnostics like `logfullspectrum.dat`); otherwise comparator reports deterministic `Missing baseline artifact` mismatches.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -36,4 +37,15 @@ Started: Wed Feb 18 2026
   - Patterns discovered: FULLSPECTRUM oracle staging should always map `FX-FULLSPECTRUM-ORACLE-001` input reads back to `FX-FULLSPECTRUM-001` to keep input/output contracts deterministic.
   - Gotchas encountered: `xmu.dat` is both FULLSPECTRUM input and output, so oracle baselines cannot safely be reused as next-run input sources.
   - Useful context: This story intentionally locked only table artifacts; `logfullspectrum.dat` parity remains scoped to `US-004`.
+---
+## 2026-02-18 11:34:17 JST - US-004
+- Added committed oracle baseline snapshot `artifacts/fortran-baselines/FX-FULLSPECTRUM-ORACLE-001/baseline/logfullspectrum.dat` from deterministic FULLSPECTRUM runtime output for `FX-FULLSPECTRUM-ORACLE-001`.
+- Expanded `crates/feff-core/tests/fullspectrum_parity.rs` with committed-baseline parity coverage for `logfullspectrum.dat` plus a fixture-level regression assertion that `FX-FULLSPECTRUM-ORACLE-001` has zero mismatches against committed baseline artifacts.
+- In the new committed-baseline regression guard, staged `feff.inp` alongside FULLSPECTRUM inputs so baseline-owned entry artifacts do not trigger false `Missing actual artifact` failures.
+- Verified with `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`, and `cargo test --locked -p feff-core --test fullspectrum_parity`.
+- Files changed: `artifacts/fortran-baselines/FX-FULLSPECTRUM-ORACLE-001/baseline/logfullspectrum.dat`, `crates/feff-core/tests/fullspectrum_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Oracle FULLSPECTRUM parity is only zero-mismatch when both module outputs and baseline-owned entry artifacts are present in staged actual directories.
+  - Gotchas encountered: Leaving `logfullspectrum.dat` out of committed oracle baselines causes deterministic comparator failures even when runtime output is stable.
+  - Useful context: The new `oracle_fullspectrum_fixture_has_zero_mismatches_against_committed_baseline` test is the fastest guard for this fixture-level contract.
 ---
