@@ -1,201 +1,202 @@
 {
   "project": "feff10-rs",
-  "branchName": "ralph/rust-migration-completion",
-  "description": "Complete FEFF10-to-Rust migration by closing remaining SELF/FULLSPECTRUM/RIXS oracle parity deltas while keeping strict quality and parity CI gates green.",
+  "branchName": "ralph/runtime-support-migration-phase1",
+  "description": "Phase 1 full migration: eliminate runtime_support_dependency files module-by-module while keeping existing 16-module quality and oracle parity gates green; defer out_of_scope files to phase 2.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Close SELF core spectral parity deltas",
-      "description": "As a maintainer, I want SELF core spectral outputs to match oracle so migration parity is numerically credible.",
+      "title": "Add module-scoped runtime-support tracking",
+      "description": "As a maintainer, I want module-level gap visibility so each migration batch can prove end-to-end closure per module.",
       "acceptanceCriteria": [
-        "Update SELF compute path so `selfenergy.dat`, `sigma.dat`, and `specfunct.dat` match `FX-SELF-ORACLE-001` within policy.",
-        "Preserve deterministic artifact formatting and ordering required by comparator.",
-        "Add or update focused regression assertions in `crates/feff-core/tests/self_parity.rs` for these artifacts.",
-        "Tests pass",
+        "Extend scripts/fortran/generate-gap-report.py to emit module-scoped support counts per runtime module",
+        "Add report output section with per-module runtime_support_dependency remaining count",
+        "Regenerated gap artifacts are deterministic across repeated runs",
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-002",
-      "title": "Close SELF auxiliary artifact parity deltas",
-      "description": "As a maintainer, I want SELF auxiliary outputs to match oracle so fixture-level parity is complete.",
+      "title": "Close POT runtime-support gap",
+      "description": "As a maintainer, I want POT to have no remaining runtime-support dependency files so POT runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Update SELF outputs so `loss.dat`, `mpse.dat`, `opconsCu.dat`, `sig2FEFF.dat`, and `logsfconv.dat` match `FX-SELF-ORACLE-001` within policy.",
-        "Ensure optional SELF input handling remains deterministic for oracle fixture staging.",
-        "Add or update SELF fixture assertions for all required auxiliary artifacts.",
-        "Tests pass",
+        "POT module-scoped support count reaches zero in generated gap artifacts",
+        "POT parity regression remains green in crates/feff-core/tests/pot_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-003",
-      "title": "Close FULLSPECTRUM table parity deltas",
-      "description": "As a maintainer, I want FULLSPECTRUM table outputs to match oracle so downstream spectral chains are stable.",
+      "title": "Close DEBYE runtime-support gap",
+      "description": "As a maintainer, I want DEBYE to have no remaining runtime-support dependency files so DEBYE runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Update FULLSPECTRUM compute path so `xmu.dat`, `osc_str.dat`, `eps.dat`, `drude.dat`, `background.dat`, and `fine_st.dat` match `FX-FULLSPECTRUM-ORACLE-001` within policy.",
-        "Preserve optional upstream input behavior used by oracle fixture staging.",
-        "Add or update focused regression assertions in `crates/feff-core/tests/fullspectrum_parity.rs` for these artifacts.",
-        "Tests pass",
+        "DEBYE module-scoped support count reaches zero in generated gap artifacts",
+        "DEBYE parity regression remains green in crates/feff-core/tests/debye_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-004",
-      "title": "Close FULLSPECTRUM diagnostic log parity",
-      "description": "As a maintainer, I want FULLSPECTRUM diagnostics to match oracle so runtime contract checks are complete.",
+      "title": "Close PATH runtime-support gap",
+      "description": "As a maintainer, I want PATH to have no remaining runtime-support dependency files so PATH runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Update FULLSPECTRUM logging/output path so `logfullspectrum.dat` matches `FX-FULLSPECTRUM-ORACLE-001` within policy.",
-        "Keep deterministic log content and ordering expected by comparator policy.",
-        "Confirm FULLSPECTRUM fixture has zero artifact mismatches after change.",
-        "Tests pass",
+        "PATH module-scoped support count reaches zero in generated gap artifacts",
+        "PATH parity regression remains green in crates/feff-core/tests/path_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-005",
-      "title": "Close RIXS artifact-contract parity gap",
-      "description": "As a maintainer, I want RIXS to emit the expected artifact contract so oracle parity no longer fails on missing outputs.",
+      "title": "Close FMS runtime-support gap",
+      "description": "As a maintainer, I want FMS to have no remaining runtime-support dependency files so FMS runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Resolve `FX-RIXS-ORACLE-001` mismatch by materializing required `rixs.sh` artifact in deterministic output generation.",
-        "Preserve existing required RIXS spectral outputs (`rixs0.dat`, `rixs1.dat`, `rixsET.dat`, `rixsEE.dat`, `rixsET-sat.dat`, `rixsEE-sat.dat`, `logrixs.dat`).",
-        "Add or update focused regression assertions in `crates/feff-core/tests/rixs_parity.rs` and related CLI oracle checks.",
-        "Tests pass",
+        "FMS module-scoped support count reaches zero in generated gap artifacts",
+        "FMS parity regression remains green in crates/feff-core/tests/fms_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-006",
-      "title": "Harden SELF/FULLSPECTRUM/RIXS oracle CLI regression coverage",
-      "description": "As a CLI maintainer, I want oracle integration tests to lock fixed behavior so parity regressions are caught early.",
+      "title": "Close LDOS runtime-support gap",
+      "description": "As a maintainer, I want LDOS to have no remaining runtime-support dependency files so LDOS runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Update `crates/feff-cli/tests/regression_cli.rs` SELF/EELS/FULLSPECTRUM/RIXS oracle test block to assert pass status and zero mismatches for fixed fixtures.",
-        "Keep drift-mode tests validating nonzero mismatch behavior when outputs are intentionally perturbed.",
-        "Ensure report JSON assertions include artifact-level entries for module-owned outputs.",
-        "Tests pass",
+        "LDOS module-scoped support count reaches zero in generated gap artifacts",
+        "LDOS parity regression remains green in crates/feff-core/tests/ldos_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-007",
-      "title": "Finalize artifact policy mappings without global tolerance loosening",
-      "description": "As a maintainer, I want comparator policy to remain strict while allowing only justified artifact-scoped updates.",
+      "title": "Close SELF runtime-support gap",
+      "description": "As a maintainer, I want SELF to have no remaining runtime-support dependency files so SELF runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "If policy changes are required, update `tasks/numeric-tolerance-policy.json` only for explicitly named SELF/FULLSPECTRUM/RIXS artifacts.",
-        "Do not introduce wildcard/global tolerance relaxation across unrelated modules.",
-        "Document rationale and before/after mismatch evidence in commit notes or migration summary.",
-        "Tests pass",
+        "SELF module-scoped support count reaches zero in generated gap artifacts",
+        "SELF parity regression remains green in crates/feff-core/tests/self_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-008",
-      "title": "Achieve green full oracle gate and publish updated migration summary",
-      "description": "As a release owner, I want a passing full oracle run and a dated summary so completion status is auditable.",
+      "title": "Close RIXS runtime-support gap",
+      "description": "As a maintainer, I want RIXS to have no remaining runtime-support dependency files so RIXS runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Run workflow-equivalent oracle command and confirm exit code `0`.",
-        "Oracle report indicates `passed=true`, `failed_fixture_count=0`, and `mismatch_fixture_count=0` for ORACLE fixtures.",
-        "Update `tasks/oracle-16-module-migration-summary.md` with latest run timestamp and per-module status.",
-        "Tests pass",
+        "RIXS module-scoped support count reaches zero in generated gap artifacts",
+        "RIXS parity regression remains green in crates/feff-core/tests/rixs_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-009",
-      "title": "Keep Rust quality workflow strict and green",
-      "description": "As a repository owner, I want quality checks to stay blocking so no Rust regressions merge.",
+      "title": "Close EELS runtime-support gap",
+      "description": "As a maintainer, I want EELS to have no remaining runtime-support dependency files so EELS runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Ensure `.github/workflows/rust-quality-gates.yml` still runs `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and `cargo fmt --all -- --check`.",
-        "Do not add allow-failure behavior or relax warning policy.",
-        "Validate local command parity with workflow definitions after code changes.",
-        "Tests pass",
+        "EELS module-scoped support count reaches zero in generated gap artifacts",
+        "EELS parity regression remains green in crates/feff-core/tests/eels_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-010",
-      "title": "Keep Rust parity workflow strict and diagnosable",
-      "description": "As a repository owner, I want parity checks to block merges and retain failure diagnostics.",
+      "title": "Close FULLSPECTRUM runtime-support gap",
+      "description": "As a maintainer, I want FULLSPECTRUM to have no remaining runtime-support dependency files so FULLSPECTRUM runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Ensure `.github/workflows/rust-parity-gates.yml` continues failing the job on nonzero oracle exit code.",
-        "Preserve upload of parity failure artifacts (`oracle-report.json`, `oracle-diff.txt`, summary, stderr).",
-        "Confirm summary rendering still includes mismatch detail extraction from report JSON.",
-        "Tests pass",
+        "FULLSPECTRUM module-scoped support count reaches zero in generated gap artifacts",
+        "FULLSPECTRUM parity regression remains green in crates/feff-core/tests/fullspectrum_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-011",
-      "title": "Refresh migration-state documentation after parity closure",
-      "description": "As a maintainer, I want migration documentation to match current reality so contributors follow accurate guidance.",
+      "title": "Close COMPTON runtime-support gap",
+      "description": "As a maintainer, I want COMPTON to have no remaining runtime-support dependency files so COMPTON runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Update stale migration-status narrative in `tasks/migration-gap-analysis.md` to reflect completed module ports and residual status removal.",
-        "Ensure `README.md` and `docs/developer-workflows.md` remain consistent with strict parity/quality gate behavior.",
-        "Retain explicit references to oracle command usage and report artifacts.",
-        "Tests pass",
+        "COMPTON module-scoped support count reaches zero in generated gap artifacts",
+        "COMPTON parity regression remains green in crates/feff-core/tests/compton_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-012",
-      "title": "Publish cutover rehearsal evidence for completed migration",
-      "description": "As an operator, I want updated cutover evidence so deployment readiness is explicit after parity closure.",
+      "title": "Close XSPH runtime-support gap",
+      "description": "As a maintainer, I want XSPH to have no remaining runtime-support dependency files so XSPH runtime is self-contained in Rust scope.",
       "acceptanceCriteria": [
-        "Add a new dated cutover report under `tasks/` documenting release build, smoke checks, and artifact verification.",
-        "Reference the same gate commands used by CI workflows.",
-        "Include pass/fail outcomes and file paths for generated evidence artifacts.",
-        "Tests pass",
+        "XSPH module-scoped support count reaches zero in generated gap artifacts",
+        "XSPH parity regression remains green in crates/feff-core/tests/xsph_parity.rs",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": true,
+      "passes": false,
       "notes": ""
     },
     {
       "id": "US-013",
-      "title": "Publish rollback rehearsal evidence for completed migration",
-      "description": "As an operator, I want updated rollback evidence so operational safety is proven after migration completion.",
+      "title": "Burn down shared multi-module support remainder",
+      "description": "As a maintainer, I want shared support code used across multiple runtime modules to be migrated so no runtime-support dependencies remain.",
       "acceptanceCriteria": [
-        "Add a new dated rollback report under `tasks/` documenting rollback steps, validation commands, and outcomes.",
-        "Confirm rollback checklist references the same strict quality/parity gate expectations.",
-        "Include reproducible command log references and resulting artifact file paths.",
-        "Tests pass",
+        "Shared support remainder across COMMON, KSPACE, MATH, TDLDA, FOVRG, EXCH, IOMODS, ERRORMODS, INPGEN, PAR, UTILITY, and RHORRP is migrated for runtime usage paths",
+        "Global runtime_support_dependency count reaches 0 in gap/fortran-to-rust-file-gap.csv",
+        "Existing oracle gate still reports zero failed and mismatched fixtures",
         "Typecheck passes"
       ],
       "priority": 13,
-      "passes": true,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Complete phase-1 docs and toolchain cleanup",
+      "description": "As a maintainer, I want migration docs and automation to reflect phase-1 closure so status is auditable and reproducible.",
+      "acceptanceCriteria": [
+        "Update tasks/migration-gap-analysis.md with phase-1 results and deferred phase-2 scope",
+        "Update README.md and docs/developer-workflows.md references to include the gap-report workflow",
+        "Add one reproducible command block for regenerating gap artifacts from a clean checkout",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
       "notes": ""
     }
   ]
