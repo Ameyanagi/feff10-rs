@@ -11,6 +11,7 @@ Started: Wed Feb 18 2026
 - Comparator policy is first-match: place artifact-scoped categories before broad wildcard categories to prevent tolerance bleed (for example, explicit SELF `sigma.dat` mapping ahead of thermal `**/sig*.dat`).
 - Workflow-equivalent full-oracle parity currently runs canonical fixture IDs from `tasks/golden-fixture-manifest.json` (for example `FX-SELF-001`), so release summaries should report gate-level metrics from `artifacts/regression/oracle-report.json` instead of assuming `*-ORACLE-*` fixture IDs appear in that run.
 - Lock Rust quality workflow contract changes with `crates/feff-cli/tests/quality_workflow_guard.rs`; if `.github/workflows/rust-quality-gates.yml` is intentionally edited, update the guard test in the same change.
+- Lock Rust parity workflow contract changes with `crates/feff-cli/tests/parity_workflow_guard.rs`; if `.github/workflows/rust-parity-gates.yml` is intentionally edited, update the guard test in the same change.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -105,4 +106,14 @@ Started: Wed Feb 18 2026
   - Patterns discovered: CI workflow strictness is easiest to preserve with a repository test that locks command text and failure-policy expectations.
   - Gotchas encountered: `cargo fmt --all -- --check` can fail for historical drift across untouched files; resolving this may require one dedicated normalization pass.
   - Useful context: Post-normalization, the strict quality gate command set now passes end-to-end without loosening workflow policies.
+---
+## 2026-02-18 12:36:38 JST - US-010
+- Added `crates/feff-cli/tests/parity_workflow_guard.rs` to lock `.github/workflows/rust-parity-gates.yml` contract requirements: `push`/`pull_request` triggers, locked oracle command execution, mismatch-detail summary extraction from report JSON, failure-artifact upload list, and hard fail-on-nonzero parity exit behavior.
+- Verified guard coverage by running `cargo test --locked -p feff-cli --test parity_workflow_guard` and `cargo test --locked -p feff-cli --test quality_workflow_guard`.
+- Validated full quality gate commands after the change: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and `cargo fmt --all -- --check` (all passed).
+- Files changed: `crates/feff-cli/tests/parity_workflow_guard.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep CI workflow guarantees stable with dedicated guard tests that parse workflow text and assert failure-path + diagnostics contracts.
+  - Gotchas encountered: Artifact path strings in parity workflows can appear in multiple contexts (command args, existence checks, and upload lists), so guard tests should avoid brittle single-occurrence assertions for those paths.
+  - Useful context: `rust_parity_workflow_keeps_strict_failure_and_diagnostics_contract` is now the fast regression sentinel for parity-gate behavior.
 ---
