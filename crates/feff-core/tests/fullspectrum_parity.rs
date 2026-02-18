@@ -1,7 +1,7 @@
 use feff_core::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
-use feff_core::modules::ModuleExecutor;
 use feff_core::modules::fullspectrum::FullSpectrumModule;
-use feff_core::modules::regression::{RegressionRunnerConfig, run_regression};
+use feff_core::modules::regression::{run_regression, RegressionRunnerConfig};
+use feff_core::modules::ModuleExecutor;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -10,8 +10,10 @@ use tempfile::TempDir;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -20,10 +22,16 @@ struct FixtureCase {
     input_directory: &'static str,
 }
 
-const APPROVED_FULLSPECTRUM_FIXTURES: [FixtureCase; 1] = [FixtureCase {
-    id: "FX-FULLSPECTRUM-001",
-    input_directory: "feff10/examples/XES/Cu",
-}];
+const APPROVED_FULLSPECTRUM_FIXTURES: [FixtureCase; 2] = [
+    FixtureCase {
+        id: "FX-FULLSPECTRUM-001",
+        input_directory: "feff10/examples/XES/Cu",
+    },
+    FixtureCase {
+        id: "FX-FULLSPECTRUM-ORACLE-001",
+        input_directory: "feff10/examples/XES/Cu",
+    },
+];
 
 const FULLSPECTRUM_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
     "xmu.dat",
@@ -33,6 +41,14 @@ const FULLSPECTRUM_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
     "background.dat",
     "fine_st.dat",
     "logfullspectrum.dat",
+];
+const FULLSPECTRUM_TABLE_OUTPUT_ARTIFACTS: [&str; 6] = [
+    "xmu.dat",
+    "osc_str.dat",
+    "eps.dat",
+    "drude.dat",
+    "background.dat",
+    "fine_st.dat",
 ];
 
 #[test]
@@ -119,6 +135,64 @@ fn fullspectrum_optional_component_inputs_are_supported() {
             with_optional_xmu, without_optional_xmu,
             "fixture '{}' xmu.dat should change when prexmu/referencexmu inputs are staged",
             fixture.id
+        );
+    }
+}
+
+#[test]
+fn oracle_fullspectrum_fixture_table_outputs_match_committed_baseline() {
+    let fixture = APPROVED_FULLSPECTRUM_FIXTURES
+        .iter()
+        .find(|fixture| fixture.id == "FX-FULLSPECTRUM-ORACLE-001")
+        .expect("oracle FULLSPECTRUM fixture should be configured");
+    let temp = TempDir::new().expect("tempdir should be created");
+    let (output_dir, _) = run_fullspectrum_for_fixture(fixture, temp.path(), "actual", true);
+
+    assert_outputs_match_committed_baseline(
+        fixture.id,
+        &output_dir,
+        &FULLSPECTRUM_TABLE_OUTPUT_ARTIFACTS,
+    );
+}
+
+#[test]
+fn oracle_fullspectrum_fixture_staging_uses_seed_fixture_inputs_deterministically() {
+    let fixture_id = "FX-FULLSPECTRUM-ORACLE-001";
+    let seed_fixture_id = fullspectrum_input_seed_fixture_id(fixture_id);
+    let temp = TempDir::new().expect("tempdir should be created");
+    let first_dir = temp.path().join("first");
+    let second_dir = temp.path().join("second");
+
+    stage_fullspectrum_inputs_for_fixture(fixture_id, &first_dir, true);
+    stage_fullspectrum_inputs_for_fixture(fixture_id, &second_dir, true);
+
+    for artifact in [
+        "fullspectrum.inp",
+        "xmu.dat",
+        "prexmu.dat",
+        "referencexmu.dat",
+    ] {
+        let expected = fs::read(baseline_artifact_path(seed_fixture_id, Path::new(artifact)))
+            .unwrap_or_else(|_| {
+                panic!(
+                    "baseline '{}' should be readable for deterministic oracle staging",
+                    artifact
+                )
+            });
+        let first = fs::read(first_dir.join(artifact))
+            .unwrap_or_else(|_| panic!("staged '{}' should be readable (first run)", artifact));
+        let second = fs::read(second_dir.join(artifact))
+            .unwrap_or_else(|_| panic!("staged '{}' should be readable (second run)", artifact));
+
+        assert_eq!(
+            first, expected,
+            "oracle FULLSPECTRUM staging should source '{}' from '{}'",
+            artifact, seed_fixture_id
+        );
+        assert_eq!(
+            second, expected,
+            "oracle FULLSPECTRUM staging should remain deterministic for '{}'",
+            artifact
         );
     }
 }
@@ -227,12 +301,26 @@ fn stage_fullspectrum_inputs_for_fixture(
     destination_dir: &Path,
     include_optional: bool,
 ) {
-    stage_fullspectrum_input(fixture_id, &destination_dir.join("fullspectrum.inp"));
-    stage_xmu_input(fixture_id, &destination_dir.join("xmu.dat"));
+    let input_seed_fixture_id = fullspectrum_input_seed_fixture_id(fixture_id);
+    stage_fullspectrum_input(
+        input_seed_fixture_id,
+        &destination_dir.join("fullspectrum.inp"),
+    );
+    stage_xmu_input(input_seed_fixture_id, &destination_dir.join("xmu.dat"));
 
     if include_optional {
-        stage_prexmu_input(fixture_id, &destination_dir.join("prexmu.dat"));
-        stage_referencexmu_input(fixture_id, &destination_dir.join("referencexmu.dat"));
+        stage_prexmu_input(input_seed_fixture_id, &destination_dir.join("prexmu.dat"));
+        stage_referencexmu_input(
+            input_seed_fixture_id,
+            &destination_dir.join("referencexmu.dat"),
+        );
+    }
+}
+
+fn fullspectrum_input_seed_fixture_id(fixture_id: &str) -> &str {
+    match fixture_id {
+        "FX-FULLSPECTRUM-ORACLE-001" => "FX-FULLSPECTRUM-001",
+        _ => fixture_id,
     }
 }
 
@@ -298,6 +386,40 @@ fn copy_file(source: &Path, destination: &Path) {
         fs::create_dir_all(parent).expect("destination directory should exist");
     }
     fs::copy(source, destination).expect("artifact copy should succeed");
+}
+
+fn assert_outputs_match_committed_baseline(
+    fixture_id: &str,
+    output_dir: &Path,
+    artifacts: &[&str],
+) {
+    for artifact in artifacts {
+        let baseline_path = baseline_artifact_path(fixture_id, Path::new(artifact));
+        assert!(
+            baseline_path.is_file(),
+            "oracle baseline artifact '{}' should exist",
+            baseline_path.display()
+        );
+
+        let actual_path = output_dir.join(artifact);
+        let actual = fs::read_to_string(&actual_path).unwrap_or_else(|_| {
+            panic!(
+                "actual artifact '{}' should be readable",
+                actual_path.display()
+            )
+        });
+        let baseline = fs::read_to_string(&baseline_path).unwrap_or_else(|_| {
+            panic!(
+                "baseline artifact '{}' should be readable",
+                baseline_path.display()
+            )
+        });
+        assert_eq!(
+            actual, baseline,
+            "oracle FULLSPECTRUM artifact '{}' should match committed baseline bytes",
+            artifact
+        );
+    }
 }
 
 fn expected_artifact_set(artifacts: &[&str]) -> BTreeSet<String> {

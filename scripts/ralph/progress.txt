@@ -4,6 +4,7 @@ Started: Wed Feb 18 2026
 ## Codebase Patterns
 - For SELF oracle fixtures, stage runtime SELF inputs from compatibility baseline `FX-SELF-001` and use only `loss.dat` as the staged spectrum source; staging oracle rewritten `loss.dat` (or extra `xmu.dat`) introduces deterministic parity drift.
 - Fixture-scoped regression compares every artifact present in the baseline directory; if baseline includes staged entry files such as `feff.inp`, stage the same file under `<actual-root>/<fixture>/<actual-subdir>/` to avoid false missing-artifact mismatches.
+- For FULLSPECTRUM oracle fixtures, stage runtime inputs from compatibility baseline `FX-FULLSPECTRUM-001`; using oracle rewritten `xmu.dat` as the next input collapses input/output separation and introduces deterministic parity drift.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -24,4 +25,15 @@ Started: Wed Feb 18 2026
   - Patterns discovered: Local regression spot-checks for oracle fixtures must stage any baseline-owned entry artifacts (not only module outputs) to avoid comparator false negatives.
   - Gotchas encountered: `cargo fmt --all -- --check` still fails due widespread pre-existing formatting drift in untouched files; do scoped formatting for touched files unless running a dedicated repo-wide formatting sweep.
   - Useful context: SELF auxiliary artifacts were already byte-identical to committed oracle baselines; the missing piece was explicit regression guard coverage.
+---
+## 2026-02-18 11:26:24 JST - US-003
+- Added `FX-FULLSPECTRUM-ORACLE-001` coverage in `crates/feff-core/tests/fullspectrum_parity.rs`, including committed-baseline assertions for table artifacts (`xmu.dat`, `osc_str.dat`, `eps.dat`, `drude.dat`, `background.dat`, `fine_st.dat`).
+- Updated FULLSPECTRUM oracle staging in parity tests to source runtime inputs from `FX-FULLSPECTRUM-001` (compatibility seed) and added deterministic staging checks for `fullspectrum.inp`, `xmu.dat`, `prexmu.dat`, and `referencexmu.dat`.
+- Added committed oracle baseline snapshot files under `artifacts/fortran-baselines/FX-FULLSPECTRUM-ORACLE-001/baseline/` for required table outputs plus fixture staging inputs.
+- Verified with `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo test --locked -p feff-core --test fullspectrum_parity`; `cargo fmt --all -- --check` still reports pre-existing repo-wide formatting drift outside this story scope.
+- Files changed: `crates/feff-core/tests/fullspectrum_parity.rs`, `artifacts/fortran-baselines/FX-FULLSPECTRUM-ORACLE-001/baseline/*`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: FULLSPECTRUM oracle staging should always map `FX-FULLSPECTRUM-ORACLE-001` input reads back to `FX-FULLSPECTRUM-001` to keep input/output contracts deterministic.
+  - Gotchas encountered: `xmu.dat` is both FULLSPECTRUM input and output, so oracle baselines cannot safely be reused as next-run input sources.
+  - Useful context: This story intentionally locked only table artifacts; `logfullspectrum.dat` parity remains scoped to `US-004`.
 ---
