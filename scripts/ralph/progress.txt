@@ -14,6 +14,7 @@ Started: Wed Feb 18 2026
 - Lock Rust parity workflow contract changes with `crates/feff-cli/tests/parity_workflow_guard.rs`; if `.github/workflows/rust-parity-gates.yml` is intentionally edited, update the guard test in the same change.
 - Migration-state docs should anchor to `tasks/oracle-16-module-migration-summary.md` and current parity artifacts (`oracle-report.json`, `oracle-diff.txt`, `oracle-summary.txt`, `oracle-stderr.txt`) instead of stale placeholder-era references.
 - Cutover rehearsal evidence should be captured in timestamped directories under `artifacts/cutover-rehearsal/<YYYY-MM-DD>/<YYYYMMDD-HHMMSS>/` with one log per gate command plus smoke-output verification/hashes; the dated `tasks/cutover-rehearsal-YYYY-MM-DD.md` report should reference those exact paths and CI-equivalent command blocks.
+- Rollback rehearsal deployment switching should use absolute symlink targets for `deployment/current`; repo-relative targets can resolve to broken paths during regression and produce false all-artifacts-missing failures.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -139,4 +140,15 @@ Started: Wed Feb 18 2026
   - Patterns discovered: Keep cutover evidence reproducible by writing run artifacts to a dated timestamped directory and referencing those paths directly in the task report.
   - Gotchas encountered: Oracle parity stderr can include expected capture-runner warnings even on `PASS`; rely on `oracle-report.json` gate counters and exit code for verdict.
   - Useful context: macOS rehearsal coverage is fully evidenced; Ubuntu rehearsal remains explicitly marked `NOT RUN` pending execution on Linux staging/CI host.
+---
+## 2026-02-18 12:54:14 JST - US-013
+- Published dated rollback rehearsal report at `tasks/rollback-rehearsal-2026-02-18.md` with CI-equivalent quality/parity gate command blocks, rollback deployment-pointer switch evidence, focused rollback regression command, and explicit evidence artifact paths.
+- Captured a timestamped rollback evidence bundle at `artifacts/rollback-rehearsal/2026-02-18/20260218-125139/` including quality logs, oracle parity report/summary/stderr/diff, release binary hash/size, pre-rollback smoke verification (`15/15` required artifacts), rollback output verification (`15/15`), and focused rollback regression report (`FX-WORKFLOW-XAS-001` PASS `45/45` artifacts).
+- Updated `docs/rollback-rehearsal-checklist.md` to align with strict CI workflow expectations by explicitly listing the locked quality/parity gate command sets and required parity diagnostics artifacts.
+- Quality checks: `scripts/fortran/ensure-feff10-reference.sh` passed, `cargo check --locked` passed, `cargo test --locked` passed, `cargo clippy --locked --all-targets -- -D warnings` passed, `cargo fmt --all -- --check` passed.
+- Files changed: `README.md`, `docs/rollback-rehearsal-checklist.md`, `tasks/rollback-rehearsal-2026-02-18.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Rollback rehearsal reports should mirror CI gate commands exactly and point to one immutable timestamped evidence root for reproducibility.
+  - Gotchas encountered: Creating `deployment/current` as a repo-relative symlink target breaks regression path resolution; use absolute symlink targets when switching between `rust-current` and `fortran-stable`.
+  - Useful context: This run’s canonical evidence root is `artifacts/rollback-rehearsal/2026-02-18/20260218-125139/`, with focused rollback regression outputs at `regression-summary.txt` and `regression-report.json`.
 ---
