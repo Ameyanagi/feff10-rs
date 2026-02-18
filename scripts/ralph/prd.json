@@ -1,0 +1,202 @@
+{
+  "project": "feff10-rs",
+  "branchName": "ralph/rust-migration-completion",
+  "description": "Complete FEFF10-to-Rust migration by closing remaining SELF/FULLSPECTRUM/RIXS oracle parity deltas while keeping strict quality and parity CI gates green.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Close SELF core spectral parity deltas",
+      "description": "As a maintainer, I want SELF core spectral outputs to match oracle so migration parity is numerically credible.",
+      "acceptanceCriteria": [
+        "Update SELF compute path so `selfenergy.dat`, `sigma.dat`, and `specfunct.dat` match `FX-SELF-ORACLE-001` within policy.",
+        "Preserve deterministic artifact formatting and ordering required by comparator.",
+        "Add or update focused regression assertions in `crates/feff-core/tests/self_parity.rs` for these artifacts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Close SELF auxiliary artifact parity deltas",
+      "description": "As a maintainer, I want SELF auxiliary outputs to match oracle so fixture-level parity is complete.",
+      "acceptanceCriteria": [
+        "Update SELF outputs so `loss.dat`, `mpse.dat`, `opconsCu.dat`, `sig2FEFF.dat`, and `logsfconv.dat` match `FX-SELF-ORACLE-001` within policy.",
+        "Ensure optional SELF input handling remains deterministic for oracle fixture staging.",
+        "Add or update SELF fixture assertions for all required auxiliary artifacts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "Close FULLSPECTRUM table parity deltas",
+      "description": "As a maintainer, I want FULLSPECTRUM table outputs to match oracle so downstream spectral chains are stable.",
+      "acceptanceCriteria": [
+        "Update FULLSPECTRUM compute path so `xmu.dat`, `osc_str.dat`, `eps.dat`, `drude.dat`, `background.dat`, and `fine_st.dat` match `FX-FULLSPECTRUM-ORACLE-001` within policy.",
+        "Preserve optional upstream input behavior used by oracle fixture staging.",
+        "Add or update focused regression assertions in `crates/feff-core/tests/fullspectrum_parity.rs` for these artifacts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Close FULLSPECTRUM diagnostic log parity",
+      "description": "As a maintainer, I want FULLSPECTRUM diagnostics to match oracle so runtime contract checks are complete.",
+      "acceptanceCriteria": [
+        "Update FULLSPECTRUM logging/output path so `logfullspectrum.dat` matches `FX-FULLSPECTRUM-ORACLE-001` within policy.",
+        "Keep deterministic log content and ordering expected by comparator policy.",
+        "Confirm FULLSPECTRUM fixture has zero artifact mismatches after change.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "Close RIXS artifact-contract parity gap",
+      "description": "As a maintainer, I want RIXS to emit the expected artifact contract so oracle parity no longer fails on missing outputs.",
+      "acceptanceCriteria": [
+        "Resolve `FX-RIXS-ORACLE-001` mismatch by materializing required `rixs.sh` artifact in deterministic output generation.",
+        "Preserve existing required RIXS spectral outputs (`rixs0.dat`, `rixs1.dat`, `rixsET.dat`, `rixsEE.dat`, `rixsET-sat.dat`, `rixsEE-sat.dat`, `logrixs.dat`).",
+        "Add or update focused regression assertions in `crates/feff-core/tests/rixs_parity.rs` and related CLI oracle checks.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Harden SELF/FULLSPECTRUM/RIXS oracle CLI regression coverage",
+      "description": "As a CLI maintainer, I want oracle integration tests to lock fixed behavior so parity regressions are caught early.",
+      "acceptanceCriteria": [
+        "Update `crates/feff-cli/tests/regression_cli.rs` SELF/EELS/FULLSPECTRUM/RIXS oracle test block to assert pass status and zero mismatches for fixed fixtures.",
+        "Keep drift-mode tests validating nonzero mismatch behavior when outputs are intentionally perturbed.",
+        "Ensure report JSON assertions include artifact-level entries for module-owned outputs.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Finalize artifact policy mappings without global tolerance loosening",
+      "description": "As a maintainer, I want comparator policy to remain strict while allowing only justified artifact-scoped updates.",
+      "acceptanceCriteria": [
+        "If policy changes are required, update `tasks/numeric-tolerance-policy.json` only for explicitly named SELF/FULLSPECTRUM/RIXS artifacts.",
+        "Do not introduce wildcard/global tolerance relaxation across unrelated modules.",
+        "Document rationale and before/after mismatch evidence in commit notes or migration summary.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Achieve green full oracle gate and publish updated migration summary",
+      "description": "As a release owner, I want a passing full oracle run and a dated summary so completion status is auditable.",
+      "acceptanceCriteria": [
+        "Run workflow-equivalent oracle command and confirm exit code `0`.",
+        "Oracle report indicates `passed=true`, `failed_fixture_count=0`, and `mismatch_fixture_count=0` for ORACLE fixtures.",
+        "Update `tasks/oracle-16-module-migration-summary.md` with latest run timestamp and per-module status.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Keep Rust quality workflow strict and green",
+      "description": "As a repository owner, I want quality checks to stay blocking so no Rust regressions merge.",
+      "acceptanceCriteria": [
+        "Ensure `.github/workflows/rust-quality-gates.yml` still runs `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and `cargo fmt --all -- --check`.",
+        "Do not add allow-failure behavior or relax warning policy.",
+        "Validate local command parity with workflow definitions after code changes.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Keep Rust parity workflow strict and diagnosable",
+      "description": "As a repository owner, I want parity checks to block merges and retain failure diagnostics.",
+      "acceptanceCriteria": [
+        "Ensure `.github/workflows/rust-parity-gates.yml` continues failing the job on nonzero oracle exit code.",
+        "Preserve upload of parity failure artifacts (`oracle-report.json`, `oracle-diff.txt`, summary, stderr).",
+        "Confirm summary rendering still includes mismatch detail extraction from report JSON.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Refresh migration-state documentation after parity closure",
+      "description": "As a maintainer, I want migration documentation to match current reality so contributors follow accurate guidance.",
+      "acceptanceCriteria": [
+        "Update stale migration-status narrative in `tasks/migration-gap-analysis.md` to reflect completed module ports and residual status removal.",
+        "Ensure `README.md` and `docs/developer-workflows.md` remain consistent with strict parity/quality gate behavior.",
+        "Retain explicit references to oracle command usage and report artifacts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Publish cutover rehearsal evidence for completed migration",
+      "description": "As an operator, I want updated cutover evidence so deployment readiness is explicit after parity closure.",
+      "acceptanceCriteria": [
+        "Add a new dated cutover report under `tasks/` documenting release build, smoke checks, and artifact verification.",
+        "Reference the same gate commands used by CI workflows.",
+        "Include pass/fail outcomes and file paths for generated evidence artifacts.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Publish rollback rehearsal evidence for completed migration",
+      "description": "As an operator, I want updated rollback evidence so operational safety is proven after migration completion.",
+      "acceptanceCriteria": [
+        "Add a new dated rollback report under `tasks/` documenting rollback steps, validation commands, and outcomes.",
+        "Confirm rollback checklist references the same strict quality/parity gate expectations.",
+        "Include reproducible command log references and resulting artifact file paths.",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}

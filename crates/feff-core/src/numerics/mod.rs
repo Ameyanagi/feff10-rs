@@ -1,3 +1,11 @@
+pub mod sfconv;
+
+pub use sfconv::{
+    SfconvConvolutionInput, SfconvConvolutionResult, SfconvError, SfconvGridConvolutionInput,
+    SfconvGridConvolutionResult, SfconvKernel, SfconvKernelApi, convolve_sfconv_grid,
+    convolve_sfconv_point,
+};
+
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -255,7 +263,7 @@ mod tests {
         linear_grid, load_numeric_tolerance_policy, relative_difference, stable_sum,
         stable_weighted_mean, stable_weighted_sum, within_tolerance,
     };
-    use std::path::{Path, PathBuf};
+    use std::path::Path;
 
     #[test]
     fn stable_sum_reduces_order_loss_for_large_and_small_values() {
@@ -354,8 +362,10 @@ mod tests {
     #[test]
     fn load_numeric_tolerance_policy_reads_category_tolerance() {
         let workspace_root = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .parent().unwrap()
-            .parent().unwrap();
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap();
         let policy_path = workspace_root.join(NUMERIC_TOLERANCE_POLICY_PATH);
         let policy = load_numeric_tolerance_policy(&policy_path).expect("policy should load");
         let tolerance = policy

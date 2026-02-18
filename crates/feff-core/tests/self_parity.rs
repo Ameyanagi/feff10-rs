@@ -10,8 +10,10 @@ use tempfile::TempDir;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -20,10 +22,16 @@ struct FixtureCase {
     input_directory: &'static str,
 }
 
-const APPROVED_SELF_FIXTURES: [FixtureCase; 1] = [FixtureCase {
-    id: "FX-SELF-001",
-    input_directory: "feff10/examples/MPSE/Cu_OPCONS",
-}];
+const APPROVED_SELF_FIXTURES: [FixtureCase; 2] = [
+    FixtureCase {
+        id: "FX-SELF-001",
+        input_directory: "feff10/examples/MPSE/Cu_OPCONS",
+    },
+    FixtureCase {
+        id: "FX-SELF-ORACLE-001",
+        input_directory: "feff10/examples/MPSE/Cu_OPCONS",
+    },
+];
 
 const SELF_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
     "selfenergy.dat",
@@ -34,6 +42,7 @@ const SELF_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
     "mpse.dat",
     "opconsCu.dat",
 ];
+const SELF_CORE_OUTPUT_ARTIFACTS: [&str; 3] = ["selfenergy.dat", "sigma.dat", "specfunct.dat"];
 const SELF_SPECTRUM_INPUT_CANDIDATES: [&str; 3] = ["xmu.dat", "chi.dat", "loss.dat"];
 
 #[test]
@@ -84,6 +93,44 @@ fn approved_self_fixtures_are_deterministic_across_runs() {
                 fixture.id, artifact
             );
         }
+    }
+}
+
+#[test]
+fn oracle_self_fixture_core_outputs_match_committed_baseline() {
+    let fixture = APPROVED_SELF_FIXTURES
+        .iter()
+        .find(|fixture| fixture.id == "FX-SELF-ORACLE-001")
+        .expect("oracle SELF fixture should be configured");
+    let temp = TempDir::new().expect("tempdir should be created");
+    let (output_dir, _) = run_self_for_fixture(fixture, temp.path(), "actual");
+
+    for artifact in SELF_CORE_OUTPUT_ARTIFACTS {
+        let baseline_path = baseline_artifact_path(fixture.id, Path::new(artifact));
+        assert!(
+            baseline_path.is_file(),
+            "oracle baseline artifact '{}' should exist",
+            baseline_path.display()
+        );
+
+        let actual_path = output_dir.join(artifact);
+        let actual = fs::read_to_string(&actual_path).unwrap_or_else(|_| {
+            panic!(
+                "actual artifact '{}' should be readable",
+                actual_path.display()
+            )
+        });
+        let baseline = fs::read_to_string(&baseline_path).unwrap_or_else(|_| {
+            panic!(
+                "baseline artifact '{}' should be readable",
+                baseline_path.display()
+            )
+        });
+        assert_eq!(
+            actual, baseline,
+            "oracle SELF artifact '{}' should match committed baseline bytes",
+            artifact
+        );
     }
 }
 
@@ -181,21 +228,27 @@ fn run_self_for_fixture(
 }
 
 fn stage_self_inputs_for_fixture(fixture_id: &str, destination_dir: &Path) -> Vec<String> {
-    stage_sfconv_input(fixture_id, &destination_dir.join("sfconv.inp"));
+    let input_seed_fixture_id = self_input_seed_fixture_id(fixture_id);
+    stage_sfconv_input(input_seed_fixture_id, &destination_dir.join("sfconv.inp"));
+
+    let spectrum_candidates: &[&str] = match fixture_id {
+        "FX-SELF-ORACLE-001" => &["loss.dat"],
+        _ => &SELF_SPECTRUM_INPUT_CANDIDATES,
+    };
 
     let mut staged_spectra = Vec::new();
-    for artifact in SELF_SPECTRUM_INPUT_CANDIDATES {
-        let source = baseline_artifact_path(fixture_id, Path::new(artifact));
+    for artifact in spectrum_candidates {
+        let source = baseline_artifact_path(input_seed_fixture_id, Path::new(artifact));
         if !source.is_file() {
             continue;
         }
-        copy_file(&source, &destination_dir.join(artifact));
-        staged_spectra.push(artifact.to_string());
+        copy_file(&source, &destination_dir.join(*artifact));
+        staged_spectra.push((*artifact).to_string());
     }
 
-    for artifact in collect_feff_spectrum_inputs_from_baseline(fixture_id) {
+    for artifact in collect_feff_spectrum_inputs_from_baseline(input_seed_fixture_id) {
         copy_file(
-            &baseline_artifact_path(fixture_id, Path::new(&artifact)),
+            &baseline_artifact_path(input_seed_fixture_id, Path::new(&artifact)),
             &destination_dir.join(&artifact),
         );
         staged_spectra.push(artifact);
@@ -209,10 +262,17 @@ fn stage_self_inputs_for_fixture(fixture_id: &str, destination_dir: &Path) -> Ve
         staged_spectra.push("xmu.dat".to_string());
     }
 
-    stage_optional_exc_input(fixture_id, &destination_dir.join("exc.dat"));
+    stage_optional_exc_input(input_seed_fixture_id, &destination_dir.join("exc.dat"));
     staged_spectra.sort();
     staged_spectra.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
     staged_spectra
+}
+
+fn self_input_seed_fixture_id(fixture_id: &str) -> &str {
+    match fixture_id {
+        "FX-SELF-ORACLE-001" => "FX-SELF-001",
+        _ => fixture_id,
+    }
 }
 
 fn expected_self_artifact_set(staged_spectra: &[String]) -> BTreeSet<String> {

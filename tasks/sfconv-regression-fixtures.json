@@ -1,0 +1,255 @@
+{
+  "pointCases": [
+    {
+      "id": "SFCONV-POINT-001",
+      "photoelectronEnergy": 2.4,
+      "chemicalPotential": 0.05,
+      "coreHoleLifetime": 0.25,
+      "signalEnergies": [
+        -2.0,
+        -1.0,
+        0.0,
+        1.0,
+        2.0,
+        3.0
+      ],
+      "signalValues": [
+        0.4,
+        0.8,
+        1.2,
+        1.1,
+        0.7,
+        0.3
+      ],
+      "spectralEnergies": [
+        -1.5,
+        -1.0,
+        -0.5,
+        0.0,
+        0.5,
+        1.0,
+        1.5
+      ],
+      "spectralValues": [
+        0.02,
+        0.06,
+        0.14,
+        0.18,
+        0.12,
+        0.07,
+        0.03
+      ],
+      "weights": [
+        0.62,
+        -0.08,
+        0.11,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "useAsymmetricPhase": false,
+      "applyEnergyCutoff": true,
+      "plasmaFrequency": 1.5,
+      "expectedMagnitude": 5.4937324256250153e-1,
+      "expectedPhase": -1.2832322768579479e-1,
+      "absTol": 1.0e-12,
+      "relTol": 1.0e-11
+    },
+    {
+      "id": "SFCONV-POINT-002",
+      "photoelectronEnergy": 1.8,
+      "chemicalPotential": -0.1,
+      "coreHoleLifetime": 0.18,
+      "signalEnergies": [
+        -2.0,
+        -1.0,
+        0.0,
+        1.0,
+        2.0,
+        3.0
+      ],
+      "signalValues": [
+        0.4,
+        0.8,
+        1.2,
+        1.1,
+        0.7,
+        0.3
+      ],
+      "spectralEnergies": [
+        -1.5,
+        -1.0,
+        -0.5,
+        0.0,
+        0.5,
+        1.0,
+        1.5
+      ],
+      "spectralValues": [
+        0.02,
+        0.06,
+        0.14,
+        0.18,
+        0.12,
+        0.07,
+        0.03
+      ],
+      "weights": [
+        0.57,
+        0.05,
+        0.09,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "useAsymmetricPhase": true,
+      "applyEnergyCutoff": true,
+      "plasmaFrequency": 1.2,
+      "expectedMagnitude": 7.7078737286800891e-1,
+      "expectedPhase": 0.0,
+      "absTol": 1.0e-12,
+      "relTol": 1.0e-11
+    },
+    {
+      "id": "SFCONV-POINT-003",
+      "photoelectronEnergy": 0.8,
+      "chemicalPotential": 0.0,
+      "coreHoleLifetime": 0.3,
+      "signalEnergies": [
+        -2.0,
+        -1.0,
+        0.0,
+        1.0,
+        2.0,
+        3.0
+      ],
+      "signalValues": [
+        0.4,
+        0.8,
+        1.2,
+        1.1,
+        0.7,
+        0.3
+      ],
+      "spectralEnergies": [
+        -1.5,
+        -1.0,
+        -0.5,
+        0.0,
+        0.5,
+        1.0,
+        1.5
+      ],
+      "spectralValues": [
+        0.02,
+        0.06,
+        0.14,
+        0.18,
+        0.12,
+        0.07,
+        0.03
+      ],
+      "weights": [
+        0.48,
+        0.12,
+        0.07,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "useAsymmetricPhase": false,
+      "applyEnergyCutoff": false,
+      "plasmaFrequency": 1.1,
+      "expectedMagnitude": 1.0909638849912089e0,
+      "expectedPhase": 2.4497866312686414e-1,
+      "absTol": 1.0e-12,
+      "relTol": 1.0e-11
+    }
+  ],
+  "gridCases": [
+    {
+      "id": "SFCONV-GRID-001",
+      "photoelectronEnergies": [
+        -0.5,
+        0.0,
+        0.5,
+        1.0,
+        1.5,
+        2.0
+      ],
+      "chemicalPotential": 0.05,
+      "coreHoleLifetime": 0.25,
+      "signalEnergies": [
+        -2.0,
+        -1.0,
+        0.0,
+        1.0,
+        2.0,
+        3.0
+      ],
+      "signalValues": [
+        0.4,
+        0.8,
+        1.2,
+        1.1,
+        0.7,
+        0.3
+      ],
+      "spectralEnergies": [
+        -1.5,
+        -1.0,
+        -0.5,
+        0.0,
+        0.5,
+        1.0,
+        1.5
+      ],
+      "spectralValues": [
+        0.02,
+        0.06,
+        0.14,
+        0.18,
+        0.12,
+        0.07,
+        0.03
+      ],
+      "weights": [
+        0.62,
+        -0.08,
+        0.11,
+        0.0,
+        0.0,
+        0.0,
+        0.0,
+        0.0
+      ],
+      "useAsymmetricPhase": false,
+      "applyEnergyCutoff": true,
+      "plasmaFrequency": 1.5,
+      "expectedMagnitudes": [
+        1.0481938804505888e0,
+        1.1750915943707010e0,
+        1.1325541657046232e0,
+        1.0712691086892789e0,
+        8.8919379683385824e-1,
+        7.0072991427837661e-1
+      ],
+      "expectedPhases": [
+        -1.2832322768579482e-1,
+        -1.2832322768579479e-1,
+        -1.2832322768579482e-1,
+        -1.2832322768579482e-1,
+        -1.2832322768579479e-1,
+        -1.2832322768579482e-1
+      ],
+      "absTol": 1.0e-12,
+      "relTol": 1.0e-11
+    }
+  ]
+}

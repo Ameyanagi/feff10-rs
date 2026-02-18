@@ -17,7 +17,7 @@ use super::screen::ScreenModule;
 use super::self_energy::SelfEnergyModule;
 use super::serialization::write_text_artifact;
 use super::xsph::XsphModule;
-use crate::domain::{FeffError, ComputeModule, ComputeRequest, ComputeResult};
+use crate::domain::{ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 use std::fs;
@@ -332,10 +332,7 @@ pub enum RegressionRunnerError {
         source: serde_json::Error,
     },
     #[error("invalid fixture configuration for '{fixture_id}': {message}")]
-    InvalidFixtureConfig {
-        fixture_id: String,
-        message: String,
-    },
+    InvalidFixtureConfig { fixture_id: String, message: String },
     #[error("comparator setup failed: {0}")]
     Comparator(#[from] ComparatorError),
     #[error("RDINP scaffold execution failed for fixture '{fixture_id}': {source}")]
@@ -580,12 +577,12 @@ fn run_rdinp_if_enabled(
         output_dir,
     );
 
-    RdinpModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Rdinp {
+    RdinpModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Rdinp {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -638,12 +635,12 @@ fn run_xsph_if_enabled(
         output_dir,
     );
 
-    XsphModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Xsph {
+    XsphModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Xsph {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -667,12 +664,12 @@ fn run_band_if_enabled(
         output_dir,
     );
 
-    BandModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Band {
+    BandModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Band {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -696,12 +693,12 @@ fn run_ldos_if_enabled(
         output_dir,
     );
 
-    LdosModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Ldos {
+    LdosModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Ldos {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -725,12 +722,12 @@ fn run_rixs_if_enabled(
         output_dir,
     );
 
-    RixsModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Rixs {
+    RixsModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Rixs {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -754,12 +751,12 @@ fn run_crpa_if_enabled(
         output_dir,
     );
 
-    CrpaModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Crpa {
+    CrpaModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Crpa {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -812,12 +809,12 @@ fn run_screen_if_enabled(
         output_dir,
     );
 
-    ScreenModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Screen {
+    ScreenModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Screen {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -870,12 +867,12 @@ fn run_eels_if_enabled(
         output_dir,
     );
 
-    EelsModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Eels {
+    EelsModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Eels {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -928,12 +925,12 @@ fn run_debye_if_enabled(
         output_dir,
     );
 
-    DebyeModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Debye {
+    DebyeModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Debye {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -957,12 +954,12 @@ fn run_dmdw_if_enabled(
         output_dir,
     );
 
-    DmdwModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Dmdw {
+    DmdwModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Dmdw {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -986,12 +983,12 @@ fn run_path_if_enabled(
         output_dir,
     );
 
-    PathModule.execute(&request).map_err(|source| {
-        RegressionRunnerError::Path {
+    PathModule
+        .execute(&request)
+        .map_err(|source| RegressionRunnerError::Path {
             fixture_id: fixture.id.clone(),
             source,
-        }
-    })?;
+        })?;
 
     Ok(())
 }
@@ -2768,18 +2765,28 @@ mod tests {
     }
 
     fn stage_repo_self_inputs(fixture_id: &str, destination_dir: &Path) {
+        let input_seed_fixture_id = match fixture_id {
+            "FX-SELF-ORACLE-001" => "FX-SELF-001",
+            _ => fixture_id,
+        };
+
         stage_repo_text_input(
-            fixture_id,
+            input_seed_fixture_id,
             "sfconv.inp",
             &destination_dir.join("sfconv.inp"),
             "msfconv, ipse, ipsk\n   1   0   0\n",
         );
 
+        let spectrum_candidates: &[&str] = match fixture_id {
+            "FX-SELF-ORACLE-001" => &["loss.dat"],
+            _ => &["xmu.dat", "chi.dat", "loss.dat"],
+        };
+
         let mut staged_spectrum = false;
-        for artifact in ["xmu.dat", "chi.dat", "loss.dat"] {
+        for artifact in spectrum_candidates {
             let source = workspace_root()
                 .join("artifacts/fortran-baselines")
-                .join(fixture_id)
+                .join(input_seed_fixture_id)
                 .join("baseline")
                 .join(artifact);
             if !source.is_file() {
@@ -2787,7 +2794,7 @@ mod tests {
             }
 
             stage_repo_text_input(
-                fixture_id,
+                input_seed_fixture_id,
                 artifact,
                 &destination_dir.join(artifact),
                 "0.0 0.0\n",
@@ -2797,7 +2804,7 @@ mod tests {
 
         if !staged_spectrum {
             stage_repo_text_input(
-                fixture_id,
+                input_seed_fixture_id,
                 "xmu.dat",
                 &destination_dir.join("xmu.dat"),
                 "0.0 0.0\n",
@@ -2805,7 +2812,7 @@ mod tests {
         }
 
         stage_repo_text_input(
-            fixture_id,
+            input_seed_fixture_id,
             "exc.dat",
             &destination_dir.join("exc.dat"),
             "0.0 0.0\n",

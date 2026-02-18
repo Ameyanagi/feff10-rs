@@ -1,0 +1,16 @@
+# Ralph Progress Log
+Started: Wed Feb 18 2026
+
+## Codebase Patterns
+- For SELF oracle fixtures, stage runtime SELF inputs from compatibility baseline `FX-SELF-001` and use only `loss.dat` as the staged spectrum source; staging oracle rewritten `loss.dat` (or extra `xmu.dat`) introduces deterministic parity drift.
+
+## 2026-02-18 11:11:32 JST - US-001
+- Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
+- Added committed oracle snapshot artifacts under `artifacts/fortran-baselines/FX-SELF-ORACLE-001/baseline/` and expanded `crates/feff-core/tests/self_parity.rs` with `FX-SELF-ORACLE-001` coverage plus core-artifact baseline assertions for `selfenergy.dat`, `sigma.dat`, and `specfunct.dat`.
+- Fixed SELF oracle input staging in both parity tests and regression scaffolding to source input spectra from `FX-SELF-001` and stage only `loss.dat` for oracle parity runs; updated CLI SELF oracle regression header expectations to the SFCONV-backed output contract.
+- Files changed: `crates/feff-core/src/numerics/mod.rs`, `crates/feff-core/src/numerics/sfconv/mod.rs`, `crates/feff-core/src/modules/self_energy/model.rs`, `crates/feff-core/src/modules/self_energy/mod.rs`, `crates/feff-core/src/modules/regression.rs`, `crates/feff-core/tests/self_parity.rs`, `crates/feff-core/tests/sfconv_regression.rs`, `tasks/sfconv-regression-fixtures.json`, `artifacts/fortran-baselines/FX-SELF-ORACLE-001/baseline/*`, `crates/feff-cli/tests/regression_cli.rs`, `crates/feff-core/tests/parser_validation_snapshots.rs`, `crates/feff-core/tests/parser_fixture_inputs.rs`, `crates/feff-core/tests/numerics_reference_data.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Oracle SELF parity is stable only when staged input spectra come from compatibility snapshots, not oracle output snapshots.
+  - Gotchas encountered: Running cargo quality commands in parallel causes lock contention in this workspace; run checks sequentially.
+  - Useful context: `cargo fmt --all -- --check` currently reports widespread pre-existing formatting drift across many untouched files; this iteration kept formatting scoped to touched story files.
+---

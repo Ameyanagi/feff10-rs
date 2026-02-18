@@ -4,11 +4,12 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
-
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -2914,7 +2915,7 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
         fs::read_to_string(actual_root.join(fixture_id).join("actual").join("loss.dat"))
             .expect("rewritten loss.dat should be readable");
     assert!(
-        rewritten_spectrum.contains("# SELF true-compute rewritten spectrum"),
+        rewritten_spectrum.contains("# SELF sfconv-backed rewritten spectrum"),
         "rewritten loss.dat should include deterministic SELF rewritten-spectrum header"
     );
     assert!(
@@ -2934,7 +2935,7 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
     )
     .expect("logsfconv.dat should be readable");
     assert!(
-        log_source.contains("SELF true-compute log"),
+        log_source.contains("SELF sfconv-backed log"),
         "SELF log should include deterministic log header"
     );
     assert!(
