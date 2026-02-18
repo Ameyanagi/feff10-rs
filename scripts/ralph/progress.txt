@@ -3,6 +3,7 @@ Started: Wed Feb 18 2026
 
 ## Codebase Patterns
 - For SELF oracle fixtures, stage runtime SELF inputs from compatibility baseline `FX-SELF-001` and use only `loss.dat` as the staged spectrum source; staging oracle rewritten `loss.dat` (or extra `xmu.dat`) introduces deterministic parity drift.
+- Fixture-scoped regression compares every artifact present in the baseline directory; if baseline includes staged entry files such as `feff.inp`, stage the same file under `<actual-root>/<fixture>/<actual-subdir>/` to avoid false missing-artifact mismatches.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -13,4 +14,14 @@ Started: Wed Feb 18 2026
   - Patterns discovered: Oracle SELF parity is stable only when staged input spectra come from compatibility snapshots, not oracle output snapshots.
   - Gotchas encountered: Running cargo quality commands in parallel causes lock contention in this workspace; run checks sequentially.
   - Useful context: `cargo fmt --all -- --check` currently reports widespread pre-existing formatting drift across many untouched files; this iteration kept formatting scoped to touched story files.
+---
+## 2026-02-18 11:19:51 JST - US-002
+- Added oracle baseline assertions in `crates/feff-core/tests/self_parity.rs` for SELF auxiliary artifacts (`loss.dat`, `mpse.dat`, `opconsCu.dat`, `sig2FEFF.dat`, `logsfconv.dat`) so `FX-SELF-ORACLE-001` locks full auxiliary parity.
+- Added deterministic oracle staging coverage in `crates/feff-core/tests/self_parity.rs` to verify `FX-SELF-ORACLE-001` stages only `loss.dat` spectra while consistently sourcing optional `exc.dat` and required `sfconv.inp` from `FX-SELF-001`.
+- Verified with `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and `cargo test --locked -p feff-core --test self_parity` after formatting the touched file.
+- Files changed: `crates/feff-core/tests/self_parity.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Local regression spot-checks for oracle fixtures must stage any baseline-owned entry artifacts (not only module outputs) to avoid comparator false negatives.
+  - Gotchas encountered: `cargo fmt --all -- --check` still fails due widespread pre-existing formatting drift in untouched files; do scoped formatting for touched files unless running a dedicated repo-wide formatting sweep.
+  - Useful context: SELF auxiliary artifacts were already byte-identical to committed oracle baselines; the missing piece was explicit regression guard coverage.
 ---

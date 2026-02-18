@@ -1,7 +1,7 @@
 use feff_core::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
-use feff_core::modules::ModuleExecutor;
-use feff_core::modules::regression::{RegressionRunnerConfig, run_regression};
+use feff_core::modules::regression::{run_regression, RegressionRunnerConfig};
 use feff_core::modules::self_energy::SelfEnergyModule;
+use feff_core::modules::ModuleExecutor;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;
@@ -43,6 +43,13 @@ const SELF_REQUIRED_OUTPUT_ARTIFACTS: [&str; 7] = [
     "opconsCu.dat",
 ];
 const SELF_CORE_OUTPUT_ARTIFACTS: [&str; 3] = ["selfenergy.dat", "sigma.dat", "specfunct.dat"];
+const SELF_AUXILIARY_OUTPUT_ARTIFACTS: [&str; 5] = [
+    "loss.dat",
+    "mpse.dat",
+    "opconsCu.dat",
+    "sig2FEFF.dat",
+    "logsfconv.dat",
+];
 const SELF_SPECTRUM_INPUT_CANDIDATES: [&str; 3] = ["xmu.dat", "chi.dat", "loss.dat"];
 
 #[test]
@@ -105,30 +112,67 @@ fn oracle_self_fixture_core_outputs_match_committed_baseline() {
     let temp = TempDir::new().expect("tempdir should be created");
     let (output_dir, _) = run_self_for_fixture(fixture, temp.path(), "actual");
 
-    for artifact in SELF_CORE_OUTPUT_ARTIFACTS {
-        let baseline_path = baseline_artifact_path(fixture.id, Path::new(artifact));
-        assert!(
-            baseline_path.is_file(),
-            "oracle baseline artifact '{}' should exist",
-            baseline_path.display()
-        );
+    assert_outputs_match_committed_baseline(fixture.id, &output_dir, &SELF_CORE_OUTPUT_ARTIFACTS);
+}
 
-        let actual_path = output_dir.join(artifact);
-        let actual = fs::read_to_string(&actual_path).unwrap_or_else(|_| {
-            panic!(
-                "actual artifact '{}' should be readable",
-                actual_path.display()
-            )
-        });
-        let baseline = fs::read_to_string(&baseline_path).unwrap_or_else(|_| {
-            panic!(
-                "baseline artifact '{}' should be readable",
-                baseline_path.display()
-            )
-        });
+#[test]
+fn oracle_self_fixture_auxiliary_outputs_match_committed_baseline() {
+    let fixture = APPROVED_SELF_FIXTURES
+        .iter()
+        .find(|fixture| fixture.id == "FX-SELF-ORACLE-001")
+        .expect("oracle SELF fixture should be configured");
+    let temp = TempDir::new().expect("tempdir should be created");
+    let (output_dir, _) = run_self_for_fixture(fixture, temp.path(), "actual");
+
+    assert_outputs_match_committed_baseline(
+        fixture.id,
+        &output_dir,
+        &SELF_AUXILIARY_OUTPUT_ARTIFACTS,
+    );
+}
+
+#[test]
+fn oracle_self_fixture_staging_prefers_loss_and_stages_optional_exc_deterministically() {
+    let fixture_id = "FX-SELF-ORACLE-001";
+    let seed_fixture_id = self_input_seed_fixture_id(fixture_id);
+    let temp = TempDir::new().expect("tempdir should be created");
+    let first_dir = temp.path().join("first");
+    let second_dir = temp.path().join("second");
+
+    let first_staged = stage_self_inputs_for_fixture(fixture_id, &first_dir);
+    let second_staged = stage_self_inputs_for_fixture(fixture_id, &second_dir);
+
+    assert_eq!(first_staged, vec!["loss.dat".to_string()]);
+    assert_eq!(
+        second_staged, first_staged,
+        "oracle SELF staging should be deterministic across runs"
+    );
+    assert!(
+        !first_dir.join("xmu.dat").exists() && !first_dir.join("chi.dat").exists(),
+        "oracle SELF staging should only include loss.dat among named spectra"
+    );
+
+    for artifact in ["loss.dat", "sfconv.inp", "exc.dat"] {
+        let expected = fs::read(baseline_artifact_path(seed_fixture_id, Path::new(artifact)))
+            .unwrap_or_else(|_| {
+                panic!(
+                    "baseline '{}' should be readable for deterministic oracle staging",
+                    artifact
+                )
+            });
+        let first = fs::read(first_dir.join(artifact))
+            .unwrap_or_else(|_| panic!("staged '{}' should be readable (first run)", artifact));
+        let second = fs::read(second_dir.join(artifact))
+            .unwrap_or_else(|_| panic!("staged '{}' should be readable (second run)", artifact));
+
         assert_eq!(
-            actual, baseline,
-            "oracle SELF artifact '{}' should match committed baseline bytes",
+            first, expected,
+            "oracle SELF staging should source '{}' from '{}'",
+            artifact, seed_fixture_id
+        );
+        assert_eq!(
+            second, expected,
+            "oracle SELF staging should remain deterministic for '{}'",
             artifact
         );
     }
@@ -308,6 +352,40 @@ fn baseline_artifact_path(fixture_id: &str, relative_path: &Path) -> PathBuf {
         .join(fixture_id)
         .join("baseline")
         .join(relative_path)
+}
+
+fn assert_outputs_match_committed_baseline(
+    fixture_id: &str,
+    output_dir: &Path,
+    artifacts: &[&str],
+) {
+    for artifact in artifacts {
+        let baseline_path = baseline_artifact_path(fixture_id, Path::new(artifact));
+        assert!(
+            baseline_path.is_file(),
+            "oracle baseline artifact '{}' should exist",
+            baseline_path.display()
+        );
+
+        let actual_path = output_dir.join(artifact);
+        let actual = fs::read_to_string(&actual_path).unwrap_or_else(|_| {
+            panic!(
+                "actual artifact '{}' should be readable",
+                actual_path.display()
+            )
+        });
+        let baseline = fs::read_to_string(&baseline_path).unwrap_or_else(|_| {
+            panic!(
+                "baseline artifact '{}' should be readable",
+                baseline_path.display()
+            )
+        });
+        assert_eq!(
+            actual, baseline,
+            "oracle SELF artifact '{}' should match committed baseline bytes",
+            artifact
+        );
+    }
 }
 
 fn stage_sfconv_input(fixture_id: &str, destination: &Path) {
