@@ -460,21 +460,44 @@ impl Comparator {
 #[derive(Debug, thiserror::Error)]
 pub enum ComparatorError {
     #[error("failed to read policy '{}': {source}", path.display())]
-    ReadPolicy { path: PathBuf, source: std::io::Error },
+    ReadPolicy {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("failed to parse policy '{}': {source}", path.display())]
-    ParsePolicy { path: PathBuf, source: serde_json::Error },
+    ParsePolicy {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
     #[error("invalid policy: {0}")]
     InvalidPolicy(String),
     #[error("invalid glob pattern '{pattern}': {source}")]
-    InvalidGlob { pattern: String, source: globset::Error },
+    InvalidGlob {
+        pattern: String,
+        source: globset::Error,
+    },
     #[error("failed to read artifact '{}': {source}", path.display())]
-    ReadArtifact { path: PathBuf, source: std::io::Error },
+    ReadArtifact {
+        path: PathBuf,
+        source: std::io::Error,
+    },
     #[error("artifact '{}' is not valid UTF-8: {source}", path.display())]
-    DecodeArtifact { path: PathBuf, source: std::string::FromUtf8Error },
+    DecodeArtifact {
+        path: PathBuf,
+        source: std::string::FromUtf8Error,
+    },
     #[error("failed to parse numeric content in '{}': {source}", path.display())]
-    NumericParse { path: PathBuf, source: NumericParseError },
-    #[error("numeric_tolerance selected for artifact '{artifact_path}' without tolerance (category={category_id:?})")]
-    MissingTolerance { artifact_path: String, category_id: Option<String> },
+    NumericParse {
+        path: PathBuf,
+        source: NumericParseError,
+    },
+    #[error(
+        "numeric_tolerance selected for artifact '{artifact_path}' without tolerance (category={category_id:?})"
+    )]
+    MissingTolerance {
+        artifact_path: String,
+        category_id: Option<String>,
+    },
 }
 
 impl From<ComparatorError> for FeffError {
@@ -631,6 +654,7 @@ mod tests {
         ArtifactComparisonMetrics, ArtifactPair, Comparator, ComparatorError, ComparisonMode,
         NumericTolerance,
     };
+    use serde_json::Value;
     use std::fs;
     use std::path::PathBuf;
     use tempfile::TempDir;
@@ -1063,6 +1087,134 @@ mod tests {
         assert!(!results[1].passed);
         assert_eq!(results[0].artifact_path, "a.dat");
         assert_eq!(results[1].artifact_path, "b.dat");
+    }
+
+    #[test]
+    fn workspace_policy_resolves_targeted_contract_artifacts_first() {
+        let policy_path = workspace_root().join("tasks/numeric-tolerance-policy.json");
+        let comparator = Comparator::from_policy_path(&policy_path).unwrap_or_else(|error| {
+            panic!("policy '{}' should parse: {}", policy_path.display(), error)
+        });
+
+        let self_sigma = comparator.resolve_rule_for_artifact("sigma.dat");
+        assert_eq!(self_sigma.mode, ComparisonMode::ExactText);
+        assert_eq!(
+            self_sigma.category_id.as_deref(),
+            Some("self_contract_outputs")
+        );
+
+        let fullspectrum_osc = comparator.resolve_rule_for_artifact("osc_str.dat");
+        assert_eq!(fullspectrum_osc.mode, ComparisonMode::ExactText);
+        assert_eq!(
+            fullspectrum_osc.category_id.as_deref(),
+            Some("fullspectrum_contract_outputs")
+        );
+
+        let rixs_table = comparator.resolve_rule_for_artifact("rixsET.dat");
+        assert_eq!(rixs_table.mode, ComparisonMode::NumericTolerance);
+        assert_eq!(
+            rixs_table.category_id.as_deref(),
+            Some("rixs_contract_tables")
+        );
+        assert_eq!(
+            rixs_table.tolerance,
+            Some(NumericTolerance {
+                abs_tol: 1e-8,
+                rel_tol: 1e-6,
+                relative_floor: 1e-12,
+            })
+        );
+
+        let rixs_script = comparator.resolve_rule_for_artifact("rixs.sh");
+        assert_eq!(rixs_script.mode, ComparisonMode::ExactText);
+        assert_eq!(
+            rixs_script.category_id.as_deref(),
+            Some("rixs_contract_exact_outputs")
+        );
+
+        let compton_rule = comparator.resolve_rule_for_artifact("compton.dat");
+        assert_eq!(compton_rule.mode, ComparisonMode::NumericTolerance);
+        assert_eq!(
+            compton_rule.category_id.as_deref(),
+            Some("columnar_spectra")
+        );
+    }
+
+    #[test]
+    fn workspace_policy_keeps_targeted_globs_artifact_scoped() {
+        let policy_path = workspace_root().join("tasks/numeric-tolerance-policy.json");
+        let policy_text = fs::read_to_string(&policy_path).unwrap_or_else(|error| {
+            panic!(
+                "policy '{}' should be readable: {}",
+                policy_path.display(),
+                error
+            )
+        });
+        let policy: Value = serde_json::from_str(&policy_text).unwrap_or_else(|error| {
+            panic!(
+                "policy '{}' should be valid JSON: {}",
+                policy_path.display(),
+                error
+            )
+        });
+
+        let categories = policy["categories"]
+            .as_array()
+            .expect("policy categories should be an array");
+
+        for category_id in [
+            "self_contract_outputs",
+            "fullspectrum_contract_outputs",
+            "rixs_contract_exact_outputs",
+            "rixs_contract_tables",
+        ] {
+            let category = categories
+                .iter()
+                .find(|entry| entry["id"].as_str() == Some(category_id))
+                .unwrap_or_else(|| panic!("policy should define '{}' category", category_id));
+            let file_globs = category["fileGlobs"]
+                .as_array()
+                .unwrap_or_else(|| panic!("'{}' should define fileGlobs", category_id));
+
+            for glob in file_globs {
+                let pattern = glob.as_str().unwrap_or_else(|| {
+                    panic!("'{}' fileGlob entries should be strings", category_id)
+                });
+                assert!(
+                    pattern.starts_with("**/"),
+                    "'{}' fileGlob '{}' should target explicit artifact names",
+                    category_id,
+                    pattern
+                );
+                let artifact_name = pattern.trim_start_matches("**/");
+                assert!(
+                    !artifact_name.contains('*')
+                        && !artifact_name.contains('?')
+                        && !artifact_name.contains('['),
+                    "'{}' fileGlob '{}' should not use wildcard artifact names",
+                    category_id,
+                    pattern
+                );
+            }
+        }
+
+        let columnar = categories
+            .iter()
+            .find(|entry| entry["id"].as_str() == Some("columnar_spectra"))
+            .expect("policy should define columnar_spectra category");
+        let columnar_globs = columnar["fileGlobs"]
+            .as_array()
+            .expect("columnar_spectra should define fileGlobs");
+        assert!(
+            !columnar_globs
+                .iter()
+                .any(|glob| glob.as_str() == Some("**/rixs*.dat")),
+            "columnar_spectra should not include the broad RIXS wildcard mapping"
+        );
+    }
+
+    fn workspace_root() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..")
     }
 
     fn write_file(temp_dir: &TempDir, relative_path: &str, content: &str) -> PathBuf {

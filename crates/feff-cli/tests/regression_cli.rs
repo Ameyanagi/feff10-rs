@@ -3774,8 +3774,8 @@ fn oracle_command_runs_rixs_parity_for_fixed_fixture_and_drift_diagnostics() {
     );
     assert_eq!(
         canonical_report["comparison"]["matched_category"],
-        Value::from("columnar_spectra"),
-        "canonical rixsET.dat should resolve columnar_spectra policy category"
+        Value::from("rixs_contract_tables"),
+        "canonical rixsET.dat should resolve rixs_contract_tables policy category"
     );
 
     let drift_oracle_root = temp.path().join("oracle-root-drift");

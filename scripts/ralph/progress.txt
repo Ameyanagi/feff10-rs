@@ -8,6 +8,7 @@ Started: Wed Feb 18 2026
 - Oracle parity requires a committed baseline file for every module-owned output artifact (including diagnostics like `logfullspectrum.dat`); otherwise comparator reports deterministic `Missing baseline artifact` mismatches.
 - RIXS output contract now includes deterministic `rixs.sh`; keep the canonical script template at `crates/feff-core/src/modules/rixs/rixs.sh.template` and wire it through module output assertions (core parity + CLI oracle checks) when touching RIXS artifacts.
 - Oracle baseline logs can be fixture-id sensitive; regenerate committed `*-ORACLE-*` baselines with the same fixture ID used by the oracle manifest to avoid deterministic `log*.dat` exact-text drift.
+- Comparator policy is first-match: place artifact-scoped categories before broad wildcard categories to prevent tolerance bleed (for example, explicit SELF `sigma.dat` mapping ahead of thermal `**/sig*.dat`).
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -71,4 +72,15 @@ Started: Wed Feb 18 2026
   - Patterns discovered: Oracle CLI regression is most stable with one fixed-fixture pass path and one explicit drift path per module, so both green parity and failure diagnostics stay locked.
   - Gotchas encountered: Compatibility fixtures like `FX-EELS-001` can still drift in module-owned outputs; strict zero-mismatch CLI assertions should target dedicated `*-ORACLE-*` baselines.
   - Useful context: `log*.dat` artifacts may encode fixture identity; regenerate baselines through oracle runs using the same fixture ID as the test manifest.
+---
+## 2026-02-18 12:16:54 JST - US-007
+- Tightened `tasks/numeric-tolerance-policy.json` with artifact-scoped SELF/FULLSPECTRUM/RIXS categories and replaced the broad `**/rixs*.dat` wildcard with explicit RIXS table artifact mappings.
+- Added workspace-policy regression guards in `crates/feff-core/src/modules/comparator.rs` to verify targeted artifact resolution and enforce wildcard-free artifact names inside targeted categories.
+- Updated `crates/feff-cli/tests/regression_cli.rs` RIXS oracle assertion so `rixsET.dat` expects `rixs_contract_tables` category resolution.
+- Quality checks: `cargo check --locked` passed, `cargo test --locked -p feff-core workspace_policy_resolves_targeted_contract_artifacts_first` passed, `cargo test --locked -p feff-core workspace_policy_keeps_targeted_globs_artifact_scoped` passed, `cargo test --locked -p feff-cli --test regression_cli oracle_command_runs_rixs_parity_for_fixed_fixture_and_drift_diagnostics` passed, `cargo clippy --locked --all-targets -- -D warnings` passed; `cargo fmt --all -- --check` still fails due pre-existing repository-wide formatting drift outside this story scope.
+- Files changed: `tasks/numeric-tolerance-policy.json`, `crates/feff-core/src/modules/comparator.rs`, `crates/feff-cli/tests/regression_cli.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: First-match policy ordering is the enforcement point for keeping strict module contracts while preserving existing wildcard categories for unrelated modules.
+  - Gotchas encountered: Running cargo checks in parallel still causes lock contention in this workspace; keep verification commands sequential.
+  - Useful context: Before/after evidence is now codified in tests; `workspace_policy_keeps_targeted_globs_artifact_scoped` verifies removal of `**/rixs*.dat`, and `workspace_policy_resolves_targeted_contract_artifacts_first` verifies `rixsET.dat` resolves `rixs_contract_tables` (no longer generic `columnar_spectra`).
 ---
