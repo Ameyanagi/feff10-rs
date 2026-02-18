@@ -1,0 +1,14 @@
+Starting RIXS true-compute module.
+fixture: FX-RIXS-ORACLE-001
+run_enabled=true n_edges=2 edge_labels=[L3, L2]
+incident_range=[-12.0000, 18.0000] incident_rows=64 emitted_rows=64
+incident_step=0.476190 emitted_step=0.317460
+gamma_core=1.35051200E-4 gamma_edge_1=1.45051200E-4 gamma_edge_2=1.55051200E-4
+read_poles=true skip_calc=false read_sigma=true
+phase_1={bytes:8, checksum:819235866624, mean:28.500000, rms:40.015622}
+phase_2={bytes:8, checksum:679376830464, mean:4.625000, rms:5.601339}
+wscrn_1={count:15, min:-6.00000000E0, max:8.00000000E0, mean:6.92666667E-1, rms:2.87041344E0}
+wscrn_2={count:15, min:-5.00000000E0, max:9.00000000E0, mean:9.21333333E-1, rms:2.96079494E0}
+xsect_2={count:15, min:0.00000000E0, max:8.00000000E0, mean:1.74000000E0, rms:2.88594294E0}
+interference=0.091443 edge_mix=0.495914 sat_ratio=0.233480 gamma_width=40.000000
+Module RIXS true-compute execution finished.

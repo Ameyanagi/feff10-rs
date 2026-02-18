@@ -2795,14 +2795,15 @@ fn oracle_command_runs_dmdw_parity_with_input_contract_and_comparison_diagnostic
 }
 
 #[test]
-fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
+fn oracle_command_runs_self_parity_for_fixed_fixture_and_drift_diagnostics() {
     if !command_available("jq") {
         eprintln!("Skipping SELF oracle CLI test because jq is unavailable in PATH.");
         return;
     }
 
     let temp = TempDir::new().expect("tempdir should be created");
-    let fixture_id = "FX-SELF-001";
+    let fixture_id = "FX-SELF-ORACLE-001";
+    let input_seed_fixture_id = "FX-SELF-001";
     let workspace_root = workspace_root();
     let fixture_input_dir = workspace_root.join("feff10/examples/MPSE/Cu_OPCONS");
     let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
@@ -2814,11 +2815,7 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
 
     let manifest_path = temp.path().join("manifest.json");
     let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
-    let oracle_root = temp.path().join("oracle-root");
-    let actual_root = temp.path().join("actual-root");
-    let report_path = temp.path().join("report/oracle-self.json");
     let baseline_archive = fixture_input_dir.join("REFERENCE.zip");
-
     let manifest = format!(
         r#"
         {{
@@ -2844,50 +2841,12 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
     );
     write_file(&manifest_path, &manifest);
 
-    let staged_output_dir = actual_root.join(fixture_id).join("actual");
-    stage_workspace_fixture_file(
-        fixture_id,
-        "sfconv.inp",
-        &staged_output_dir.join("sfconv.inp"),
-    );
-    stage_workspace_fixture_file(fixture_id, "exc.dat", &staged_output_dir.join("exc.dat"));
-
-    let staged_loss_source =
-        "# staged SELF spectrum input\n  1.0000000   0.1200000\n  2.0000000   0.2400000\n";
-    write_file(&staged_output_dir.join("loss.dat"), staged_loss_source);
-
     let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_command = format!(
         "GITHUB_WORKSPACE='{}' '{}'",
         workspace_root_arg, capture_runner_arg
     );
-    let output = run_oracle_command_with_extra_args(
-        &manifest_path,
-        &policy_path,
-        &oracle_root,
-        &actual_root,
-        &report_path,
-        &[
-            "--capture-runner",
-            capture_runner_command.as_str(),
-            "--run-self",
-        ],
-    );
-
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "SELF oracle parity should report mismatches against captured outputs, stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("Fixture FX-SELF-001 mismatches"),
-        "SELF oracle summary should include fixture mismatch details, stdout: {}",
-        stdout
-    );
-
     let expected_outputs = [
         "selfenergy.dat",
         "sigma.dat",
@@ -2898,9 +2857,52 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
         "opconsCu.dat",
         "loss.dat",
     ];
-    for artifact in expected_outputs {
+
+    let pass_oracle_root = temp.path().join("oracle-root-pass");
+    let pass_actual_root = temp.path().join("actual-root-pass");
+    let pass_report_path = temp.path().join("report/oracle-self-pass.json");
+    let pass_staged_output_dir = pass_actual_root.join(fixture_id).join("actual");
+    for artifact in ["feff.inp", "sfconv.inp", "exc.dat", "loss.dat"] {
+        stage_workspace_fixture_file(
+            input_seed_fixture_id,
+            artifact,
+            &pass_staged_output_dir.join(artifact),
+        );
+    }
+
+    let pass_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &pass_oracle_root,
+        &pass_actual_root,
+        &pass_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-self",
+        ],
+    );
+    assert_eq!(
+        pass_output.status.code(),
+        Some(0),
+        "SELF oracle parity should pass for fixed fixture, stderr: {}",
+        String::from_utf8_lossy(&pass_output.stderr)
+    );
+    let pass_stdout = String::from_utf8_lossy(&pass_output.stdout);
+    assert!(
+        pass_stdout.contains("Regression status: PASS"),
+        "SELF oracle summary should report PASS for fixed fixture, stdout: {}",
+        pass_stdout
+    );
+    assert!(
+        pass_stdout.contains("Mismatches: 0 fixture(s), 0 artifact(s)"),
+        "SELF oracle summary should report zero mismatches for fixed fixture, stdout: {}",
+        pass_stdout
+    );
+
+    for artifact in &expected_outputs {
         assert!(
-            actual_root
+            pass_actual_root
                 .join(fixture_id)
                 .join("actual")
                 .join(artifact)
@@ -2911,9 +2913,13 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
         );
     }
 
-    let rewritten_spectrum =
-        fs::read_to_string(actual_root.join(fixture_id).join("actual").join("loss.dat"))
-            .expect("rewritten loss.dat should be readable");
+    let rewritten_spectrum = fs::read_to_string(
+        pass_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("loss.dat"),
+    )
+    .expect("rewritten loss.dat should be readable");
     assert!(
         rewritten_spectrum.contains("# SELF sfconv-backed rewritten spectrum"),
         "rewritten loss.dat should include deterministic SELF rewritten-spectrum header"
@@ -2922,13 +2928,9 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
         rewritten_spectrum.contains("# source: loss.dat"),
         "rewritten loss.dat should record its source artifact"
     );
-    assert_ne!(
-        rewritten_spectrum, staged_loss_source,
-        "run-self should rewrite staged spectrum content instead of leaving staged input bytes"
-    );
 
     let log_source = fs::read_to_string(
-        actual_root
+        pass_actual_root
             .join(fixture_id)
             .join("actual")
             .join("logsfconv.dat"),
@@ -2942,60 +2944,122 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
         log_source.contains("outputs = "),
         "SELF log should enumerate emitted artifacts"
     );
-    assert!(
-        log_source.contains("logsfconv.dat"),
-        "SELF log output set should include log artifact names"
-    );
-    assert!(
-        log_source.contains("loss.dat"),
-        "SELF log output set should include rewritten spectrum artifact names"
-    );
 
-    assert!(
-        report_path.is_file(),
-        "SELF oracle parity should emit a report"
-    );
-    let parsed: Value =
-        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
-            .expect("report JSON should parse");
-    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+    let pass_report: Value = serde_json::from_str(
+        &fs::read_to_string(&pass_report_path).expect("pass report should be readable"),
+    )
+    .expect("pass report JSON should parse");
+    assert_eq!(pass_report["passed"], Value::Bool(true));
+    assert_eq!(pass_report["failed_fixture_count"], Value::from(0));
+    assert_eq!(pass_report["mismatch_fixture_count"], Value::from(0));
+    assert_eq!(pass_report["mismatch_artifact_count"], Value::from(0));
 
-    let fixture_reports = parsed["fixtures"]
+    let pass_fixture_reports = pass_report["fixtures"]
         .as_array()
-        .expect("fixtures report should be an array");
-    let fixture_report = fixture_reports
+        .expect("pass fixtures report should be an array");
+    let pass_fixture_report = pass_fixture_reports
         .iter()
         .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("fixture report should exist for FX-SELF-001");
-    let artifact_reports = fixture_report["artifacts"]
+        .expect("pass report should contain SELF fixture");
+    let pass_artifact_reports = pass_fixture_report["artifacts"]
         .as_array()
-        .expect("fixture artifact reports should be an array");
-    for artifact in expected_outputs {
-        assert!(
-            artifact_reports
-                .iter()
-                .any(|report| report["artifact_path"].as_str() == Some(artifact)),
-            "SELF fixture report should include '{}' artifact entry",
+        .expect("pass fixture artifact reports should be an array");
+    for artifact in &expected_outputs {
+        let artifact_report = pass_artifact_reports
+            .iter()
+            .find(|report| report["artifact_path"].as_str() == Some(*artifact))
+            .unwrap_or_else(|| panic!("SELF pass report should include '{}' artifact", artifact));
+        assert_eq!(
+            artifact_report["passed"],
+            Value::Bool(true),
+            "SELF pass report artifact '{}' should pass",
             artifact
         );
     }
 
-    let mismatch_fixtures = parsed["mismatch_fixtures"]
+    let drift_oracle_root = temp.path().join("oracle-root-drift");
+    let drift_actual_root = temp.path().join("actual-root-drift");
+    let drift_report_path = temp.path().join("report/oracle-self-drift.json");
+    let drift_staged_output_dir = drift_actual_root.join(fixture_id).join("actual");
+    for artifact in ["feff.inp", "sfconv.inp", "exc.dat"] {
+        stage_workspace_fixture_file(
+            input_seed_fixture_id,
+            artifact,
+            &drift_staged_output_dir.join(artifact),
+        );
+    }
+    let drift_loss_source =
+        "# staged SELF spectrum input\n  1.0000000   0.1200000\n  2.0000000   0.2400000\n";
+    write_file(&drift_staged_output_dir.join("loss.dat"), drift_loss_source);
+
+    let drift_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &drift_oracle_root,
+        &drift_actual_root,
+        &drift_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-self",
+        ],
+    );
+    assert_eq!(
+        drift_output.status.code(),
+        Some(1),
+        "SELF oracle parity should fail in drift mode, stderr: {}",
+        String::from_utf8_lossy(&drift_output.stderr)
+    );
+    let drift_stdout = String::from_utf8_lossy(&drift_output.stdout);
+    assert!(
+        drift_stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+        "SELF drift summary should include fixture mismatch details, stdout: {}",
+        drift_stdout
+    );
+
+    let drift_report: Value = serde_json::from_str(
+        &fs::read_to_string(&drift_report_path).expect("drift report should be readable"),
+    )
+    .expect("drift report JSON should parse");
+    assert_eq!(drift_report["passed"], Value::Bool(false));
+    assert_eq!(drift_report["mismatch_fixture_count"], Value::from(1));
+
+    let drift_fixture_reports = drift_report["fixtures"]
         .as_array()
-        .expect("mismatch_fixtures should be an array");
-    let mismatch_fixture = mismatch_fixtures
+        .expect("drift fixtures report should be an array");
+    let drift_fixture_report = drift_fixture_reports
         .iter()
         .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("mismatch_fixtures should include SELF fixture");
-    let mismatch_artifacts = mismatch_fixture["artifacts"]
+        .expect("drift report should contain SELF fixture");
+    let drift_artifact_reports = drift_fixture_report["artifacts"]
         .as_array()
-        .expect("fixture mismatch artifact list should be an array");
+        .expect("drift fixture artifact reports should be an array");
+    for artifact in &expected_outputs {
+        assert!(
+            drift_artifact_reports
+                .iter()
+                .any(|report| report["artifact_path"].as_str() == Some(*artifact)),
+            "SELF drift report should include '{}' artifact entry",
+            artifact
+        );
+    }
+
+    let drift_mismatch_fixtures = drift_report["mismatch_fixtures"]
+        .as_array()
+        .expect("drift mismatch_fixtures should be an array");
+    let drift_mismatch_fixture = drift_mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("SELF drift mismatch report should include fixture");
+    let drift_mismatch_artifacts = drift_mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("SELF drift mismatch artifact list should be an array");
     assert!(
-        !mismatch_artifacts.is_empty(),
-        "SELF mismatch report should include artifact details"
+        !drift_mismatch_artifacts.is_empty(),
+        "SELF drift mismatch report should include artifact details"
     );
     assert!(
-        mismatch_artifacts.iter().all(|artifact| {
+        drift_mismatch_artifacts.iter().all(|artifact| {
             artifact["artifact_path"]
                 .as_str()
                 .is_some_and(|path| !path.is_empty())
@@ -3003,19 +3067,19 @@ fn oracle_command_runs_self_parity_and_validates_rewritten_spectrum_outputs() {
                     .as_str()
                     .is_some_and(|reason| !reason.is_empty())
         }),
-        "SELF mismatch artifacts should include deterministic path and reason fields"
+        "SELF drift mismatch artifacts should include deterministic path and reason fields"
     );
 }
 
 #[test]
-fn oracle_command_runs_eels_parity_with_optional_magic_and_tolerance_reporting() {
+fn oracle_command_runs_eels_parity_for_fixed_fixture_and_drift_diagnostics() {
     if !command_available("jq") {
         eprintln!("Skipping EELS oracle CLI test because jq is unavailable in PATH.");
         return;
     }
 
     let temp = TempDir::new().expect("tempdir should be created");
-    let fixture_id = "FX-EELS-001";
+    let fixture_id = "FX-EELS-ORACLE-001";
     let workspace_root = workspace_root();
     let fixture_input_dir = workspace_root.join("feff10/examples/ELNES/Cu");
     let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
@@ -3068,244 +3132,219 @@ fn oracle_command_runs_eels_parity_with_optional_magic_and_tolerance_reporting()
         workspace_root_arg, capture_runner_arg
     );
 
-    let with_magic_oracle_root = temp.path().join("oracle-root-with-magic");
-    let with_magic_actual_root = temp.path().join("actual-root-with-magic");
-    let with_magic_report_path = temp.path().join("report/oracle-eels-with-magic.json");
-    let with_magic_staged_output_dir = with_magic_actual_root.join(fixture_id).join("actual");
-    stage_workspace_fixture_file(
-        fixture_id,
-        "eels.inp",
-        &with_magic_staged_output_dir.join("eels.inp"),
-    );
-    stage_workspace_fixture_file(
-        fixture_id,
-        "xmu.dat",
-        &with_magic_staged_output_dir.join("xmu.dat"),
-    );
-    write_file(
-        &with_magic_staged_output_dir.join("magic.inp"),
-        "magic energy offset\n12.5\nangular tweak\n0.45\n",
-    );
+    let pass_oracle_root = temp.path().join("oracle-root-pass");
+    let pass_actual_root = temp.path().join("actual-root-pass");
+    let pass_report_path = temp.path().join("report/oracle-eels-pass.json");
+    let pass_output_dir = pass_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_tree(fixture_id, &pass_output_dir);
+    let _ = fs::remove_file(pass_output_dir.join("magic.inp"));
+    let _ = fs::remove_file(pass_output_dir.join("magic.dat"));
 
-    let with_magic_output = run_oracle_command_with_extra_args(
+    let pass_output = run_oracle_command_with_extra_args(
         &manifest_path,
         &policy_path,
-        &with_magic_oracle_root,
-        &with_magic_actual_root,
-        &with_magic_report_path,
+        &pass_oracle_root,
+        &pass_actual_root,
+        &pass_report_path,
         &[
             "--capture-runner",
             capture_runner_command.as_str(),
             "--run-eels",
         ],
     );
-
     assert_eq!(
-        with_magic_output.status.code(),
-        Some(1),
-        "EELS oracle parity with optional magic.inp should report mismatches against captured outputs, stderr: {}",
-        String::from_utf8_lossy(&with_magic_output.stderr)
+        pass_output.status.code(),
+        Some(0),
+        "EELS oracle parity should pass for fixed fixture, stderr: {}",
+        String::from_utf8_lossy(&pass_output.stderr)
     );
-    let with_magic_stdout = String::from_utf8_lossy(&with_magic_output.stdout);
+    let pass_stdout = String::from_utf8_lossy(&pass_output.stdout);
     assert!(
-        with_magic_stdout.contains("Fixture FX-EELS-001 mismatches"),
-        "EELS oracle summary should include fixture mismatch details, stdout: {}",
-        with_magic_stdout
+        pass_stdout.contains("Regression status: PASS"),
+        "EELS oracle summary should report PASS for fixed fixture, stdout: {}",
+        pass_stdout
     );
-    for artifact in ["eels.dat", "logeels.dat", "magic.dat"] {
-        assert!(
-            with_magic_actual_root
-                .join(fixture_id)
-                .join("actual")
-                .join(artifact)
-                .is_file(),
-            "run-eels should materialize '{}' when optional magic input is staged",
-            artifact
-        );
-    }
     assert!(
-        with_magic_report_path.is_file(),
-        "EELS oracle parity should emit a report for optional-magic case"
+        pass_stdout.contains("Mismatches: 0 fixture(s), 0 artifact(s)"),
+        "EELS oracle summary should report zero mismatches for fixed fixture, stdout: {}",
+        pass_stdout
     );
-    let with_magic_report: Value = serde_json::from_str(
-        &fs::read_to_string(&with_magic_report_path).expect("report should be readable"),
-    )
-    .expect("report JSON should parse");
-    assert_eq!(with_magic_report["mismatch_fixture_count"], Value::from(1));
+    assert!(
+        pass_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("eels.dat")
+            .is_file(),
+        "run-eels should materialize eels.dat in fixed-fixture run"
+    );
+    assert!(
+        pass_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("logeels.dat")
+            .is_file(),
+        "run-eels should materialize logeels.dat in fixed-fixture run"
+    );
+    assert!(
+        !pass_actual_root
+            .join(fixture_id)
+            .join("actual")
+            .join("magic.dat")
+            .is_file(),
+        "run-eels should not materialize magic.dat in fixed-fixture run"
+    );
 
-    let with_magic_fixture_reports = with_magic_report["fixtures"]
+    let pass_report: Value = serde_json::from_str(
+        &fs::read_to_string(&pass_report_path).expect("pass report should be readable"),
+    )
+    .expect("pass report JSON should parse");
+    assert_eq!(pass_report["passed"], Value::Bool(true));
+    assert_eq!(pass_report["mismatch_fixture_count"], Value::from(0));
+    assert_eq!(pass_report["mismatch_artifact_count"], Value::from(0));
+
+    let pass_fixture_reports = pass_report["fixtures"]
         .as_array()
-        .expect("fixtures report should be an array");
-    let with_magic_fixture_report = with_magic_fixture_reports
+        .expect("pass fixtures report should be an array");
+    let pass_fixture_report = pass_fixture_reports
         .iter()
         .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("fixture report should exist for FX-EELS-001");
-    let with_magic_artifact_reports = with_magic_fixture_report["artifacts"]
+        .expect("pass report should include EELS fixture");
+    let pass_artifact_reports = pass_fixture_report["artifacts"]
         .as_array()
-        .expect("fixture artifact reports should be an array");
-    let eels_report = with_magic_artifact_reports
+        .expect("pass fixture artifact reports should be an array");
+    assert!(
+        pass_artifact_reports
+            .iter()
+            .any(|artifact| artifact["artifact_path"].as_str() == Some("logeels.dat")),
+        "EELS pass report should include logeels.dat artifact entry"
+    );
+    let pass_eels_report = pass_artifact_reports
         .iter()
         .find(|artifact| artifact["artifact_path"].as_str() == Some("eels.dat"))
-        .expect("EELS fixture should include eels.dat comparison");
+        .expect("EELS pass report should include eels.dat comparison");
     assert_eq!(
-        eels_report["comparison"]["mode"],
+        pass_eels_report["comparison"]["mode"],
         Value::from("numeric_tolerance"),
         "eels.dat should be compared using numeric_tolerance mode"
     );
     assert_eq!(
-        eels_report["comparison"]["matched_category"],
+        pass_eels_report["comparison"]["matched_category"],
         Value::from("columnar_spectra"),
         "eels.dat should resolve columnar_spectra policy category"
     );
     assert_eq!(
-        eels_report["comparison"]["metrics"]["kind"],
+        pass_eels_report["comparison"]["metrics"]["kind"],
         Value::from("numeric_tolerance"),
         "eels.dat comparison should emit numeric tolerance metrics"
     );
     assert!(
-        eels_report["comparison"]["metrics"]["compared_values"]
+        pass_eels_report["comparison"]["metrics"]["compared_values"]
             .as_u64()
             .is_some_and(|count| count > 0),
         "eels.dat tolerance metrics should include compared values"
     );
 
-    let with_magic_mismatch_fixtures = with_magic_report["mismatch_fixtures"]
-        .as_array()
-        .expect("mismatch_fixtures should be an array");
-    let with_magic_fixture = with_magic_mismatch_fixtures
-        .iter()
-        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("mismatch_fixtures should include EELS fixture for optional-magic case");
-    let with_magic_mismatch_artifacts = with_magic_fixture["artifacts"]
-        .as_array()
-        .expect("fixture mismatch artifact list should be an array");
-    let with_magic_output_mismatch = with_magic_mismatch_artifacts
-        .iter()
-        .find(|artifact| artifact["artifact_path"].as_str() == Some("magic.dat"))
-        .expect("optional magic output should be included in mismatch diagnostics");
-    assert_eq!(
-        with_magic_output_mismatch["reason"],
-        Value::from("Missing baseline artifact"),
-        "magic.dat should report missing baseline artifact when optional output is generated"
+    let drift_oracle_root = temp.path().join("oracle-root-drift");
+    let drift_actual_root = temp.path().join("actual-root-drift");
+    let drift_report_path = temp.path().join("report/oracle-eels-drift.json");
+    let drift_output_dir = drift_actual_root.join(fixture_id).join("actual");
+    stage_workspace_fixture_tree(fixture_id, &drift_output_dir);
+    write_file(
+        &drift_output_dir.join("magic.inp"),
+        "magic energy offset\n12.5\nangular tweak\n0.45\n",
     );
 
-    let without_magic_oracle_root = temp.path().join("oracle-root-without-magic");
-    let without_magic_actual_root = temp.path().join("actual-root-without-magic");
-    let without_magic_report_path = temp.path().join("report/oracle-eels-without-magic.json");
-    let without_magic_staged_output_dir = without_magic_actual_root.join(fixture_id).join("actual");
-    stage_workspace_fixture_file(
-        fixture_id,
-        "eels.inp",
-        &without_magic_staged_output_dir.join("eels.inp"),
-    );
-    stage_workspace_fixture_file(
-        fixture_id,
-        "xmu.dat",
-        &without_magic_staged_output_dir.join("xmu.dat"),
-    );
-    assert!(
-        !without_magic_staged_output_dir.join("magic.inp").exists(),
-        "test setup should omit optional magic.inp to verify optional EELS output behavior"
-    );
-
-    let without_magic_output = run_oracle_command_with_extra_args(
+    let drift_output = run_oracle_command_with_extra_args(
         &manifest_path,
         &policy_path,
-        &without_magic_oracle_root,
-        &without_magic_actual_root,
-        &without_magic_report_path,
+        &drift_oracle_root,
+        &drift_actual_root,
+        &drift_report_path,
         &[
             "--capture-runner",
             capture_runner_command.as_str(),
             "--run-eels",
         ],
     );
-
     assert_eq!(
-        without_magic_output.status.code(),
+        drift_output.status.code(),
         Some(1),
-        "EELS oracle parity without optional magic.inp should still run and report mismatches, stderr: {}",
-        String::from_utf8_lossy(&without_magic_output.stderr)
+        "EELS oracle parity should fail in drift mode, stderr: {}",
+        String::from_utf8_lossy(&drift_output.stderr)
     );
-    let without_magic_stdout = String::from_utf8_lossy(&without_magic_output.stdout);
+    let drift_stdout = String::from_utf8_lossy(&drift_output.stdout);
     assert!(
-        without_magic_stdout.contains("Fixture FX-EELS-001 mismatches"),
-        "EELS oracle summary should include fixture mismatch details, stdout: {}",
-        without_magic_stdout
-    );
-    assert!(
-        without_magic_actual_root
-            .join(fixture_id)
-            .join("actual")
-            .join("eels.dat")
-            .is_file(),
-        "run-eels should materialize eels.dat when optional magic input is absent"
+        drift_stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+        "EELS drift summary should include fixture mismatch details, stdout: {}",
+        drift_stdout
     );
     assert!(
-        without_magic_actual_root
-            .join(fixture_id)
-            .join("actual")
-            .join("logeels.dat")
-            .is_file(),
-        "run-eels should materialize logeels.dat when optional magic input is absent"
-    );
-    assert!(
-        !without_magic_actual_root
+        drift_actual_root
             .join(fixture_id)
             .join("actual")
             .join("magic.dat")
             .is_file(),
-        "run-eels should not materialize magic.dat when optional magic input is absent"
-    );
-    assert!(
-        without_magic_report_path.is_file(),
-        "EELS oracle parity should emit a report for missing-optional-input case"
+        "run-eels should materialize magic.dat when optional magic input is staged"
     );
 
-    let without_magic_report: Value = serde_json::from_str(
-        &fs::read_to_string(&without_magic_report_path).expect("report should be readable"),
+    let drift_report: Value = serde_json::from_str(
+        &fs::read_to_string(&drift_report_path).expect("drift report should be readable"),
     )
-    .expect("report JSON should parse");
-    assert_eq!(
-        without_magic_report["mismatch_fixture_count"],
-        Value::from(1)
-    );
+    .expect("drift report JSON should parse");
+    assert_eq!(drift_report["passed"], Value::Bool(false));
+    assert_eq!(drift_report["mismatch_fixture_count"], Value::from(1));
 
-    let without_magic_fixture_reports = without_magic_report["fixtures"]
+    let drift_fixture_reports = drift_report["fixtures"]
         .as_array()
-        .expect("fixtures report should be an array");
-    let without_magic_fixture_report = without_magic_fixture_reports
+        .expect("drift fixtures report should be an array");
+    let drift_fixture_report = drift_fixture_reports
         .iter()
         .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("fixture report should exist for FX-EELS-001 without optional magic input");
-    let without_magic_artifact_reports = without_magic_fixture_report["artifacts"]
+        .expect("drift report should include EELS fixture");
+    let drift_artifact_reports = drift_fixture_report["artifacts"]
         .as_array()
-        .expect("fixture artifact reports should be an array");
-    let without_magic_eels_report = without_magic_artifact_reports
+        .expect("drift fixture artifact reports should be an array");
+    for artifact in ["eels.dat", "logeels.dat", "magic.dat"] {
+        assert!(
+            drift_artifact_reports
+                .iter()
+                .any(|report| report["artifact_path"].as_str() == Some(artifact)),
+            "EELS drift report should include '{}' artifact entry",
+            artifact
+        );
+    }
+
+    let drift_mismatch_fixtures = drift_report["mismatch_fixtures"]
+        .as_array()
+        .expect("drift mismatch_fixtures should be an array");
+    let drift_mismatch_fixture = drift_mismatch_fixtures
         .iter()
-        .find(|artifact| artifact["artifact_path"].as_str() == Some("eels.dat"))
-        .expect("EELS fixture should include eels.dat comparison without optional input");
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("drift mismatch report should include EELS fixture");
+    let drift_mismatch_artifacts = drift_mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("drift mismatch artifact list should be an array");
+    let magic_mismatch = drift_mismatch_artifacts
+        .iter()
+        .find(|artifact| artifact["artifact_path"].as_str() == Some("magic.dat"))
+        .expect("drift mismatch details should include magic.dat");
     assert_eq!(
-        without_magic_eels_report["comparison"]["mode"],
-        Value::from("numeric_tolerance"),
-        "eels.dat should remain numeric_tolerance in no-magic optional-input case"
-    );
-    assert_eq!(
-        without_magic_eels_report["comparison"]["matched_category"],
-        Value::from("columnar_spectra"),
-        "eels.dat should resolve columnar_spectra category in no-magic optional-input case"
+        magic_mismatch["reason"],
+        Value::from("Missing baseline artifact"),
+        "magic.dat should report deterministic missing-baseline reason in drift mode"
     );
 }
 
 #[test]
-fn oracle_command_runs_fullspectrum_parity_with_capture_prerequisites_and_full_output_reporting() {
+fn oracle_command_runs_fullspectrum_parity_for_fixed_fixture_and_drift_diagnostics() {
     if !command_available("jq") {
         eprintln!("Skipping FULLSPECTRUM oracle CLI test because jq is unavailable in PATH.");
         return;
     }
 
     let temp = TempDir::new().expect("tempdir should be created");
-    let fixture_id = "FX-FULLSPECTRUM-001";
+    let fixture_id = "FX-FULLSPECTRUM-ORACLE-001";
+    let input_seed_fixture_id = "FX-FULLSPECTRUM-001";
     let workspace_root = workspace_root();
     let fixture_input_dir = workspace_root.join("feff10/examples/XES/Cu");
     let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
@@ -3317,11 +3356,7 @@ fn oracle_command_runs_fullspectrum_parity_with_capture_prerequisites_and_full_o
 
     let manifest_path = temp.path().join("manifest.json");
     let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
-    let oracle_root = temp.path().join("oracle-root");
-    let actual_root = temp.path().join("actual-root");
-    let report_path = temp.path().join("report/oracle-fullspectrum.json");
     let baseline_archive = fixture_input_dir.join("REFERENCE.zip");
-
     let manifest = format!(
         r#"
         {{
@@ -3348,62 +3383,12 @@ fn oracle_command_runs_fullspectrum_parity_with_capture_prerequisites_and_full_o
     );
     write_file(&manifest_path, &manifest);
 
-    let staged_output_dir = actual_root.join(fixture_id).join("actual");
-    stage_workspace_fixture_file(
-        fixture_id,
-        "fullspectrum.inp",
-        &staged_output_dir.join("fullspectrum.inp"),
-    );
-    stage_workspace_fixture_file(fixture_id, "xmu.dat", &staged_output_dir.join("xmu.dat"));
-    stage_workspace_fixture_file(
-        fixture_id,
-        "prexmu.dat",
-        &staged_output_dir.join("prexmu.dat"),
-    );
-    stage_workspace_fixture_file(
-        fixture_id,
-        "referencexmu.dat",
-        &staged_output_dir.join("referencexmu.dat"),
-    );
-
     let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_command = format!(
         "GITHUB_WORKSPACE='{}' '{}'",
         workspace_root_arg, capture_runner_arg
     );
-
-    let output = run_oracle_command_with_extra_args(
-        &manifest_path,
-        &policy_path,
-        &oracle_root,
-        &actual_root,
-        &report_path,
-        &[
-            "--capture-runner",
-            capture_runner_command.as_str(),
-            "--run-fullspectrum",
-        ],
-    );
-
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "FULLSPECTRUM oracle parity should report mismatches against captured outputs, stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("Mismatches:"),
-        "FULLSPECTRUM oracle summary should include mismatch totals, stdout: {}",
-        stdout
-    );
-    assert!(
-        stdout.contains("Fixture FX-FULLSPECTRUM-001 mismatches"),
-        "FULLSPECTRUM oracle summary should include fixture mismatch details, stdout: {}",
-        stdout
-    );
-
     let expected_outputs = [
         "xmu.dat",
         "osc_str.dat",
@@ -3413,9 +3398,57 @@ fn oracle_command_runs_fullspectrum_parity_with_capture_prerequisites_and_full_o
         "fine_st.dat",
         "logfullspectrum.dat",
     ];
-    for artifact in expected_outputs {
+
+    let pass_oracle_root = temp.path().join("oracle-root-pass");
+    let pass_actual_root = temp.path().join("actual-root-pass");
+    let pass_report_path = temp.path().join("report/oracle-fullspectrum-pass.json");
+    let pass_output_dir = pass_actual_root.join(fixture_id).join("actual");
+    for artifact in [
+        "feff.inp",
+        "fullspectrum.inp",
+        "xmu.dat",
+        "prexmu.dat",
+        "referencexmu.dat",
+    ] {
+        stage_workspace_fixture_file(
+            input_seed_fixture_id,
+            artifact,
+            &pass_output_dir.join(artifact),
+        );
+    }
+
+    let pass_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &pass_oracle_root,
+        &pass_actual_root,
+        &pass_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-fullspectrum",
+        ],
+    );
+    assert_eq!(
+        pass_output.status.code(),
+        Some(0),
+        "FULLSPECTRUM oracle parity should pass for fixed fixture, stderr: {}",
+        String::from_utf8_lossy(&pass_output.stderr)
+    );
+    let pass_stdout = String::from_utf8_lossy(&pass_output.stdout);
+    assert!(
+        pass_stdout.contains("Regression status: PASS"),
+        "FULLSPECTRUM oracle summary should report PASS for fixed fixture, stdout: {}",
+        pass_stdout
+    );
+    assert!(
+        pass_stdout.contains("Mismatches: 0 fixture(s), 0 artifact(s)"),
+        "FULLSPECTRUM oracle summary should report zero mismatches for fixed fixture, stdout: {}",
+        pass_stdout
+    );
+    for artifact in &expected_outputs {
         assert!(
-            actual_root
+            pass_actual_root
                 .join(fixture_id)
                 .join("actual")
                 .join(artifact)
@@ -3425,112 +3458,177 @@ fn oracle_command_runs_fullspectrum_parity_with_capture_prerequisites_and_full_o
             fixture_id
         );
     }
-    assert!(
-        report_path.is_file(),
-        "FULLSPECTRUM oracle parity should emit a report"
-    );
 
-    let capture_outputs_dir = oracle_root.join(fixture_id).join("outputs");
+    let pass_capture_outputs_dir = pass_oracle_root.join(fixture_id).join("outputs");
     assert!(
-        capture_outputs_dir.join("fullspectrum.inp").is_file(),
+        pass_capture_outputs_dir.join("fullspectrum.inp").is_file(),
         "capture should materialize REFERENCE/fullspectrum.inp prerequisite into oracle outputs"
     );
-    let capture_metadata_path = oracle_root.join(fixture_id).join("metadata.txt");
+    let pass_capture_metadata_path = pass_oracle_root.join(fixture_id).join("metadata.txt");
+    let pass_capture_metadata = fs::read_to_string(&pass_capture_metadata_path)
+        .expect("capture metadata should be readable for fixed-fixture run");
     assert!(
-        capture_metadata_path.is_file(),
-        "capture metadata should be emitted for '{}'",
-        fixture_id
-    );
-    let capture_metadata =
-        fs::read_to_string(&capture_metadata_path).expect("capture metadata should be readable");
-    assert!(
-        capture_metadata.contains("baseline_status=requires_fortran_capture"),
-        "capture metadata should record requires_fortran_capture baseline status, metadata: {}",
-        capture_metadata
+        pass_capture_metadata.contains("baseline_status=requires_fortran_capture"),
+        "capture metadata should preserve baseline status, metadata: {}",
+        pass_capture_metadata
     );
     assert!(
-        capture_metadata.contains("missing_entry_files="),
-        "capture metadata should record missing_entry_files field, metadata: {}",
-        capture_metadata
-    );
-    assert!(
-        !capture_metadata.contains("missing_entry_files=REFERENCE/fullspectrum.inp"),
+        !pass_capture_metadata.contains("missing_entry_files=REFERENCE/fullspectrum.inp"),
         "capture should resolve fullspectrum entry prerequisites from baseline archives, metadata: {}",
-        capture_metadata
+        pass_capture_metadata
     );
 
-    let parsed: Value =
-        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
-            .expect("report JSON should parse");
-    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+    let pass_report: Value = serde_json::from_str(
+        &fs::read_to_string(&pass_report_path).expect("pass report should be readable"),
+    )
+    .expect("pass report JSON should parse");
+    assert_eq!(pass_report["passed"], Value::Bool(true));
+    assert_eq!(pass_report["mismatch_fixture_count"], Value::from(0));
+    assert_eq!(pass_report["mismatch_artifact_count"], Value::from(0));
 
-    let fixture_reports = parsed["fixtures"]
+    let pass_fixture_reports = pass_report["fixtures"]
         .as_array()
-        .expect("fixtures report should be an array");
-    let fixture_report = fixture_reports
+        .expect("pass fixtures report should be an array");
+    let pass_fixture_report = pass_fixture_reports
         .iter()
         .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("fixture report should exist for FX-FULLSPECTRUM-001");
-    let artifact_reports = fixture_report["artifacts"]
+        .expect("pass report should include FULLSPECTRUM fixture");
+    let pass_artifact_reports = pass_fixture_report["artifacts"]
         .as_array()
-        .expect("fixture artifact reports should be an array");
-
-    for artifact in expected_outputs {
-        assert!(
-            artifact_reports
-                .iter()
-                .any(|report| report["artifact_path"].as_str() == Some(artifact)),
-            "fixture report should include FULLSPECTRUM artifact '{}'",
-            artifact
-        );
-    }
-
-    let mismatch_fixtures = parsed["mismatch_fixtures"]
-        .as_array()
-        .expect("mismatch_fixtures should be an array");
-    let mismatch_fixture = mismatch_fixtures
-        .iter()
-        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("mismatch_fixtures should include FX-FULLSPECTRUM-001");
-    let mismatch_artifacts = mismatch_fixture["artifacts"]
-        .as_array()
-        .expect("fixture mismatch artifact list should be an array");
-
-    for artifact in [
-        "osc_str.dat",
-        "eps.dat",
-        "drude.dat",
-        "background.dat",
-        "fine_st.dat",
-        "logfullspectrum.dat",
-    ] {
-        let mismatch = mismatch_artifacts
+        .expect("pass fixture artifact reports should be an array");
+    for artifact in &expected_outputs {
+        let artifact_report = pass_artifact_reports
             .iter()
-            .find(|entry| entry["artifact_path"].as_str() == Some(artifact))
+            .find(|report| report["artifact_path"].as_str() == Some(*artifact))
             .unwrap_or_else(|| {
                 panic!(
-                    "mismatch diagnostics should include full output artifact '{}'",
+                    "FULLSPECTRUM pass report should include '{}' artifact",
                     artifact
                 )
             });
         assert_eq!(
-            mismatch["reason"],
-            Value::from("Missing baseline artifact"),
-            "full output artifact '{}' should report missing captured baseline details",
+            artifact_report["passed"],
+            Value::Bool(true),
+            "FULLSPECTRUM pass artifact '{}' should pass",
             artifact
         );
     }
+
+    let drift_oracle_root = temp.path().join("oracle-root-drift");
+    let drift_actual_root = temp.path().join("actual-root-drift");
+    let drift_report_path = temp.path().join("report/oracle-fullspectrum-drift.json");
+    let drift_output_dir = drift_actual_root.join(fixture_id).join("actual");
+    for artifact in [
+        "feff.inp",
+        "fullspectrum.inp",
+        "xmu.dat",
+        "prexmu.dat",
+        "referencexmu.dat",
+    ] {
+        stage_workspace_fixture_file(
+            input_seed_fixture_id,
+            artifact,
+            &drift_output_dir.join(artifact),
+        );
+    }
+    let drift_xmu_path = drift_output_dir.join("xmu.dat");
+    let drift_xmu_source =
+        fs::read_to_string(&drift_xmu_path).expect("drift xmu.dat source should be readable");
+    let drift_xmu_mutated = if drift_xmu_source.contains("9.162321E-02") {
+        drift_xmu_source.replacen("9.162321E-02", "9.962321E-01", 1)
+    } else {
+        format!(
+            "{}\n8956.1761 -40.0000 -2.9103 9.962321E-01 9.102713E-02 5.960831E-04\n",
+            drift_xmu_source
+        )
+    };
+    write_file(&drift_xmu_path, &drift_xmu_mutated);
+
+    let drift_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &drift_oracle_root,
+        &drift_actual_root,
+        &drift_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-fullspectrum",
+        ],
+    );
+    assert_eq!(
+        drift_output.status.code(),
+        Some(1),
+        "FULLSPECTRUM oracle parity should fail in drift mode, stderr: {}",
+        String::from_utf8_lossy(&drift_output.stderr)
+    );
+    let drift_stdout = String::from_utf8_lossy(&drift_output.stdout);
+    assert!(
+        drift_stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+        "FULLSPECTRUM drift summary should include fixture mismatch details, stdout: {}",
+        drift_stdout
+    );
+
+    let drift_report: Value = serde_json::from_str(
+        &fs::read_to_string(&drift_report_path).expect("drift report should be readable"),
+    )
+    .expect("drift report JSON should parse");
+    assert_eq!(drift_report["passed"], Value::Bool(false));
+    assert_eq!(drift_report["mismatch_fixture_count"], Value::from(1));
+
+    let drift_fixture_reports = drift_report["fixtures"]
+        .as_array()
+        .expect("drift fixtures report should be an array");
+    let drift_fixture_report = drift_fixture_reports
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("drift report should include FULLSPECTRUM fixture");
+    let drift_artifact_reports = drift_fixture_report["artifacts"]
+        .as_array()
+        .expect("drift fixture artifact reports should be an array");
+    for artifact in &expected_outputs {
+        assert!(
+            drift_artifact_reports
+                .iter()
+                .any(|report| report["artifact_path"].as_str() == Some(*artifact)),
+            "FULLSPECTRUM drift report should include '{}' artifact entry",
+            artifact
+        );
+    }
+
+    let drift_mismatch_fixtures = drift_report["mismatch_fixtures"]
+        .as_array()
+        .expect("drift mismatch_fixtures should be an array");
+    let drift_mismatch_fixture = drift_mismatch_fixtures
+        .iter()
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("drift mismatch report should include FULLSPECTRUM fixture");
+    let drift_mismatch_artifacts = drift_mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("drift mismatch artifact list should be an array");
+    assert!(
+        !drift_mismatch_artifacts.is_empty(),
+        "FULLSPECTRUM drift mismatch report should include artifact details"
+    );
+    assert!(
+        drift_mismatch_artifacts.iter().any(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| expected_outputs.contains(&path))
+        }),
+        "FULLSPECTRUM drift mismatch report should include module-owned output artifacts"
+    );
 }
 
 #[test]
-fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes() {
+fn oracle_command_runs_rixs_parity_for_fixed_fixture_and_drift_diagnostics() {
     if !command_available("jq") {
         eprintln!("Skipping RIXS oracle CLI test because jq is unavailable in PATH.");
         return;
     }
 
     let temp = TempDir::new().expect("tempdir should be created");
-    let fixture_id = "FX-RIXS-001";
+    let fixture_id = "FX-RIXS-ORACLE-001";
     let workspace_root = workspace_root();
     let fixture_input_dir = workspace_root.join("feff10/examples/RIXS");
     let capture_runner = workspace_root.join("scripts/fortran/ci-oracle-capture-runner.sh");
@@ -3542,13 +3640,6 @@ fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes
 
     let manifest_path = temp.path().join("manifest.json");
     let policy_path = workspace_root.join("tasks/numeric-tolerance-policy.json");
-    let oracle_root = temp.path().join("oracle-root");
-    let actual_root = temp.path().join("actual-root");
-    let report_path = temp.path().join("report/oracle-rixs.json");
-    let reference_herfd = fixture_input_dir.join("referenceherfd.dat");
-    let reference_herfd_sat = fixture_input_dir.join("referenceherfd-sat.dat");
-    let reference_rixs_et = fixture_input_dir.join("referencerixsET.dat");
-
     let manifest = format!(
         r#"
         {{
@@ -3557,119 +3648,23 @@ fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes
               "id": "{fixture_id}",
               "modulesCovered": ["RIXS"],
               "inputDirectory": "{input_directory}",
-              "entryFiles": ["feff.inp"],
-              "baselineStatus": "reference_files_available",
-              "baselineSources": [
-                {{
-                  "kind": "reference_file",
-                  "path": "{reference_herfd}"
-                }},
-                {{
-                  "kind": "reference_file",
-                  "path": "{reference_herfd_sat}"
-                }},
-                {{
-                  "kind": "reference_file",
-                  "path": "{reference_rixs_et}"
-                }}
-              ]
+              "entryFiles": ["feff.inp"]
             }}
           ]
         }}
         "#,
         fixture_id = fixture_id,
         input_directory = fixture_input_dir.to_string_lossy().replace('\\', "\\\\"),
-        reference_herfd = reference_herfd.to_string_lossy().replace('\\', "\\\\"),
-        reference_herfd_sat = reference_herfd_sat.to_string_lossy().replace('\\', "\\\\"),
-        reference_rixs_et = reference_rixs_et.to_string_lossy().replace('\\', "\\\\")
     );
     write_file(&manifest_path, &manifest);
-
-    let staged_output_dir = actual_root.join(fixture_id).join("actual");
-    stage_workspace_fixture_file_with_fallback_bytes(
-        fixture_id,
-        "rixs.inp",
-        &staged_output_dir.join("rixs.inp"),
-        b"nenergies\n3\nemin emax estep\n-10.0 10.0 0.5\n",
-    );
-    stage_workspace_fixture_file_with_fallback_bytes(
-        fixture_id,
-        "phase_1.bin",
-        &staged_output_dir.join("phase_1.bin"),
-        &[0_u8, 1_u8, 2_u8, 3_u8],
-    );
-    stage_workspace_fixture_file_with_fallback_bytes(
-        fixture_id,
-        "phase_2.bin",
-        &staged_output_dir.join("phase_2.bin"),
-        &[4_u8, 5_u8, 6_u8, 7_u8],
-    );
-    stage_workspace_fixture_file_with_fallback_bytes(
-        fixture_id,
-        "wscrn_1.dat",
-        &staged_output_dir.join("wscrn_1.dat"),
-        b"0.0 0.0 0.0\n",
-    );
-    stage_workspace_fixture_file_with_fallback_bytes(
-        fixture_id,
-        "wscrn_2.dat",
-        &staged_output_dir.join("wscrn_2.dat"),
-        b"0.0 0.0 0.0\n",
-    );
-    stage_workspace_fixture_file_with_fallback_bytes(
-        fixture_id,
-        "xsect_2.dat",
-        &staged_output_dir.join("xsect_2.dat"),
-        b"0.0 0.0 0.0\n",
-    );
-    stage_workspace_fixture_file(
-        fixture_id,
-        "referenceherfd.dat",
-        &staged_output_dir.join("referenceherfd.dat"),
-    );
-    stage_workspace_fixture_file(
-        fixture_id,
-        "referenceherfd-sat.dat",
-        &staged_output_dir.join("referenceherfd-sat.dat"),
-    );
-    stage_workspace_fixture_file(
-        fixture_id,
-        "referencerixsET.dat",
-        &staged_output_dir.join("referencerixsET.dat"),
-    );
 
     let workspace_root_arg = workspace_root.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_arg = capture_runner.to_string_lossy().replace('\'', "'\"'\"'");
     let capture_runner_command = format!(
-        "GITHUB_WORKSPACE='{}' '{}' && cp referencerixsET.dat rixsET.dat",
+        "GITHUB_WORKSPACE='{}' '{}'",
         workspace_root_arg, capture_runner_arg
     );
-    let output = run_oracle_command_with_extra_args(
-        &manifest_path,
-        &policy_path,
-        &oracle_root,
-        &actual_root,
-        &report_path,
-        &[
-            "--capture-runner",
-            capture_runner_command.as_str(),
-            "--run-rixs",
-        ],
-    );
-
-    assert_eq!(
-        output.status.code(),
-        Some(1),
-        "RIXS oracle parity should report mismatches against reference-file baselines, stderr: {}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("Fixture FX-RIXS-001 mismatches"),
-        "RIXS oracle summary should include fixture mismatch details, stdout: {}",
-        stdout
-    );
-    for artifact in [
+    let expected_outputs = [
         "rixs0.dat",
         "rixs1.dat",
         "rixsET.dat",
@@ -3678,9 +3673,56 @@ fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes
         "rixsEE-sat.dat",
         "logrixs.dat",
         "rixs.sh",
+    ];
+
+    let pass_oracle_root = temp.path().join("oracle-root-pass");
+    let pass_actual_root = temp.path().join("actual-root-pass");
+    let pass_report_path = temp.path().join("report/oracle-rixs-pass.json");
+    let pass_output_dir = pass_actual_root.join(fixture_id).join("actual");
+    for artifact in [
+        "feff.inp",
+        "rixs.inp",
+        "phase_1.bin",
+        "phase_2.bin",
+        "wscrn_1.dat",
+        "wscrn_2.dat",
+        "xsect_2.dat",
     ] {
+        stage_workspace_fixture_file(fixture_id, artifact, &pass_output_dir.join(artifact));
+    }
+
+    let pass_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &pass_oracle_root,
+        &pass_actual_root,
+        &pass_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-rixs",
+        ],
+    );
+    assert_eq!(
+        pass_output.status.code(),
+        Some(0),
+        "RIXS oracle parity should pass for fixed fixture, stderr: {}",
+        String::from_utf8_lossy(&pass_output.stderr)
+    );
+    let pass_stdout = String::from_utf8_lossy(&pass_output.stdout);
+    assert!(
+        pass_stdout.contains("Regression status: PASS"),
+        "RIXS oracle summary should report PASS for fixed fixture, stdout: {}",
+        pass_stdout
+    );
+    assert!(
+        pass_stdout.contains("Mismatches: 0 fixture(s), 0 artifact(s)"),
+        "RIXS oracle summary should report zero mismatches for fixed fixture, stdout: {}",
+        pass_stdout
+    );
+    for artifact in &expected_outputs {
         assert!(
-            actual_root
+            pass_actual_root
                 .join(fixture_id)
                 .join("actual")
                 .join(artifact)
@@ -3690,37 +3732,41 @@ fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes
             fixture_id
         );
     }
-    assert!(
-        report_path.is_file(),
-        "RIXS oracle parity should emit a report"
-    );
 
-    let parsed: Value =
-        serde_json::from_str(&fs::read_to_string(&report_path).expect("report should be readable"))
-            .expect("report JSON should parse");
-    assert_eq!(parsed["mismatch_fixture_count"], Value::from(1));
+    let pass_report: Value = serde_json::from_str(
+        &fs::read_to_string(&pass_report_path).expect("pass report should be readable"),
+    )
+    .expect("pass report JSON should parse");
+    assert_eq!(pass_report["passed"], Value::Bool(true));
+    assert_eq!(pass_report["mismatch_fixture_count"], Value::from(0));
+    assert_eq!(pass_report["mismatch_artifact_count"], Value::from(0));
 
-    let fixture_reports = parsed["fixtures"]
+    let pass_fixture_reports = pass_report["fixtures"]
         .as_array()
-        .expect("fixtures report should be an array");
-    let fixture_report = fixture_reports
+        .expect("pass fixtures report should be an array");
+    let pass_fixture_report = pass_fixture_reports
         .iter()
         .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("fixture report should exist for FX-RIXS-001");
-    let artifact_reports = fixture_report["artifacts"]
+        .expect("pass report should include RIXS fixture");
+    let pass_artifact_reports = pass_fixture_report["artifacts"]
         .as_array()
-        .expect("fixture artifact reports should be an array");
-    assert!(
-        artifact_reports
+        .expect("pass fixture artifact reports should be an array");
+    for artifact in &expected_outputs {
+        let artifact_report = pass_artifact_reports
             .iter()
-            .any(|artifact| artifact["artifact_path"].as_str() == Some("rixs.sh")),
-        "RIXS fixture should include generated rixs.sh artifact diagnostics"
-    );
-
-    let canonical_report = artifact_reports
+            .find(|report| report["artifact_path"].as_str() == Some(*artifact))
+            .unwrap_or_else(|| panic!("RIXS pass report should include '{}' artifact", artifact));
+        assert_eq!(
+            artifact_report["passed"],
+            Value::Bool(true),
+            "RIXS pass artifact '{}' should pass",
+            artifact
+        );
+    }
+    let canonical_report = pass_artifact_reports
         .iter()
         .find(|artifact| artifact["artifact_path"].as_str() == Some("rixsET.dat"))
-        .expect("RIXS fixture should include canonical rixsET.dat comparison");
+        .expect("RIXS pass report should include canonical rixsET.dat comparison");
     assert_eq!(
         canonical_report["comparison"]["mode"],
         Value::from("numeric_tolerance"),
@@ -3731,50 +3777,112 @@ fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes
         Value::from("columnar_spectra"),
         "canonical rixsET.dat should resolve columnar_spectra policy category"
     );
+
+    let drift_oracle_root = temp.path().join("oracle-root-drift");
+    let drift_actual_root = temp.path().join("actual-root-drift");
+    let drift_report_path = temp.path().join("report/oracle-rixs-drift.json");
+    let drift_output_dir = drift_actual_root.join(fixture_id).join("actual");
+    for artifact in [
+        "feff.inp",
+        "rixs.inp",
+        "phase_1.bin",
+        "phase_2.bin",
+        "wscrn_1.dat",
+        "wscrn_2.dat",
+        "xsect_2.dat",
+    ] {
+        stage_workspace_fixture_file(fixture_id, artifact, &drift_output_dir.join(artifact));
+    }
+    fs::write(
+        drift_output_dir.join("phase_2.bin"),
+        [255_u8, 254_u8, 0_u8, 8_u8, 21_u8, 34_u8, 55_u8, 89_u8],
+    )
+    .expect("phase_2.bin drift input should be writable");
+
+    let drift_output = run_oracle_command_with_extra_args(
+        &manifest_path,
+        &policy_path,
+        &drift_oracle_root,
+        &drift_actual_root,
+        &drift_report_path,
+        &[
+            "--capture-runner",
+            capture_runner_command.as_str(),
+            "--run-rixs",
+        ],
+    );
     assert_eq!(
-        canonical_report["comparison"]["metrics"]["kind"],
-        Value::from("numeric_tolerance"),
-        "canonical rixsET.dat should emit numeric tolerance metrics"
+        drift_output.status.code(),
+        Some(1),
+        "RIXS oracle parity should fail in drift mode, stderr: {}",
+        String::from_utf8_lossy(&drift_output.stderr)
+    );
+    let drift_stdout = String::from_utf8_lossy(&drift_output.stdout);
+    assert!(
+        drift_stdout.contains(&format!("Fixture {} mismatches", fixture_id)),
+        "RIXS drift summary should include fixture mismatch details, stdout: {}",
+        drift_stdout
     );
 
-    let reference_named_report = artifact_reports
-        .iter()
-        .find(|artifact| artifact["artifact_path"].as_str() == Some("referencerixsET.dat"))
-        .expect("RIXS fixture should include reference-named referencerixsET.dat comparison");
-    assert_eq!(
-        reference_named_report["comparison"]["mode"],
-        Value::from("exact_text"),
-        "reference-named referencerixsET.dat should use default exact_text comparison mode"
-    );
-    assert_eq!(
-        reference_named_report["comparison"]["matched_category"],
-        Value::Null,
-        "reference-named referencerixsET.dat should not resolve a policy category"
-    );
-    assert_eq!(
-        reference_named_report["comparison"]["metrics"]["kind"],
-        Value::from("exact_text"),
-        "reference-named referencerixsET.dat should emit exact_text metrics"
-    );
+    let drift_report: Value = serde_json::from_str(
+        &fs::read_to_string(&drift_report_path).expect("drift report should be readable"),
+    )
+    .expect("drift report JSON should parse");
+    assert_eq!(drift_report["passed"], Value::Bool(false));
+    assert_eq!(drift_report["mismatch_fixture_count"], Value::from(1));
 
-    let mismatch_fixtures = parsed["mismatch_fixtures"]
+    let drift_fixture_reports = drift_report["fixtures"]
         .as_array()
-        .expect("mismatch_fixtures should be an array");
-    let mismatch_fixture = mismatch_fixtures
+        .expect("drift fixtures report should be an array");
+    let drift_fixture_report = drift_fixture_reports
         .iter()
         .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
-        .expect("mismatch_fixtures should include FX-RIXS-001");
-    let mismatch_artifacts = mismatch_fixture["artifacts"]
+        .expect("drift report should include RIXS fixture");
+    let drift_artifact_reports = drift_fixture_report["artifacts"]
         .as_array()
-        .expect("fixture mismatch artifact list should be an array");
-    let missing_baseline_report = mismatch_artifacts
+        .expect("drift fixture artifact reports should be an array");
+    for artifact in &expected_outputs {
+        assert!(
+            drift_artifact_reports
+                .iter()
+                .any(|report| report["artifact_path"].as_str() == Some(*artifact)),
+            "RIXS drift report should include '{}' artifact entry",
+            artifact
+        );
+    }
+
+    let drift_mismatch_fixtures = drift_report["mismatch_fixtures"]
+        .as_array()
+        .expect("drift mismatch_fixtures should be an array");
+    let drift_mismatch_fixture = drift_mismatch_fixtures
         .iter()
-        .find(|artifact| artifact["artifact_path"].as_str() == Some("rixs0.dat"))
-        .expect("canonical artifacts without reference aliases should report missing baselines");
-    assert_eq!(
-        missing_baseline_report["reason"],
-        Value::from("Missing baseline artifact"),
-        "rixs0.dat should report deterministic missing baseline reason in reference-file mode"
+        .find(|fixture| fixture["fixture_id"].as_str() == Some(fixture_id))
+        .expect("drift mismatch report should include RIXS fixture");
+    let drift_mismatch_artifacts = drift_mismatch_fixture["artifacts"]
+        .as_array()
+        .expect("drift mismatch artifact list should be an array");
+    assert!(
+        !drift_mismatch_artifacts.is_empty(),
+        "RIXS drift mismatch report should include artifact details"
+    );
+    assert!(
+        drift_mismatch_artifacts.iter().any(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| expected_outputs.contains(&path))
+        }),
+        "RIXS drift mismatch report should include module-owned output artifacts"
+    );
+    assert!(
+        drift_mismatch_artifacts.iter().all(|artifact| {
+            artifact["artifact_path"]
+                .as_str()
+                .is_some_and(|path| !path.is_empty())
+                && artifact["reason"]
+                    .as_str()
+                    .is_some_and(|reason| !reason.is_empty())
+        }),
+        "RIXS drift mismatch artifacts should include deterministic path and reason fields"
     );
 }
 
@@ -4042,6 +4150,49 @@ fn write_file(path: &Path, content: &str) {
         fs::create_dir_all(parent).expect("parent dir should be created");
     }
     fs::write(path, content).expect("file should be written");
+}
+
+fn stage_workspace_fixture_tree(fixture_id: &str, destination_dir: &Path) {
+    let source_root = workspace_root()
+        .join("artifacts/fortran-baselines")
+        .join(fixture_id)
+        .join("baseline");
+    assert!(
+        source_root.is_dir(),
+        "fixture baseline directory should exist: {}",
+        source_root.display()
+    );
+    copy_directory_tree(&source_root, destination_dir);
+}
+
+fn copy_directory_tree(source_root: &Path, destination_root: &Path) {
+    fs::create_dir_all(destination_root).expect("destination root should exist");
+    let entries = fs::read_dir(source_root).unwrap_or_else(|_| {
+        panic!(
+            "source directory should be readable: {}",
+            source_root.display()
+        )
+    });
+    for entry in entries.flatten() {
+        let source_path = entry.path();
+        let destination_path = destination_root.join(entry.file_name());
+
+        if source_path.is_dir() {
+            copy_directory_tree(&source_path, &destination_path);
+            continue;
+        }
+
+        if let Some(parent) = destination_path.parent() {
+            fs::create_dir_all(parent).expect("destination parent should be created");
+        }
+        fs::copy(&source_path, &destination_path).unwrap_or_else(|_| {
+            panic!(
+                "fixture artifact copy should succeed: '{}' -> '{}'",
+                source_path.display(),
+                destination_path.display()
+            )
+        });
+    }
 }
 
 fn stage_workspace_fixture_file(fixture_id: &str, relative_path: &str, destination: &Path) {

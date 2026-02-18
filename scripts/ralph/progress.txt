@@ -7,6 +7,7 @@ Started: Wed Feb 18 2026
 - For FULLSPECTRUM oracle fixtures, stage runtime inputs from compatibility baseline `FX-FULLSPECTRUM-001`; using oracle rewritten `xmu.dat` as the next input collapses input/output separation and introduces deterministic parity drift.
 - Oracle parity requires a committed baseline file for every module-owned output artifact (including diagnostics like `logfullspectrum.dat`); otherwise comparator reports deterministic `Missing baseline artifact` mismatches.
 - RIXS output contract now includes deterministic `rixs.sh`; keep the canonical script template at `crates/feff-core/src/modules/rixs/rixs.sh.template` and wire it through module output assertions (core parity + CLI oracle checks) when touching RIXS artifacts.
+- Oracle baseline logs can be fixture-id sensitive; regenerate committed `*-ORACLE-*` baselines with the same fixture ID used by the oracle manifest to avoid deterministic `log*.dat` exact-text drift.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -59,4 +60,15 @@ Started: Wed Feb 18 2026
   - Patterns discovered: RIXS fixture parity expectations should treat `rixs.sh` as part of the required output contract, not an optional helper artifact.
   - Gotchas encountered: Running `cargo fmt --all -- --check` currently surfaces pre-existing formatting drift in untouched files; keep story diffs scoped unless intentionally doing a repo-wide formatting sweep.
   - Useful context: `approved_rixs_fixture_emits_committed_shell_script` in `crates/feff-core/tests/rixs_parity.rs` is the fastest guard for script-content parity with committed baselines.
+---
+## 2026-02-18 12:03:48 JST - US-006
+- Reworked `crates/feff-cli/tests/regression_cli.rs` SELF/EELS/FULLSPECTRUM/RIXS oracle coverage to run fixed-fixture pass scenarios (`exit code 0`, `passed=true`, zero mismatches) plus explicit drift-mode scenarios that perturb staged inputs and assert nonzero mismatch diagnostics.
+- Added committed fixed-fixture baselines for CLI oracle pass-mode coverage at `artifacts/fortran-baselines/FX-EELS-ORACLE-001/baseline/` and `artifacts/fortran-baselines/FX-RIXS-ORACLE-001/baseline/`, including fixture-id-correct diagnostic logs consumed by exact-text comparator checks.
+- Preserved artifact-level JSON report assertions for module-owned outputs in both pass and drift paths (SELF spectral outputs, EELS `eels.dat`, FULLSPECTRUM table/log outputs, and full RIXS output contract including `rixs.sh`).
+- Quality checks: `cargo check --locked` passed, `cargo test --locked` passed, `cargo clippy --locked --all-targets -- -D warnings` passed, `cargo test --locked -p feff-cli --test regression_cli` passed; `cargo fmt --all -- --check` still fails due pre-existing repository-wide formatting drift in untouched files.
+- Files changed: `crates/feff-cli/tests/regression_cli.rs`, `artifacts/fortran-baselines/FX-EELS-ORACLE-001/baseline/*`, `artifacts/fortran-baselines/FX-RIXS-ORACLE-001/baseline/*`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Oracle CLI regression is most stable with one fixed-fixture pass path and one explicit drift path per module, so both green parity and failure diagnostics stay locked.
+  - Gotchas encountered: Compatibility fixtures like `FX-EELS-001` can still drift in module-owned outputs; strict zero-mismatch CLI assertions should target dedicated `*-ORACLE-*` baselines.
+  - Useful context: `log*.dat` artifacts may encode fixture identity; regenerate baselines through oracle runs using the same fixture ID as the test manifest.
 ---
