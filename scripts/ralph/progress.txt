@@ -13,6 +13,7 @@ Started: Wed Feb 18 2026
 - Lock Rust quality workflow contract changes with `crates/feff-cli/tests/quality_workflow_guard.rs`; if `.github/workflows/rust-quality-gates.yml` is intentionally edited, update the guard test in the same change.
 - Lock Rust parity workflow contract changes with `crates/feff-cli/tests/parity_workflow_guard.rs`; if `.github/workflows/rust-parity-gates.yml` is intentionally edited, update the guard test in the same change.
 - Migration-state docs should anchor to `tasks/oracle-16-module-migration-summary.md` and current parity artifacts (`oracle-report.json`, `oracle-diff.txt`, `oracle-summary.txt`, `oracle-stderr.txt`) instead of stale placeholder-era references.
+- Cutover rehearsal evidence should be captured in timestamped directories under `artifacts/cutover-rehearsal/<YYYY-MM-DD>/<YYYYMMDD-HHMMSS>/` with one log per gate command plus smoke-output verification/hashes; the dated `tasks/cutover-rehearsal-YYYY-MM-DD.md` report should reference those exact paths and CI-equivalent command blocks.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -128,4 +129,14 @@ Started: Wed Feb 18 2026
   - Patterns discovered: Treat `tasks/oracle-16-module-migration-summary.md` plus parity report artifacts as the authoritative migration-state surface for release-blocking documentation.
   - Gotchas encountered: Stale doc links can survive parity completion; check referenced files exist before reusing historical migration wording.
   - Useful context: Parity failure diagnostics in CI are four artifacts (`oracle-report.json`, `oracle-diff.txt`, `oracle-summary.txt`, `oracle-stderr.txt`) and docs should list all of them together.
+---
+## 2026-02-18 12:45:01 JST - US-012
+- Published dated cutover rehearsal evidence report at `tasks/cutover-rehearsal-2026-02-18.md` with CI-equivalent quality/parity command blocks, release build/smoke verification outcomes, and explicit generated artifact paths.
+- Captured a timestamped local evidence bundle at `artifacts/cutover-rehearsal/2026-02-18/20260218-124242/` including quality logs, oracle parity report/summary/stderr/diff, smoke output verification (`15/15` required artifacts), release binary checksum, and release binary size.
+- Quality checks: `scripts/fortran/ensure-feff10-reference.sh` passed, `cargo check --locked` passed, `cargo test --locked` passed, `cargo clippy --locked --all-targets -- -D warnings` passed, `cargo fmt --all -- --check` passed.
+- Files changed: `tasks/cutover-rehearsal-2026-02-18.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep cutover evidence reproducible by writing run artifacts to a dated timestamped directory and referencing those paths directly in the task report.
+  - Gotchas encountered: Oracle parity stderr can include expected capture-runner warnings even on `PASS`; rely on `oracle-report.json` gate counters and exit code for verdict.
+  - Useful context: macOS rehearsal coverage is fully evidenced; Ubuntu rehearsal remains explicitly marked `NOT RUN` pending execution on Linux staging/CI host.
 ---
