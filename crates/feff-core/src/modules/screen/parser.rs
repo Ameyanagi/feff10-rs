@@ -71,10 +71,7 @@ pub(super) fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<
     if request.module != ComputeModule::Screen {
         return Err(FeffError::input_validation(
             "INPUT.SCREEN_MODULE",
-            format!(
-                "SCREEN module expects SCREEN, got {}",
-                request.module
-            ),
+            format!("SCREEN module expects SCREEN, got {}", request.module),
         ));
     }
 

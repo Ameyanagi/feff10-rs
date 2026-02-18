@@ -11,8 +11,10 @@ use tempfile::TempDir;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -80,8 +82,9 @@ const NON_BASELINE_RDINP_ARTIFACTS: [&str; 5] = [
 
 #[test]
 fn approved_rdinp_fixtures_match_baseline_under_policy() {
-    let comparator = Comparator::from_policy_path(workspace_root().join("tasks/numeric-tolerance-policy.json"))
-        .expect("policy should load");
+    let comparator =
+        Comparator::from_policy_path(workspace_root().join("tasks/numeric-tolerance-policy.json"))
+            .expect("policy should load");
 
     for fixture in &APPROVED_RDINP_FIXTURES {
         let temp = TempDir::new().expect("tempdir should be created");
@@ -89,7 +92,9 @@ fn approved_rdinp_fixtures_match_baseline_under_policy() {
         let request = ComputeRequest::new(
             fixture.id,
             ComputeModule::Rdinp,
-            workspace_root().join(fixture.input_directory).join("feff.inp"),
+            workspace_root()
+                .join(fixture.input_directory)
+                .join("feff.inp"),
             &output_dir,
         );
 
@@ -159,7 +164,9 @@ fn rdinp_regression_suite_passes() {
         let generated_request = ComputeRequest::new(
             fixture.id,
             ComputeModule::Rdinp,
-            workspace_root().join(fixture.input_directory).join("feff.inp"),
+            workspace_root()
+                .join(fixture.input_directory)
+                .join("feff.inp"),
             &generated_output,
         );
         let generated_artifacts = RdinpModule

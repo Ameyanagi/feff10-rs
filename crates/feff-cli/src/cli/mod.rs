@@ -3,8 +3,8 @@ mod dispatch;
 mod helpers;
 
 use clap::Parser;
+use dispatch::{command_alias_from_program_name, module_command_spec};
 use feff_core::domain::FeffError;
-use dispatch::{module_command_spec, command_alias_from_program_name};
 
 pub fn run_from_env() -> i32 {
     let mut args = std::env::args();

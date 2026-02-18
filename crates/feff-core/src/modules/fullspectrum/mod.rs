@@ -138,7 +138,7 @@ impl ModuleExecutor for FullSpectrumModule {
 #[cfg(test)]
 mod tests {
     use super::FullSpectrumModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;

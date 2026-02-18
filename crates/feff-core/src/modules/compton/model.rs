@@ -1,6 +1,6 @@
 use super::parser::{
-    ComptonControlInput, GgSliceInput, PotComptonInput, normalized_qhat,
-    parse_compton_source, parse_pot_source, parse_gg_slice_source,
+    ComptonControlInput, GgSliceInput, PotComptonInput, normalized_qhat, parse_compton_source,
+    parse_gg_slice_source, parse_pot_source,
 };
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
@@ -148,7 +148,11 @@ impl ComptonModel {
         }
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         let contents = match artifact_name {
             "compton.dat" => self.render_compton(),
             "jzzp.dat" => self.render_jzzp(),

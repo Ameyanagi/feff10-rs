@@ -28,10 +28,7 @@ pub struct PotContract {
 pub struct PotModule;
 
 impl PotModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<PotContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<PotContract> {
         validate_request_shape(request)?;
         Ok(PotContract {
             required_inputs: artifact_list(&POT_REQUIRED_INPUTS),
@@ -87,7 +84,7 @@ impl ModuleExecutor for PotModule {
 #[cfg(test)]
 mod tests {
     use super::{POT_BINARY_MAGIC, PotModule};
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
@@ -96,12 +93,8 @@ mod tests {
 
     #[test]
     fn contract_exposes_required_inputs_and_outputs() {
-        let request = ComputeRequest::new(
-            "FX-POT-001",
-            ComputeModule::Pot,
-            "pot.inp",
-            "actual-output",
-        );
+        let request =
+            ComputeRequest::new("FX-POT-001", ComputeModule::Pot, "pot.inp", "actual-output");
         let scaffold = PotModule;
         let contract = scaffold
             .contract_for_request(&request)

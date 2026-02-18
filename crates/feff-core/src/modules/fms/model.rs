@@ -1,8 +1,8 @@
-use super::parser::{
-    FmsControlInput, GeomFmsInput, GlobalFmsInput, PhaseFmsInput,
-    parse_fms_source, parse_geom_source, parse_global_source, parse_phase_source,
-};
 use super::FMS_GG_BINARY_MAGIC;
+use super::parser::{
+    FmsControlInput, GeomFmsInput, GlobalFmsInput, PhaseFmsInput, parse_fms_source,
+    parse_geom_source, parse_global_source, parse_phase_source,
+};
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
 use std::f64::consts::PI;
@@ -47,7 +47,11 @@ impl FmsModel {
         })
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         match artifact_name {
             "gg.bin" => {
                 write_binary_artifact(output_path, &self.render_gg_binary()).map_err(|source| {

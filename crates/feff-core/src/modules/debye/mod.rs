@@ -7,8 +7,8 @@ use std::fs;
 
 use model::DebyeModel;
 use parser::{
-    artifact_list, input_parent_dir, maybe_read_optional_input_source,
-    read_input_source, validate_request_shape,
+    artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_source,
+    validate_request_shape,
 };
 
 pub(crate) const DEBYE_REQUIRED_INPUTS: [&str; 3] = ["ff2x.inp", "paths.dat", "feff.inp"];
@@ -33,15 +33,10 @@ pub struct DebyeContract {
     pub expected_outputs: Vec<ComputeArtifact>,
 }
 
-
 pub struct DebyeModule;
 
-
 impl DebyeModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<DebyeContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<DebyeContract> {
         validate_request_shape(request)?;
         Ok(DebyeContract {
             required_inputs: artifact_list(&DEBYE_REQUIRED_INPUTS),
@@ -113,11 +108,10 @@ impl ModuleExecutor for DebyeModule {
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::DebyeModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;

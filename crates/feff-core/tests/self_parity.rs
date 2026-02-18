@@ -1,7 +1,7 @@
 use feff_core::domain::{ComputeArtifact, ComputeModule, ComputeRequest};
-use feff_core::modules::regression::{run_regression, RegressionRunnerConfig};
-use feff_core::modules::self_energy::SelfEnergyModule;
 use feff_core::modules::ModuleExecutor;
+use feff_core::modules::regression::{RegressionRunnerConfig, run_regression};
+use feff_core::modules::self_energy::SelfEnergyModule;
 use serde_json::json;
 use std::collections::BTreeSet;
 use std::fs;

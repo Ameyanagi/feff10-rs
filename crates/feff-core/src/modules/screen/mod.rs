@@ -6,7 +6,10 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::ScreenModel;
-use parser::{artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_source,
+    validate_request_shape,
+};
 
 pub(crate) const SCREEN_REQUIRED_INPUTS: [&str; 3] = ["pot.inp", "geom.dat", "ldos.inp"];
 pub(crate) const SCREEN_OPTIONAL_INPUTS: [&str; 1] = ["screen.inp"];
@@ -23,10 +26,7 @@ pub struct ScreenContract {
 pub struct ScreenModule;
 
 impl ScreenModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<ScreenContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<ScreenContract> {
         validate_request_shape(request)?;
         Ok(ScreenContract {
             required_inputs: artifact_list(&SCREEN_REQUIRED_INPUTS),
@@ -101,7 +101,7 @@ impl ModuleExecutor for ScreenModule {
 #[cfg(test)]
 mod tests {
     use super::ScreenModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;

@@ -6,10 +6,14 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::PathModel;
-use parser::{artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape,
+};
 
-pub(crate) const PATH_REQUIRED_INPUTS: [&str; 4] = ["paths.inp", "geom.dat", "global.inp", "phase.bin"];
-pub(crate) const PATH_REQUIRED_OUTPUTS: [&str; 4] = ["paths.dat", "paths.bin", "crit.dat", "log4.dat"];
+pub(crate) const PATH_REQUIRED_INPUTS: [&str; 4] =
+    ["paths.inp", "geom.dat", "global.inp", "phase.bin"];
+pub(crate) const PATH_REQUIRED_OUTPUTS: [&str; 4] =
+    ["paths.dat", "paths.bin", "crit.dat", "log4.dat"];
 pub const PATH_BINARY_MAGIC: &[u8; 8] = b"PATHBIN1";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,10 +26,7 @@ pub struct PathContract {
 pub struct PathModule;
 
 impl PathModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<PathContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<PathContract> {
         validate_request_shape(request)?;
         Ok(PathContract {
             required_inputs: artifact_list(&PATH_REQUIRED_INPUTS),
@@ -100,7 +101,7 @@ impl ModuleExecutor for PathModule {
 #[cfg(test)]
 mod tests {
     use super::{PATH_BINARY_MAGIC, PathModule};
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use crate::modules::path::PATH_BINARY_MAGIC as EXPORTED_PATH_BINARY_MAGIC;
     use crate::modules::xsph::XSPH_PHASE_BINARY_MAGIC;

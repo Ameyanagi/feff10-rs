@@ -1,4 +1,4 @@
-use super::{XSPH_REQUIRED_INPUTS, POT_CONTROL_I32_COUNT, POT_CONTROL_F64_COUNT};
+use super::{POT_CONTROL_F64_COUNT, POT_CONTROL_I32_COUNT, XSPH_REQUIRED_INPUTS};
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use crate::modules::pot::POT_BINARY_MAGIC;
 use std::fs;
@@ -277,7 +277,10 @@ pub(super) fn parse_geom_source(fixture_id: &str, source: &str) -> ComputeResult
     })
 }
 
-pub(super) fn parse_global_source(fixture_id: &str, source: &str) -> ComputeResult<GlobalXsphInput> {
+pub(super) fn parse_global_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<GlobalXsphInput> {
     let mut values = Vec::new();
     for line in source.lines() {
         values.extend(parse_numeric_tokens(line));

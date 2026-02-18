@@ -1,6 +1,6 @@
 use super::parser::{
-    BandControlInput, GeomBandInput, GlobalBandInput, PhaseBandInput,
-    parse_band_source, parse_geom_source, parse_global_source, parse_phase_source,
+    BandControlInput, GeomBandInput, GlobalBandInput, PhaseBandInput, parse_band_source,
+    parse_geom_source, parse_global_source, parse_phase_source,
 };
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
@@ -112,7 +112,11 @@ impl BandModel {
         }
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         match artifact_name {
             "bandstructure.dat" => write_text_artifact(output_path, &self.render_bandstructure())
                 .map_err(|source| {

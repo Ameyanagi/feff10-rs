@@ -6,9 +6,13 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::XsphModel;
-use parser::{artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, maybe_read_optional_input_source, read_input_bytes,
+    read_input_source, validate_request_shape,
+};
 
-pub(crate) const XSPH_REQUIRED_INPUTS: [&str; 4] = ["xsph.inp", "geom.dat", "global.inp", "pot.bin"];
+pub(crate) const XSPH_REQUIRED_INPUTS: [&str; 4] =
+    ["xsph.inp", "geom.dat", "global.inp", "pot.bin"];
 pub(crate) const XSPH_OPTIONAL_INPUTS: [&str; 1] = ["wscrn.dat"];
 pub(crate) const XSPH_REQUIRED_OUTPUTS: [&str; 3] = ["phase.bin", "xsect.dat", "log2.dat"];
 pub(crate) const XSPH_OPTIONAL_OUTPUTS: [&str; 1] = ["phase.dat"];
@@ -29,10 +33,7 @@ pub struct XsphContract {
 pub struct XsphModule;
 
 impl XsphModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<XsphContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<XsphContract> {
         validate_request_shape(request)?;
         Ok(XsphContract {
             required_inputs: artifact_list(&XSPH_REQUIRED_INPUTS),
@@ -112,9 +113,9 @@ impl ModuleExecutor for XsphModule {
 
 #[cfg(test)]
 mod tests {
+    use super::parser::{push_f64, push_i32, push_u32};
     use super::{XSPH_PHASE_BINARY_MAGIC, XsphModule};
-    use super::parser::{push_i32, push_u32, push_f64};
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use crate::modules::pot::POT_BINARY_MAGIC;
     use std::collections::BTreeSet;
@@ -182,12 +183,8 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         let temp = TempDir::new().expect("tempdir should be created");
         let (input_path, output_dir) = stage_xsph_inputs(temp.path(), true);
 
-        let request = ComputeRequest::new(
-            "FX-XSPH-001",
-            ComputeModule::Xsph,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-XSPH-001", ComputeModule::Xsph, &input_path, &output_dir);
         let artifacts = XsphModule
             .execute(&request)
             .expect("XSPH execution should succeed");
@@ -221,12 +218,8 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         let temp = TempDir::new().expect("tempdir should be created");
         let (input_path, output_dir) = stage_xsph_inputs(temp.path(), false);
 
-        let request = ComputeRequest::new(
-            "FX-XSPH-001",
-            ComputeModule::Xsph,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-XSPH-001", ComputeModule::Xsph, &input_path, &output_dir);
         let artifacts = XsphModule
             .execute(&request)
             .expect("XSPH execution should succeed without wscrn.dat");
@@ -284,12 +277,8 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         let temp = TempDir::new().expect("tempdir should be created");
         let (input_path, output_dir) = stage_xsph_inputs(temp.path(), false);
 
-        let request = ComputeRequest::new(
-            "FX-XSPH-001",
-            ComputeModule::Path,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-XSPH-001", ComputeModule::Path, &input_path, &output_dir);
         let error = XsphModule
             .execute(&request)
             .expect_err("module mismatch should fail");
@@ -311,12 +300,8 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
         fs::write(temp.path().join("global.inp"), GLOBAL_INPUT_FIXTURE)
             .expect("global input should be written");
 
-        let request = ComputeRequest::new(
-            "FX-XSPH-001",
-            ComputeModule::Xsph,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-XSPH-001", ComputeModule::Xsph, &input_path, &output_dir);
         let error = XsphModule
             .execute(&request)
             .expect_err("missing pot.bin should fail");
@@ -339,12 +324,8 @@ rgrd, rfms2, gamach, xkstep, xkmax, vixan, Eps0, EGap
             .expect("global input should be written");
         write_true_compute_pot_fixture(&temp.path().join("pot.bin"));
 
-        let request = ComputeRequest::new(
-            "FX-XSPH-001",
-            ComputeModule::Xsph,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-XSPH-001", ComputeModule::Xsph, &input_path, &output_dir);
         let error = XsphModule
             .execute(&request)
             .expect_err("invalid xsph input should fail");

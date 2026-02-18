@@ -1,4 +1,6 @@
-use super::{COMPTON_REQUIRED_INPUTS, POT_BINARY_MAGIC, POT_CONTROL_I32_COUNT, POT_CONTROL_F64_COUNT};
+use super::{
+    COMPTON_REQUIRED_INPUTS, POT_BINARY_MAGIC, POT_CONTROL_F64_COUNT, POT_CONTROL_I32_COUNT,
+};
 use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 use crate::modules::fms::FMS_GG_BINARY_MAGIC;
 use std::f64::consts::PI;
@@ -86,10 +88,7 @@ pub(super) fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<
     if request.module != ComputeModule::Compton {
         return Err(FeffError::input_validation(
             "INPUT.COMPTON_MODULE",
-            format!(
-                "COMPTON module expects COMPTON, got {}",
-                request.module
-            ),
+            format!("COMPTON module expects COMPTON, got {}", request.module),
         ));
     }
 
@@ -161,7 +160,10 @@ pub(super) fn read_input_bytes(path: &Path, artifact_name: &str) -> ComputeResul
     })
 }
 
-pub(super) fn parse_compton_source(fixture_id: &str, source: &str) -> ComputeResult<ComptonControlInput> {
+pub(super) fn parse_compton_source(
+    fixture_id: &str,
+    source: &str,
+) -> ComputeResult<ComptonControlInput> {
     let lines = source.lines().collect::<Vec<_>>();
     let mut control = ComptonControlInput::default();
 
@@ -353,10 +355,7 @@ pub(super) fn parse_pot_source(fixture_id: &str, bytes: &[u8]) -> ComputeResult<
     })
 }
 
-fn parse_true_compute_pot_binary(
-    fixture_id: &str,
-    bytes: &[u8],
-) -> ComputeResult<PotComptonInput> {
+fn parse_true_compute_pot_binary(fixture_id: &str, bytes: &[u8]) -> ComputeResult<PotComptonInput> {
     let mut offset = POT_BINARY_MAGIC.len();
 
     for _ in 0..POT_CONTROL_I32_COUNT {

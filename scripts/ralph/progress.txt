@@ -10,6 +10,7 @@ Started: Wed Feb 18 2026
 - Oracle baseline logs can be fixture-id sensitive; regenerate committed `*-ORACLE-*` baselines with the same fixture ID used by the oracle manifest to avoid deterministic `log*.dat` exact-text drift.
 - Comparator policy is first-match: place artifact-scoped categories before broad wildcard categories to prevent tolerance bleed (for example, explicit SELF `sigma.dat` mapping ahead of thermal `**/sig*.dat`).
 - Workflow-equivalent full-oracle parity currently runs canonical fixture IDs from `tasks/golden-fixture-manifest.json` (for example `FX-SELF-001`), so release summaries should report gate-level metrics from `artifacts/regression/oracle-report.json` instead of assuming `*-ORACLE-*` fixture IDs appear in that run.
+- Lock Rust quality workflow contract changes with `crates/feff-cli/tests/quality_workflow_guard.rs`; if `.github/workflows/rust-quality-gates.yml` is intentionally edited, update the guard test in the same change.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -94,4 +95,14 @@ Started: Wed Feb 18 2026
   - Patterns discovered: The parity workflow’s release gate signal comes from top-level report counters (`passed`, failed/mismatch fixture counts) even when fixture IDs are canonical compatibility IDs.
   - Gotchas encountered: Running the full oracle command emits large untracked runtime capture outputs under `artifacts/fortran-oracle-capture/` and report files under `artifacts/regression/`; keep commit scope limited to durable docs/metadata updates.
   - Useful context: `tasks/oracle-16-module-migration-summary.md` is now the dated audit surface expected by `US-008`, sourced directly from `artifacts/regression/oracle-report.json`.
+---
+## 2026-02-18 12:32:49 JST - US-009
+- Added a strict workflow guard test at `crates/feff-cli/tests/quality_workflow_guard.rs` that asserts `.github/workflows/rust-quality-gates.yml` keeps `push`/`pull_request` triggers, preserves the exact locked command set/order, and rejects allow-failure or warning-relaxation drift.
+- Ran workspace-wide `cargo fmt --all` to eliminate pre-existing formatting drift so `cargo fmt --all -- --check` can stay a strict blocking gate.
+- Validated local CI command parity with `scripts/fortran/ensure-feff10-reference.sh`, `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, and `cargo fmt --all -- --check` (all passed).
+- Files changed: `crates/feff-cli/tests/quality_workflow_guard.rs`, `crates/feff-cli/src/cli/*.rs` (formatting), `crates/feff-core/src/domain/mod.rs` (formatting), `crates/feff-core/src/modules/**/*.rs` (formatting), `crates/feff-core/tests/*.rs` (formatting), `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: CI workflow strictness is easiest to preserve with a repository test that locks command text and failure-policy expectations.
+  - Gotchas encountered: `cargo fmt --all -- --check` can fail for historical drift across untouched files; resolving this may require one dedicated normalization pass.
+  - Useful context: Post-normalization, the strict quality gate command set now passes end-to-end without loosening workflow policies.
 ---

@@ -1,7 +1,6 @@
-use super::{RDINP_REQUIRED_INPUTS};
+use super::RDINP_REQUIRED_INPUTS;
 use crate::domain::{
-    ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError, InputCard,
-    InputDeck,
+    ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError, InputCard, InputDeck,
 };
 use std::fs;
 
@@ -25,10 +24,7 @@ pub(super) fn validate_request_shape(request: &ComputeRequest) -> ComputeResult<
     if request.module != ComputeModule::Rdinp {
         return Err(FeffError::input_validation(
             "INPUT.RDINP_MODULE",
-            format!(
-                "RDINP module expects RDINP, got {}",
-                request.module
-            ),
+            format!("RDINP module expects RDINP, got {}", request.module),
         ));
     }
 
@@ -202,7 +198,11 @@ pub(super) fn sort_atoms_by_distance(mut atoms: Vec<AtomSite>) -> Vec<AtomSite> 
     atoms
 }
 
-pub(super) fn card_value(deck: &InputDeck, keyword: &str, index: usize) -> ComputeResult<Option<f64>> {
+pub(super) fn card_value(
+    deck: &InputDeck,
+    keyword: &str,
+    index: usize,
+) -> ComputeResult<Option<f64>> {
     let Some(card) = first_card(deck, keyword) else {
         return Ok(None);
     };
@@ -223,7 +223,11 @@ pub(super) fn card_value(deck: &InputDeck, keyword: &str, index: usize) -> Compu
     Ok(Some(value))
 }
 
-pub(super) fn required_card_value(deck: &InputDeck, keyword: &str, index: usize) -> ComputeResult<f64> {
+pub(super) fn required_card_value(
+    deck: &InputDeck,
+    keyword: &str,
+    index: usize,
+) -> ComputeResult<f64> {
     card_value(deck, keyword, index)?.ok_or_else(|| {
         FeffError::input_validation(
             "INPUT.RDINP_CARD_VALUE",

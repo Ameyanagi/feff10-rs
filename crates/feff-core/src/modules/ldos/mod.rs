@@ -6,9 +6,12 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::LdosModel;
-use parser::{artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape,
+};
 
-pub(crate) const LDOS_REQUIRED_INPUTS: [&str; 4] = ["ldos.inp", "geom.dat", "pot.bin", "reciprocal.inp"];
+pub(crate) const LDOS_REQUIRED_INPUTS: [&str; 4] =
+    ["ldos.inp", "geom.dat", "pot.bin", "reciprocal.inp"];
 pub(crate) const LDOS_LOG_OUTPUT: &str = "logdos.dat";
 pub(crate) const POT_BINARY_MAGIC: &[u8; 8] = b"POTBIN10";
 pub(crate) const POT_CONTROL_I32_COUNT: usize = 16;
@@ -24,10 +27,7 @@ pub struct LdosContract {
 pub struct LdosModule;
 
 impl LdosModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<LdosContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<LdosContract> {
         validate_request_shape(request)?;
         let input_dir = input_parent_dir(request)?;
         let ldos_source = read_input_source(&request.input_path, LDOS_REQUIRED_INPUTS[0])?;
@@ -123,7 +123,7 @@ impl ModuleExecutor for LdosModule {
 #[cfg(test)]
 mod tests {
     use super::LdosModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
@@ -199,12 +199,8 @@ mod tests {
             &temp.path().join("reciprocal.inp"),
         );
 
-        let request = ComputeRequest::new(
-            "FX-LDOS-001",
-            ComputeModule::Ldos,
-            &input_path,
-            &output_dir,
-        );
+        let request =
+            ComputeRequest::new("FX-LDOS-001", ComputeModule::Ldos, &input_path, &output_dir);
         let scaffold = LdosModule;
         let artifacts = scaffold
             .execute(&request)
@@ -324,12 +320,8 @@ mod tests {
         fs::write(temp.path().join("reciprocal.inp"), "R 0.0 0.0 0.0\n")
             .expect("reciprocal should be written");
 
-        let request = ComputeRequest::new(
-            "FX-LDOS-001",
-            ComputeModule::Band,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-LDOS-001", ComputeModule::Band, &input_path, temp.path());
         let scaffold = LdosModule;
         let error = scaffold
             .execute(&request)
@@ -348,12 +340,8 @@ mod tests {
         fs::write(temp.path().join("reciprocal.inp"), "R 0.0 0.0 0.0\n")
             .expect("reciprocal should be written");
 
-        let request = ComputeRequest::new(
-            "FX-LDOS-001",
-            ComputeModule::Ldos,
-            &input_path,
-            temp.path(),
-        );
+        let request =
+            ComputeRequest::new("FX-LDOS-001", ComputeModule::Ldos, &input_path, temp.path());
         let scaffold = LdosModule;
         let error = scaffold
             .execute(&request)

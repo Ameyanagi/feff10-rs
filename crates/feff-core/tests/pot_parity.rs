@@ -11,8 +11,10 @@ use tempfile::TempDir;
 
 fn workspace_root() -> std::path::PathBuf {
     std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent().unwrap()
-        .parent().unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -171,7 +173,9 @@ fn run_rdinp_and_pot_for_fixture(fixture: &FixtureCase, root: &Path, subdir: &st
     let rdinp_request = ComputeRequest::new(
         fixture.id,
         ComputeModule::Rdinp,
-        workspace_root().join(fixture.input_directory).join("feff.inp"),
+        workspace_root()
+            .join(fixture.input_directory)
+            .join("feff.inp"),
         &output_dir,
     );
     let rdinp_artifacts = RdinpModule
