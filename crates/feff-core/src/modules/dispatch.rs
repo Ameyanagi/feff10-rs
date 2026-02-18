@@ -1,5 +1,5 @@
 use super::traits::{ModuleExecutor, RuntimeModuleExecutor};
-use crate::domain::{FeffError, ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult};
+use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError};
 
 pub fn runtime_compute_engine_available(module: ComputeModule) -> bool {
     matches!(
@@ -214,10 +214,9 @@ impl RuntimeModuleExecutor for RuntimeDmdwExecutor {
 #[cfg(test)]
 mod tests {
     use super::{
-        execute_runtime_module, runtime_compute_engine_available,
-        runtime_engine_unavailable_error,
+        execute_runtime_module, runtime_compute_engine_available, runtime_engine_unavailable_error,
     };
-    use crate::domain::{FeffErrorCategory, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeModule, ComputeRequest, FeffErrorCategory};
     use std::path::Path;
     use tempfile::TempDir;
 
@@ -337,6 +336,12 @@ mod tests {
                 .iter()
                 .any(|artifact| artifact.relative_path == Path::new("logrixs.dat")),
             "RIXS runtime should emit logrixs.dat"
+        );
+        assert!(
+            artifacts
+                .iter()
+                .any(|artifact| artifact.relative_path == Path::new("rixs.sh")),
+            "RIXS runtime should emit rixs.sh"
         );
     }
 

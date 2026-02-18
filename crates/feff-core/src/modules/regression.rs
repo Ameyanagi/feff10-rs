@@ -2049,6 +2049,7 @@ mod tests {
             "rixsET-sat.dat",
             "rixsEE-sat.dat",
             "logrixs.dat",
+            "rixs.sh",
         ]
         .iter()
         .copied()

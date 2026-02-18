@@ -6,6 +6,7 @@ Started: Wed Feb 18 2026
 - Fixture-scoped regression compares every artifact present in the baseline directory; if baseline includes staged entry files such as `feff.inp`, stage the same file under `<actual-root>/<fixture>/<actual-subdir>/` to avoid false missing-artifact mismatches.
 - For FULLSPECTRUM oracle fixtures, stage runtime inputs from compatibility baseline `FX-FULLSPECTRUM-001`; using oracle rewritten `xmu.dat` as the next input collapses input/output separation and introduces deterministic parity drift.
 - Oracle parity requires a committed baseline file for every module-owned output artifact (including diagnostics like `logfullspectrum.dat`); otherwise comparator reports deterministic `Missing baseline artifact` mismatches.
+- RIXS output contract now includes deterministic `rixs.sh`; keep the canonical script template at `crates/feff-core/src/modules/rixs/rixs.sh.template` and wire it through module output assertions (core parity + CLI oracle checks) when touching RIXS artifacts.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -48,4 +49,14 @@ Started: Wed Feb 18 2026
   - Patterns discovered: Oracle FULLSPECTRUM parity is only zero-mismatch when both module outputs and baseline-owned entry artifacts are present in staged actual directories.
   - Gotchas encountered: Leaving `logfullspectrum.dat` out of committed oracle baselines causes deterministic comparator failures even when runtime output is stable.
   - Useful context: The new `oracle_fullspectrum_fixture_has_zero_mismatches_against_committed_baseline` test is the fastest guard for this fixture-level contract.
+---
+## 2026-02-18 11:49:08 JST - US-005
+- Materialized deterministic `rixs.sh` as a first-class RIXS output by extending the runtime output contract in `crates/feff-core/src/modules/rixs/mod.rs` and wiring `RixsModel` artifact rendering to a committed shell-script template (`crates/feff-core/src/modules/rixs/rixs.sh.template`).
+- Updated focused regression coverage for the new artifact in `crates/feff-core/tests/rixs_parity.rs` (required-output contract now includes `rixs.sh` plus a committed-baseline content assertion) and related CLI/runtime checks in `crates/feff-cli/tests/regression_cli.rs`, `crates/feff-cli/tests/cli_compatibility.rs`, `crates/feff-core/src/modules/dispatch.rs`, and `crates/feff-core/src/modules/regression.rs`.
+- Quality checks: `cargo check --locked` passed, `cargo test --locked` passed, `cargo clippy --locked --all-targets -- -D warnings` passed; `cargo fmt --all -- --check` still reports pre-existing repo-wide formatting drift outside this story scope.
+- Files changed: `crates/feff-core/src/modules/rixs/model.rs`, `crates/feff-core/src/modules/rixs/mod.rs`, `crates/feff-core/src/modules/rixs/rixs.sh.template`, `crates/feff-core/tests/rixs_parity.rs`, `crates/feff-cli/tests/regression_cli.rs`, `crates/feff-cli/tests/cli_compatibility.rs`, `crates/feff-core/src/modules/dispatch.rs`, `crates/feff-core/src/modules/regression.rs`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: RIXS fixture parity expectations should treat `rixs.sh` as part of the required output contract, not an optional helper artifact.
+  - Gotchas encountered: Running `cargo fmt --all -- --check` currently surfaces pre-existing formatting drift in untouched files; keep story diffs scoped unless intentionally doing a repo-wide formatting sweep.
+  - Useful context: `approved_rixs_fixture_emits_committed_shell_script` in `crates/feff-core/tests/rixs_parity.rs` is the fastest guard for script-content parity with committed baselines.
 ---

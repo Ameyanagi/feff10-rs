@@ -6,7 +6,9 @@ use crate::domain::{ComputeArtifact, ComputeRequest, ComputeResult, FeffError};
 use std::fs;
 
 use model::RixsModel;
-use parser::{artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape};
+use parser::{
+    artifact_list, input_parent_dir, read_input_bytes, read_input_source, validate_request_shape,
+};
 
 pub(crate) const RIXS_REQUIRED_INPUTS: [&str; 6] = [
     "rixs.inp",
@@ -16,7 +18,7 @@ pub(crate) const RIXS_REQUIRED_INPUTS: [&str; 6] = [
     "wscrn_2.dat",
     "xsect_2.dat",
 ];
-pub(crate) const RIXS_REQUIRED_OUTPUTS: [&str; 7] = [
+pub(crate) const RIXS_REQUIRED_OUTPUTS: [&str; 8] = [
     "rixs0.dat",
     "rixs1.dat",
     "rixsET.dat",
@@ -24,6 +26,7 @@ pub(crate) const RIXS_REQUIRED_OUTPUTS: [&str; 7] = [
     "rixsET-sat.dat",
     "rixsEE-sat.dat",
     "logrixs.dat",
+    "rixs.sh",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -36,10 +39,7 @@ pub struct RixsContract {
 pub struct RixsModule;
 
 impl RixsModule {
-    pub fn contract_for_request(
-        &self,
-        request: &ComputeRequest,
-    ) -> ComputeResult<RixsContract> {
+    pub fn contract_for_request(&self, request: &ComputeRequest) -> ComputeResult<RixsContract> {
         validate_request_shape(request)?;
         Ok(RixsContract {
             required_inputs: artifact_list(&RIXS_REQUIRED_INPUTS),
@@ -123,14 +123,14 @@ impl ModuleExecutor for RixsModule {
 #[cfg(test)]
 mod tests {
     use super::RixsModule;
-    use crate::domain::{FeffErrorCategory, ComputeArtifact, ComputeModule, ComputeRequest};
+    use crate::domain::{ComputeArtifact, ComputeModule, ComputeRequest, FeffErrorCategory};
     use crate::modules::ModuleExecutor;
     use std::collections::BTreeSet;
     use std::fs;
     use std::path::{Path, PathBuf};
     use tempfile::TempDir;
 
-    const RIXS_OUTPUTS: [&str; 7] = [
+    const RIXS_OUTPUTS: [&str; 8] = [
         "rixs0.dat",
         "rixs1.dat",
         "rixsET.dat",
@@ -138,6 +138,7 @@ mod tests {
         "rixsET-sat.dat",
         "rixsEE-sat.dat",
         "logrixs.dat",
+        "rixs.sh",
     ];
 
     const RIXS_INPUT: &str = "\

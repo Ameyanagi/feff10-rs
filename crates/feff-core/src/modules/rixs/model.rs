@@ -8,6 +8,8 @@ use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::f64::consts::PI;
 use std::path::Path;
 
+const RIXS_SHELL_SCRIPT_TEMPLATE: &str = include_str!("rixs.sh.template");
+
 #[derive(Debug, Clone)]
 pub(super) struct RixsModel {
     fixture_id: String,
@@ -73,7 +75,11 @@ impl RixsModel {
         })
     }
 
-    pub(super) fn write_artifact(&self, artifact_name: &str, output_path: &Path) -> ComputeResult<()> {
+    pub(super) fn write_artifact(
+        &self,
+        artifact_name: &str,
+        output_path: &Path,
+    ) -> ComputeResult<()> {
         let contents = match artifact_name {
             "rixs0.dat" => self.render_rixs0(),
             "rixs1.dat" => self.render_rixs1(),
@@ -82,6 +88,7 @@ impl RixsModel {
             "rixsET-sat.dat" => self.render_rixs_et_sat(),
             "rixsEE-sat.dat" => self.render_rixs_ee(true),
             "logrixs.dat" => self.render_logrixs(),
+            "rixs.sh" => self.render_rixs_shell_script(),
             other => {
                 return Err(FeffError::internal(
                     "SYS.RIXS_OUTPUT_CONTRACT",
@@ -453,5 +460,9 @@ Module RIXS true-compute execution finished.
             format_fixed_f64(config.sat_ratio, 10, 6).trim(),
             format_fixed_f64(config.gamma_width, 10, 6).trim(),
         )
+    }
+
+    fn render_rixs_shell_script(&self) -> String {
+        RIXS_SHELL_SCRIPT_TEMPLATE.to_string()
     }
 }

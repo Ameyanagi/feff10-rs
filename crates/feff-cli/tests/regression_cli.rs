@@ -3677,6 +3677,7 @@ fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes
         "rixsET-sat.dat",
         "rixsEE-sat.dat",
         "logrixs.dat",
+        "rixs.sh",
     ] {
         assert!(
             actual_root
@@ -3709,6 +3710,12 @@ fn oracle_command_runs_rixs_parity_with_reference_file_baseline_comparator_modes
     let artifact_reports = fixture_report["artifacts"]
         .as_array()
         .expect("fixture artifact reports should be an array");
+    assert!(
+        artifact_reports
+            .iter()
+            .any(|artifact| artifact["artifact_path"].as_str() == Some("rixs.sh")),
+        "RIXS fixture should include generated rixs.sh artifact diagnostics"
+    );
 
     let canonical_report = artifact_reports
         .iter()
