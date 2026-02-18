@@ -12,6 +12,7 @@ Started: Wed Feb 18 2026
 - Workflow-equivalent full-oracle parity currently runs canonical fixture IDs from `tasks/golden-fixture-manifest.json` (for example `FX-SELF-001`), so release summaries should report gate-level metrics from `artifacts/regression/oracle-report.json` instead of assuming `*-ORACLE-*` fixture IDs appear in that run.
 - Lock Rust quality workflow contract changes with `crates/feff-cli/tests/quality_workflow_guard.rs`; if `.github/workflows/rust-quality-gates.yml` is intentionally edited, update the guard test in the same change.
 - Lock Rust parity workflow contract changes with `crates/feff-cli/tests/parity_workflow_guard.rs`; if `.github/workflows/rust-parity-gates.yml` is intentionally edited, update the guard test in the same change.
+- Migration-state docs should anchor to `tasks/oracle-16-module-migration-summary.md` and current parity artifacts (`oracle-report.json`, `oracle-diff.txt`, `oracle-summary.txt`, `oracle-stderr.txt`) instead of stale placeholder-era references.
 
 ## 2026-02-18 11:11:32 JST - US-001
 - Replaced SELF placeholder spectral generation with SFCONV-kernel-backed outputs by adding `numerics::sfconv` and wiring `SelfEnergyModule` to compute/reuse one shared convolution state across artifact writers.
@@ -116,4 +117,15 @@ Started: Wed Feb 18 2026
   - Patterns discovered: Keep CI workflow guarantees stable with dedicated guard tests that parse workflow text and assert failure-path + diagnostics contracts.
   - Gotchas encountered: Artifact path strings in parity workflows can appear in multiple contexts (command args, existence checks, and upload lists), so guard tests should avoid brittle single-occurrence assertions for those paths.
   - Useful context: `rust_parity_workflow_keeps_strict_failure_and_diagnostics_contract` is now the fast regression sentinel for parity-gate behavior.
+---
+## 2026-02-18 12:40:15 JST - US-011
+- Replaced stale pre-closeout migration narrative in `tasks/migration-gap-analysis.md` with a post-parity-closure status document that records current gate metrics, remaining non-blocking limits, and workflow-equivalent reproduction commands.
+- Updated `README.md` to point at the current migration status sources, remove outdated scaffolding wording, keep strict parity artifact references complete, and align runtime module status with the completed 16-module true-compute scope.
+- Updated `docs/developer-workflows.md` to keep quality/parity strictness explicit, align the oracle command with workflow-locked invocation (`cargo run --locked -- oracle`), and document all uploaded parity failure artifacts.
+- Quality checks: `scripts/fortran/ensure-feff10-reference.sh` passed, `cargo check --locked` passed, `cargo test --locked` passed, `cargo clippy --locked --all-targets -- -D warnings` passed, `cargo fmt --all -- --check` passed.
+- Files changed: `tasks/migration-gap-analysis.md`, `README.md`, `docs/developer-workflows.md`, `scripts/ralph/prd.json`, `scripts/ralph/progress.txt`.
+- **Learnings for future iterations:**
+  - Patterns discovered: Treat `tasks/oracle-16-module-migration-summary.md` plus parity report artifacts as the authoritative migration-state surface for release-blocking documentation.
+  - Gotchas encountered: Stale doc links can survive parity completion; check referenced files exist before reusing historical migration wording.
+  - Useful context: Parity failure diagnostics in CI are four artifacts (`oracle-report.json`, `oracle-diff.txt`, `oracle-summary.txt`, `oracle-stderr.txt`) and docs should list all of them together.
 ---

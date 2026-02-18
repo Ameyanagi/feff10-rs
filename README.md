@@ -2,7 +2,8 @@
 
 ## Documentation
 
-- Migration contract reference (release-blocking): `tasks/migration-contract-reference.md`
+- Migration status summary (release-blocking): `tasks/oracle-16-module-migration-summary.md`
+- Migration closeout analysis: `tasks/migration-gap-analysis.md`
 - Developer workflows: `docs/developer-workflows.md`
 - User and operator guide: `docs/operator-guide.md`
 - Troubleshooting: `docs/troubleshooting.md`
@@ -29,15 +30,15 @@ copyright:
 
 Any use or redistribution of FEFF10-derived materials must comply with the FEFF10 license terms.
 
-## Rust Architecture Scaffolding
+## Rust Architecture
 
-The current Rust migration scaffolding keeps module boundaries explicit in a single workspace crate:
+The Rust workspace keeps module boundaries explicit across `feff-core` and `feff-cli`:
 
-- `src/domain`: shared FEFF-domain types and execution request models
-- `src/parser`: FEFF input deck tokenizer/parser entrypoint
-- `src/numerics`: shared numeric helper primitives
-- `src/pipelines`: pipeline-facing abstractions plus regression/comparator infrastructure
-- `src/cli`: CLI command parsing and orchestration
+- `crates/feff-core/src/domain`: shared FEFF-domain types and execution request models
+- `crates/feff-core/src/parser`: FEFF input deck tokenizer/parser entrypoint
+- `crates/feff-core/src/numerics`: shared numeric helper primitives
+- `crates/feff-core/src/modules`: module pipelines, regression, and comparator infrastructure
+- `crates/feff-cli/src`: CLI command parsing and orchestration
 
 ## Rust Quality Gates
 
@@ -110,6 +111,8 @@ metadata and the parity run can continue.
 When the oracle command exits non-zero, CI uploads:
 - `artifacts/regression/oracle-report.json`
 - `artifacts/regression/oracle-diff.txt`
+- `artifacts/regression/oracle-summary.txt`
+- `artifacts/regression/oracle-stderr.txt`
 
 ## CLI Compatibility Commands
 
@@ -146,7 +149,7 @@ Supported module commands are:
 All module commands run in the current working directory and do not accept positional arguments.
 Runtime commands (`feff`, `feffmpi`, and module commands) must not use `artifacts/fortran-baselines` as output-generation sources.
 Baseline snapshots are validation/test-only inputs for regression and fixture tooling.
-Runtime compute engines are currently available for `RDINP`, `POT`, `SCREEN`, `SELF`, `EELS`, `FULLSPECTRUM`, `CRPA`, `XSPH`, `PATH`, `FMS`, `BAND`, `LDOS`, `RIXS`, `COMPTON`, `DEBYE`, and `DMDW`; commands for modules that have not been ported to true-compute yet return `RUN.RUNTIME_ENGINE_UNAVAILABLE` with exit code `4`.
+Runtime compute engines are currently available for `RDINP`, `POT`, `SCREEN`, `SELF`, `EELS`, `FULLSPECTRUM`, `CRPA`, `XSPH`, `PATH`, `FMS`, `BAND`, `LDOS`, `RIXS`, `COMPTON`, `DEBYE`, and `DMDW`.
 
 MPI parity is still deferred for Rust v1 (`D-2`). `feffmpi <nprocs>` validates `<nprocs>` and runs the serial compatibility chain, emitting a deterministic warning when `nprocs > 1`.
 

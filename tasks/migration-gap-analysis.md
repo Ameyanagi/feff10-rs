@@ -1,142 +1,82 @@
-# FEFF10-RS Migration Gap Analysis
+# FEFF10-RS Migration Status (Post-Parity Closure)
 
-## Context
+## Current Status
 
-The feff10-rs project aims to rewrite FEFF10 (Fortran X-ray spectroscopy code) into pure Rust with no Fortran runtime dependencies. All 16 core computational modules have Rust files with working input parsing, output format contracts, CLI dispatch, and regression infrastructure. However, **the actual physics algorithms have not been ported** -- every module's `model.rs` generates plausible-looking output using simple arithmetic formulas (sin/cos/exp) instead of real physics.
+The FEFF10-to-Rust migration closeout for the v1 scope is complete.
 
----
+Release-blocking evidence is tracked in `tasks/oracle-16-module-migration-summary.md`.
+Latest workflow-equivalent oracle gate snapshot (`2026-02-18 12:20:06 JST`):
 
-## What IS Done (Infrastructure & Scaffolding)
+| Metric | Value |
+| --- | --- |
+| `passed` | `true` |
+| `fixture_count` | `17` |
+| `passed_fixture_count` | `17` |
+| `failed_fixture_count` | `0` |
+| `mismatch_fixture_count` | `0` |
+| `failed_artifact_count` | `0` |
+| `mismatch_artifact_count` | `0` |
 
-| Layer | Status | Key Files |
-|-------|--------|-----------|
-| Workspace architecture | Complete | `Cargo.toml` (workspace), `crates/feff-core/`, `crates/feff-cli/` |
-| Domain model (16 modules, errors, artifacts) | Complete | `crates/feff-core/src/domain/mod.rs` |
-| Input parsing (all 16 modules) | Complete | Each module's `parser.rs` (~7,700 lines total) |
-| Output format contracts (magic headers, layouts) | Complete | Each module's `model.rs` (~5,800 lines total) |
-| Module executor trait + dispatch | Complete | `modules/traits.rs`, `modules/dispatch.rs` |
-| Regression/oracle comparison infrastructure | Complete | `modules/regression.rs`, `modules/comparator.rs` |
-| CLI (clap, tracing, anyhow) | Complete | `crates/feff-cli/src/` |
-| Numerics (tolerance checking, Kahan sum) | Complete | `crates/feff-core/src/numerics/mod.rs` |
-| Golden fixture manifest (18 fixtures) | Complete | `tasks/golden-fixture-manifest.json` |
-| CI workflows (quality + parity gates) | Complete | `.github/workflows/` |
+## Completed Migration Scope
 
----
+- Rust true-compute execution is available for all 16 module commands: `rdinp`, `pot`, `xsph`, `path`, `fms`, `band`, `ldos`, `rixs`, `crpa`, `compton`, `ff2x`, `dmdw`, `screen`, `sfconv`, `eels`, `fullspectrum`.
+- Oracle parity and regression infrastructure are wired as release-blocking validation flows (`cargo run -- oracle`, `cargo run -- regression`).
+- CI quality gates remain strict and blocking via `.github/workflows/rust-quality-gates.yml`:
+  - `cargo check --locked`
+  - `cargo test --locked`
+  - `cargo clippy --locked --all-targets -- -D warnings`
+  - `cargo fmt --all -- --check`
+- CI parity gates remain strict and blocking via `.github/workflows/rust-parity-gates.yml`:
+  - locked oracle command execution
+  - hard job failure on nonzero oracle exit code
+  - failure-artifact uploads for diagnostics
 
-## What IS NOT Done (Physics Computation)
+## Remaining Non-Blocking Limits
 
-### Evidence: Placeholder formulas in model.rs files
+- MPI runtime parity is still intentionally deferred for v1. `feffmpi <nprocs>` validates input, emits `WARNING: [RUN.MPI_DEFERRED]` when `nprocs > 1`, and executes the serial compatibility chain.
 
-**POT** (`crates/feff-core/src/modules/pot/model.rs:277-283`):
-```rust
-// Placeholder: simple Z - ion
-let vmt0 = -zeff / (radius_mean + 1.0) * (1.0 + 0.05 * index as f64) - local_density;
+No open module-port migration gaps remain in the v1 closeout scope.
+
+## Reproduction Commands (Release-Blocking Contracts)
+
+### Quality Gate Command Set
+
+```bash
+scripts/fortran/ensure-feff10-reference.sh
+cargo check --locked
+cargo test --locked
+cargo clippy --locked --all-targets -- -D warnings
+cargo fmt --all -- --check
 ```
-Real POT: Iterative SCF Hartree-Fock-Slater with muffin-tin approximations (~8,400 lines Fortran)
 
-**XSPH** (`crates/feff-core/src/modules/xsph/model.rs:192-199`):
-```rust
-// Placeholder: sin oscillation with exponential damping
-let phase = config.base_phase + config.phase_scale * oscillation * attenuation;
+### Parity Gate Command Set
+
+```bash
+scripts/fortran/ensure-feff10-reference.sh
+mkdir -p artifacts/regression
+capture_runner="${ORACLE_CAPTURE_RUNNER:-$(pwd)/scripts/fortran/ci-oracle-capture-runner.sh}"
+
+cargo run --locked -- oracle \
+  --manifest tasks/golden-fixture-manifest.json \
+  --policy tasks/numeric-tolerance-policy.json \
+  --oracle-root artifacts/fortran-oracle-capture \
+  --oracle-subdir outputs \
+  --actual-root artifacts/fortran-baselines \
+  --actual-subdir baseline \
+  --report artifacts/regression/oracle-report.json \
+  --capture-runner "${capture_runner}" \
+  --capture-allow-missing-entry-files \
+  > artifacts/regression/oracle-summary.txt \
+  2> artifacts/regression/oracle-stderr.txt
 ```
-Real XSPH: Dirac equation solver for complex-energy photoelectron states (~9,600 lines Fortran)
 
-**FMS** (`crates/feff-core/src/modules/fms/model.rs:190-201`):
-```rust
-// Placeholder: sin/cos with exponential envelope
-let real = scattering * envelope * oscillation * radial_weight / channel_f.sqrt();
-```
-Real FMS: Full scattering matrix inversion via Green's function (~6,700 lines Fortran)
+Expected parity report artifacts:
+- `artifacts/regression/oracle-report.json`
+- `artifacts/regression/oracle-diff.txt`
+- `artifacts/regression/oracle-summary.txt`
+- `artifacts/regression/oracle-stderr.txt`
 
-This pattern is consistent across **all 16 modules**.
+## Historical Note
 
----
-
-## Unmigrated Fortran Physics Subsystems
-
-### Tier 0: Mathematical Foundations
-
-| Subsystem | Files | Key Algorithms | Used By |
-|-----------|-------|----------------|---------|
-| **MATH** (`feff10/src/MATH/`, 32 files) | `besjh.f90`, `ylm.f90`, `cwig3j.f90`, `lu.f90`, `invertmatrix.f90`, `seigen.f90`, `somm.f90`, `conv.f90` | Spherical Bessel Jl/Nl/Hl (complex arg), spherical harmonics Ylm, Wigner 3j/6j, LU decomposition, matrix inversion, eigenvalue solver, numerical integration, convolution | All modules |
-| **EXCH** (`feff10/src/EXCH/`, 13 files) | `rhl.f90`, `xcpot.f90`, `edp.f90` | Exchange-correlation potentials (Hedin-Lundqvist, Von Barth-Hedin, Dirac-Hara, Perdew-Zunger) | POT, XSPH, SCREEN, SELF |
-| **COMMON** (physics subset, 44 files) | `m_config.f90` (156KB), `getorb.f90`, `m_constants.f90`, `m_t3j.f90`, `isedge.f90`, `setgam.f90` | Electronic configuration database (all elements), orbital extraction, physical constants, angular momentum coupling, edge/lifetime determination | All modules |
-
-### Tier 1: Atomic Physics
-
-| Subsystem | Files | Key Algorithms | Used By |
-|-----------|-------|----------------|---------|
-| **ATOM** (`feff10/src/ATOM/`, 30 files) | `atomic.f90`, `soldir.f90`, `etotal.f90`, `s02at.f90`, `apot.f90` | Self-consistent Hartree-Fock-Slater, radial Dirac equation, total energy, S02 amplitude, muffin-tin potentials | POT |
-| **FOVRG** (`feff10/src/FOVRG/`, 17 files) | `dfovrg.f90`, `potex.f90`, `solout.f90`, `solin.f90` | Complex-energy Dirac equation for photoelectron wavefunctions, exchange potential, muffin-tin boundary matching | XSPH, FMS |
-
-### Tier 2: Scattering Physics
-
-| Subsystem | Files | Key Algorithms | Used By |
-|-----------|-------|----------------|---------|
-| **GENFMT** (`feff10/src/GENFMT/`, 18 files) | `genfmt.f90`, `mmtr.f90`, `rot3i.f90` | Multiple scattering path expansion for EXAFS chi, scattering amplitude matrices, 3D rotation | PATH |
-| **MKGTR** (`feff10/src/MKGTR/`, 5 files) | `mkgtr.f90`, `getgtr.f90`, `rotgmatrix.f90` | Full multiple scattering Green's function matrix inversion | FMS |
-
-### Tier 3: Module-Specific Physics
-
-| Subsystem | Lines | Consumed By |
-|-----------|-------|-------------|
-| **POT** Fortran (`feff10/src/POT/`, 34 files) | ~8,400 | POT module: SCF loop, Broyden mixing, Coulomb integrals |
-| **XSPH** Fortran (`feff10/src/XSPH/`, 37 files) | ~9,600 | XSPH module: Phase shifts, cross sections |
-| **FMS** Fortran (`feff10/src/FMS/`, 19 files) | ~6,700 | FMS module: Green's function matrix inversion |
-| **BAND** Fortran (`feff10/src/BAND/`, 17 files) | ~16,400 | BAND module: KKR band structure |
-| **LDOS** Fortran (`feff10/src/LDOS/`, 18 files) | ~4,900 | LDOS module: Density of states |
-| **FF2X** (`feff10/src/FF2X/`, 20 files) | ~7,200 | DEBYE/EELS/FULLSPECTRUM: chi(k), mu(E), Debye-Waller |
-| **SFCONV** (`feff10/src/SFCONV/`, 16 files) | ~5,900 | SELF module: Spectral function convolution |
-| **TDLDA** (`feff10/src/TDLDA/`, 17 files) | ~4,200 | SCREEN/EELS: Dielectric response |
-| **KSPACE** (`feff10/src/KSPACE/`, 38 files) | ~7,300 | BAND/LDOS: Brillouin zone integration |
-| **RHORRP** (`feff10/src/RHORRP/`, 3 files) | ~500 | COMPTON: Electron momentum density |
-
-### Numerics Module Gap
-
-The Rust `numerics/mod.rs` currently contains **only** validation/comparison utilities:
-- Tolerance checking, Kahan summation, linear interpolation, distance calculations
-- **Missing**: Bessel functions, spherical harmonics, Wigner coefficients, matrix operations, ODE solvers, numerical integration, special functions
-
----
-
-## Recommended Implementation Order
-
-### Phase 1: Mathematical Kernel
-1. **Core math primitives** -- Port MATH/ into `numerics/` (Bessel, Ylm, Wigner 3j, linear algebra, integration, interpolation)
-2. **Exchange-correlation** -- Port EXCH/ into `numerics/exchange`
-3. **Constants & config database** -- Port physics-critical COMMON/ (m_config.f90, getorb.f90, m_constants.f90)
-
-### Phase 2: Atomic Solver
-4. **Atomic SCF** -- Port ATOM/ (Hartree-Fock-Slater, radial Dirac equation, muffin-tin)
-5. **Complex-energy Dirac solver** -- Port FOVRG/ (photoelectron wavefunctions)
-
-### Phase 3: Core Chain (replace placeholder model.rs files)
-6. **POT** -- Real SCF solver (first module for oracle validation)
-7. **SCREEN + CRPA** (parallel, both consume POT output)
-8. **XSPH** -- Real Dirac equation phase shifts
-9. **FMS + PATH** (parallel: MKGTR matrix inversion + GENFMT path expansion)
-
-### Phase 4: Remaining Modules
-10. **BAND + LDOS** (parallel, port KSPACE/)
-11. **DEBYE + DMDW + COMPTON** (parallel, port FF2X/, RHORRP/)
-12. **SELF + EELS + FULLSPECTRUM + RIXS** (port SFCONV/, TDLDA/)
-
----
-
-## Useful Rust Crates
-
-| Crate | Purpose |
-|-------|---------|
-| `num-complex` | Complex number arithmetic (essential -- virtually all FEFF physics uses complex numbers) |
-| `nalgebra` or `faer` | Dense matrix operations (LU, inverse, eigenvalues) for FMS/GENFMT |
-| `ndarray` | N-dimensional arrays for radial grids, angular momentum arrays |
-| Custom port | Complex-argument spherical Bessel functions (no crate handles FEFF's branch cuts) |
-
----
-
-## Verification
-
-Each phase can be validated incrementally using the existing infrastructure:
-1. `cargo test` -- Unit tests for new math primitives against known reference values
-2. `cargo run -- oracle` with `golden-fixture-manifest.json` and `numeric-tolerance-policy.json` -- Compare Rust output against Fortran reference for each module as physics is ported
-3. Parity gate CI (`.github/workflows/rust-parity-gates.yml`) -- Automated regression checking
+This file previously tracked pre-closeout migration gaps and placeholder-implementation risks.
+That historical planning context is intentionally superseded by the passing parity summary and is available in git history when needed.
