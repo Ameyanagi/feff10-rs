@@ -9,6 +9,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
 - Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
 - For large deferred program/subroutine ports (for example `ATOM`), split orchestration into pure `plan_*` helpers and keep numerical kernels as pure functions so behavior is unit-testable without runtime file I/O.
+- For deferred `DRIVERS`/`HEADERS` program files, port compatibility as deterministic plan or codec helpers under `support/<domain>/` and keep runtime/CLI dispatch unchanged.
 - For deferred routines that still depend on COMMON-style shared state, use typed context structs plus callback hooks for missing dependencies (`dsordf`, `yzkrdf`, `getorb`, `somm`) so control-flow can be ported and tested before runtime wiring is complete.
 - For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
 - For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
@@ -366,5 +367,33 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Keep EELSMDFF support-family runtime wiring centralized in `modules/helpers.rs` so module models can call one deterministic coupling seam instead of duplicating q-mesh/sigma plumbing.
   - Gotchas encountered: `clippy -D warnings` enforces `too_many_arguments`; new workflow bridges should use config structs instead of long argument lists.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:12:39 JST - US-015
+- What was implemented
+  - Added new compatibility support domains `crates/feff-core/src/support/drivers/` and `crates/feff-core/src/support/headers/` and ported all deferred `US-015` ledger targets (`Example1-5`, `TestIO`, `TestIOFiles`, `TestOpenFl`, `TestPadi`, `HEADERS/feff`).
+  - Implemented deterministic driver helpers mirroring legacy program behavior, including IO-flow planning (`example*`, `testio`), IOFiles stack semantics (`testiofiles`), OpenFl default request mapping (`testopenfl`), and base-75 PAD integer codec compatibility (`testpadi`).
+  - Implemented `support/headers/feff.rs::feff_main_plan` to preserve FEFF main-program call order, including absorber-loop `ffsort` gating and per-absorber `ffmod6` arguments.
+  - Exported new support domains through `crates/feff-core/src/support/mod.rs` and marked all `US-015` DRIVERS/HEADERS ledger rows as `status=done`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/drivers/mod.rs`
+  - `crates/feff-core/src/support/drivers/example1.rs`
+  - `crates/feff-core/src/support/drivers/example2.rs`
+  - `crates/feff-core/src/support/drivers/example3.rs`
+  - `crates/feff-core/src/support/drivers/example4.rs`
+  - `crates/feff-core/src/support/drivers/example5.rs`
+  - `crates/feff-core/src/support/drivers/testio.rs`
+  - `crates/feff-core/src/support/drivers/testiofiles.rs`
+  - `crates/feff-core/src/support/drivers/testopenfl.rs`
+  - `crates/feff-core/src/support/drivers/testpadi.rs`
+  - `crates/feff-core/src/support/headers/mod.rs`
+  - `crates/feff-core/src/support/headers/feff.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Legacy wrapper programs are easiest to migrate as deterministic compatibility plans/codecs in `support/` modules; this preserves behavior contracts without broad runtime wiring changes.
+  - Gotchas encountered: PAD integer scalar encoding (`wrpadisc`/`rdpadisc`) is base-75 with ASCII offset `+48` and explicit sign prefix, not decimal text.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

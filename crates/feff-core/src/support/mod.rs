@@ -1,10 +1,12 @@
 pub mod atom;
 pub mod common;
+pub mod drivers;
 pub mod eelsmdff;
 pub mod errormods;
 pub mod exch;
 pub mod fovrg;
 pub mod genfmt;
+pub mod headers;
 pub mod inpgen;
 pub mod kspace;
 pub mod math;
