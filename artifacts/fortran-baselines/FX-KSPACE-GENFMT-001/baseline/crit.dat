@@ -1,4 +1,0 @@
-PATH  Rmax= 0.100,  Keep_limit= 0.00, Heap_limit 0.00  Pwcrit= 2.50%
- Plane wave chi amplitude filter   2.50%
- -----------------------------------------------------------------------
- ipath nleg ndeg     r       pwcrit    xkeep   accuracy   xheap    accuracy

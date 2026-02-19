@@ -1,36 +1,15 @@
 {
   "manifestPath": "/Users/ryuichi/dev/feff10-rs/tasks/golden-fixture-manifest.json",
   "outputRoot": "/Users/ryuichi/dev/feff10-rs/artifacts/fortran-baselines",
-  "generatedAt": "2026-02-19T04:53:49Z",
+  "generatedAt": "2026-02-16T08:46:30Z",
   "capture": {
     "mode": "runner",
     "runner": ":",
     "moduleBinDir": "",
     "allowMissingEntryFiles": true
   },
-  "fixtureCount": 21,
+  "fixtureCount": 17,
   "fixtures": [
-    {
-      "fixtureId": "FX-ATOM-SCF-001",
-      "inputDirectory": "feff10/examples/EXAFS/Cu_SCF",
-      "baselineStatus": "requires_fortran_capture",
-      "generatedAt": "2026-02-19T04:49:52Z",
-      "checksumsFile": "checksums.sha256",
-      "checksummedFileCount": 42,
-      "missingEntryFiles": [],
-      "baselineSources": [
-        {
-          "kind": "reference_archive",
-          "path": "feff10/examples/EXAFS/Cu_SCF/REFERENCE.zip",
-          "sha256": "3f5c1c3fd39d799766e8ccce3a9f56f21c55a814843cfea58f8478d97ddaf51c"
-        },
-        {
-          "kind": "reference_file",
-          "path": "feff10/examples/EXAFS/Cu_SCF/referencexmu.dat",
-          "sha256": "96cf50bd22f2e3f75b36048472bc0c06b6e9dadd746e10c82299df182fbf45f8"
-        }
-      ]
-    },
     {
       "fixtureId": "FX-BAND-001",
       "inputDirectory": "feff10/examples/KSPACE/Cr2GeC",
@@ -135,27 +114,6 @@
       ]
     },
     {
-      "fixtureId": "FX-EELSMDFF-001",
-      "inputDirectory": "feff10/examples/KSPACE/Graphite",
-      "baselineStatus": "requires_fortran_capture",
-      "generatedAt": "2026-02-19T04:50:05Z",
-      "checksumsFile": "checksums.sha256",
-      "checksummedFileCount": 76,
-      "missingEntryFiles": [],
-      "baselineSources": [
-        {
-          "kind": "reference_archive",
-          "path": "feff10/examples/KSPACE/Graphite/REFERENCE.zip",
-          "sha256": "a11cd773952ae3635404f5f51650f7ff2f005ee06ed2bc6087f71669cd13d893"
-        },
-        {
-          "kind": "reference_file",
-          "path": "feff10/examples/KSPACE/Graphite/reference_eels.dat",
-          "sha256": "a590170895f74486e3b274c21f08277030a99e6ee67102d56f06ba9480d0e8d9"
-        }
-      ]
-    },
-    {
       "fixtureId": "FX-FMS-001",
       "inputDirectory": "feff10/examples/XANES/Cu",
       "baselineStatus": "reference_archive_available",
@@ -184,34 +142,6 @@
           "kind": "reference_archive",
           "path": "feff10/examples/XES/Cu/REFERENCE.zip",
           "sha256": "915a48454f315fd85e0185e249119402762ba827cc5d5232fd803450fa3ab9e6"
-        }
-      ]
-    },
-    {
-      "fixtureId": "FX-KSPACE-GENFMT-001",
-      "inputDirectory": "feff10/examples/KSPACE/Cr2GeC",
-      "baselineStatus": "requires_fortran_capture",
-      "generatedAt": "2026-02-19T04:49:58Z",
-      "checksumsFile": "checksums.sha256",
-      "checksummedFileCount": 63,
-      "missingEntryFiles": [
-        "REFERENCE/band.inp"
-      ],
-      "baselineSources": [
-        {
-          "kind": "reference_archive",
-          "path": "feff10/examples/KSPACE/Cr2GeC/REFERENCE.zip",
-          "sha256": "48f0ad42c0700a1c01b346704172212b4ad475302504e2ab644d0f198acd009e"
-        },
-        {
-          "kind": "reference_file",
-          "path": "feff10/examples/KSPACE/Cr2GeC/referenceldos00.dat",
-          "sha256": "890a8ec009d9714867497447a990e893b34cfb3eaf58eac3e4a9e225c2613c2d"
-        },
-        {
-          "kind": "reference_file",
-          "path": "feff10/examples/KSPACE/Cr2GeC/referencexmu.dat",
-          "sha256": "6580d8025e133d274a187ecaefbb0a34dd80a0aedeeb2a0fb175c44db9d72db1"
         }
       ]
     },
@@ -326,22 +256,6 @@
       "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
       "baselineStatus": "reference_archive_available",
       "generatedAt": "2026-02-16T08:46:12Z",
-      "checksumsFile": "checksums.sha256",
-      "checksummedFileCount": 60,
-      "missingEntryFiles": [],
-      "baselineSources": [
-        {
-          "kind": "reference_archive",
-          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip",
-          "sha256": "9e67a422308ac7e3d558a42a873ca8736f3a5f494d6c1c35f961d2e97b697ebb"
-        }
-      ]
-    },
-    {
-      "fixtureId": "FX-SELF-OPCONSAT-001",
-      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
-      "baselineStatus": "requires_fortran_capture",
-      "generatedAt": "2026-02-19T04:50:11Z",
       "checksumsFile": "checksums.sha256",
       "checksummedFileCount": 60,
       "missingEntryFiles": [],
