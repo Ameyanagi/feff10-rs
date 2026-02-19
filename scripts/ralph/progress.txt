@@ -18,6 +18,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For deferred targets that require `<domain>/<domain>.rs`, export with `#[path = "<domain>.rs"]` plus a re-export alias from the domain `mod.rs` to avoid `clippy::module_inception` while preserving ledger file paths.
 - For GENFMT artifact-shape updates, validate the in-memory contract with `support/genfmt/regenf.rs::artifacts_consumable` and keep the check wired in `support/genfmt/genfmt.rs::ffmod5`.
 - Wire new deferred-support families into runtime modules through `crates/feff-core/src/modules/helpers.rs` first; keep SELF/FULLSPECTRUM oracle-baseline artifact formulas unchanged unless fixture baselines are intentionally regenerated.
+- SELF staged spectrum artifacts must provide at least two distinct finite energy points; reject sparse/degenerate inputs with `RUN.SELF_INPUT_PARSE` instead of synthesizing fallback points.
 - For staged EELSMDFF migration, keep sigma-scaling and cross-section accumulation as pure helpers with injectable wavelength dependencies so chunked ports remain testable before full runtime wiring.
 - For EELSMDFF chunk-B/runtime wiring, compose `mdff_readsp -> scale_sigma_rows_with_wavelength -> mdff_qmesh -> mdff_eels` inside `modules/helpers::eelsmdff_workflow_coupling` and call that from both EELS and FULLSPECTRUM models.
 ---
@@ -395,5 +396,22 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Legacy wrapper programs are easiest to migrate as deterministic compatibility plans/codecs in `support/` modules; this preserves behavior contracts without broad runtime wiring changes.
   - Gotchas encountered: PAD integer scalar encoding (`wrpadisc`/`rdpadisc`) is base-75 with ASCII offset `+48` and explicit sign prefix, not decimal text.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:23:15 JST - US-016
+- What was implemented
+  - Removed SELF staged-spectrum fallback behavior that previously synthesized spectral points for sparse or degenerate inputs.
+  - Enforced deterministic SELF input-parse failures when staged spectrum artifacts contain fewer than two numeric rows or fewer than two distinct finite energy points.
+  - Added regression tests covering both failure modes to lock the runtime error contract.
+  - Confirmed `tasks/full-module-migration-ledger.csv` contains no `pending` or `in_progress` rows (`done=102`).
+- Files changed
+  - `crates/feff-core/src/modules/self_energy/parser.rs`
+  - `crates/feff-core/src/modules/self_energy/model.rs`
+  - `crates/feff-core/src/modules/self_energy/mod.rs`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Runtime staged-input sanitizers should fail with deterministic module placeholders when data degenerates, rather than fabricating synthetic points.
+  - Gotchas encountered: Distinct-row validation is not enough; spectrum normalization can still collapse duplicate energies to a single point, so post-sanitize checks are required.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

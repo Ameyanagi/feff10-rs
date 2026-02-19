@@ -154,6 +154,10 @@ NULL
     8980.979  -15.197  -1.252  2.93137E-02  3.59321E-02 -6.61845E-03
     8982.398  -13.778  -1.093  3.93900E-02  4.92748E-02 -9.88483E-03
 ";
+    const XMU_SINGLE_ROW_FIXTURE: &str = "    8979.411  -16.765  -1.406  1.46870E-02\n";
+    const XMU_DUPLICATE_ENERGY_FIXTURE: &str = "    8979.411  -16.765  -1.406  1.46870E-02
+    8979.411  -15.197  -1.252  2.93137E-02
+";
 
     const LOSS_INPUT_FIXTURE: &str = "# E(eV) Loss
   2.50658E-03 2.58411E-02
@@ -304,6 +308,50 @@ NULL
         assert!(emitted.contains("feff0001.dat"));
         assert!(emitted.contains("selfenergy.dat"));
         assert!(emitted.contains("sigma.dat"));
+    }
+
+    #[test]
+    fn execute_rejects_single_row_staged_spectrum_inputs() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join(SELF_PRIMARY_INPUT);
+        fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
+        fs::write(temp.path().join("xmu.dat"), XMU_SINGLE_ROW_FIXTURE)
+            .expect("single-row xmu should be written");
+
+        let request = ComputeRequest::new(
+            "FX-SELF-001",
+            ComputeModule::SelfEnergy,
+            &input_path,
+            temp.path().join("out"),
+        );
+        let error = SelfEnergyModule
+            .execute(&request)
+            .expect_err("single-row spectrum input should fail");
+
+        assert_eq!(error.category(), FeffErrorCategory::ComputationError);
+        assert_eq!(error.placeholder(), "RUN.SELF_INPUT_PARSE");
+    }
+
+    #[test]
+    fn execute_rejects_non_distinct_spectrum_energy_rows() {
+        let temp = TempDir::new().expect("tempdir should be created");
+        let input_path = temp.path().join(SELF_PRIMARY_INPUT);
+        fs::write(&input_path, SFCONV_INPUT_FIXTURE).expect("sfconv input should be written");
+        fs::write(temp.path().join("xmu.dat"), XMU_DUPLICATE_ENERGY_FIXTURE)
+            .expect("duplicate-energy xmu should be written");
+
+        let request = ComputeRequest::new(
+            "FX-SELF-001",
+            ComputeModule::SelfEnergy,
+            &input_path,
+            temp.path().join("out"),
+        );
+        let error = SelfEnergyModule
+            .execute(&request)
+            .expect_err("non-distinct spectrum energies should fail");
+
+        assert_eq!(error.category(), FeffErrorCategory::ComputationError);
+        assert_eq!(error.placeholder(), "RUN.SELF_INPUT_PARSE");
     }
 
     #[test]

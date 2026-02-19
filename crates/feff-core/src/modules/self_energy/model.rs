@@ -119,17 +119,18 @@ impl SelfModel {
             .collect::<Vec<_>>();
 
         let spectral_source = self.preferred_spectral_source();
-        let (mut spectral_energies, mut spectral_values) = Self::sanitize_spectrum_rows(
+        let (spectral_energies, spectral_values) = Self::sanitize_spectrum_rows(
             &spectral_source.rows,
             config.energy_step.abs().max(1.0e-6),
         );
         if spectral_energies.len() < 2 {
-            spectral_energies = vec![
-                config.energy_min,
-                config.energy_min + config.energy_step.abs().max(1.0e-6),
-            ];
-            let fallback_signal = signal_values.first().copied().unwrap_or(0.0);
-            spectral_values = vec![fallback_signal, fallback_signal];
+            return Err(FeffError::computation(
+                "RUN.SELF_INPUT_PARSE",
+                format!(
+                    "fixture '{}': staged spectrum '{}' must contain at least two distinct finite energy points",
+                    self.fixture_id, spectral_source.artifact
+                ),
+            ));
         }
 
         let use_asymmetric_phase = self.control.ipse != 0 || self.control.ipsk != 0;
@@ -723,11 +724,6 @@ impl SelfModel {
 
             energies.push(strict_energy);
             values.push(signal);
-        }
-
-        if energies.len() == 1 {
-            energies.push(energies[0] + strict_step);
-            values.push(values[0]);
         }
 
         (energies, values)
