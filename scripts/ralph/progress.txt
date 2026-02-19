@@ -17,6 +17,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For deferred targets that require `<domain>/<domain>.rs`, export with `#[path = "<domain>.rs"]` plus a re-export alias from the domain `mod.rs` to avoid `clippy::module_inception` while preserving ledger file paths.
 - For GENFMT artifact-shape updates, validate the in-memory contract with `support/genfmt/regenf.rs::artifacts_consumable` and keep the check wired in `support/genfmt/genfmt.rs::ffmod5`.
 - Wire new deferred-support families into runtime modules through `crates/feff-core/src/modules/helpers.rs` first; keep SELF/FULLSPECTRUM oracle-baseline artifact formulas unchanged unless fixture baselines are intentionally regenerated.
+- For staged EELSMDFF migration, keep sigma-scaling and cross-section accumulation as pure helpers with injectable wavelength dependencies so chunked ports remain testable before full runtime wiring.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -318,5 +319,27 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Use `modules/helpers.rs` as the integration seam for newly ported support domains so runtime modules can consume migrated routines without duplicating glue logic.
   - Gotchas encountered: `SELF` and `FULLSPECTRUM` oracle fixture tests enforce strict baseline parity; runtime-output formula changes in those modules should be avoided unless baseline artifacts are intentionally regenerated in the same iteration.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 12:42:51 JST - US-013
+- What was implemented
+  - Added new deferred support domain `crates/feff-core/src/support/eelsmdff/` and ported all `US-013` files: `mdff_angularmesh`, `mdff_concat`, `mdff_eels`, `mdff_euler`, and `mdff_m_spectrum`.
+  - Implemented typed MDFF helpers for angular-mesh generation, Euler rotation utilities, spectrum buffer allocation, and tensor/q-vector cross-section accumulation with injectable wavelength scaling.
+  - Added deterministic unit tests for each migrated chunk-A helper and exported the new domain through `crates/feff-core/src/support/mod.rs`.
+  - Marked all `US-013` ledger rows as `status=done` and set `US-013` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/eelsmdff/mod.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_angularmesh.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_concat.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_eels.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_euler.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_m_spectrum.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keeping MDFF chunk ports in pure helper APIs with config structs and callback-injected physical dependencies keeps strict clippy gates green while preserving Fortran-compatible tensor ordering.
+  - Gotchas encountered: `mdff_angularmesh.f90` includes a temporary hardcoded two-point path; preserve it behind an explicit option and keep normal mesh generation as the default runtime behavior.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

@@ -1,5 +1,6 @@
 pub mod atom;
 pub mod common;
+pub mod eelsmdff;
 pub mod errormods;
 pub mod exch;
 pub mod fovrg;
