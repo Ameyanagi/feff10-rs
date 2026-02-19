@@ -127,6 +127,17 @@ cargo run -- pot
 cargo run -- xsph
 ```
 
+`feff` and `feffmpi` now default to strict legacy Fortran-chain execution (including `atomic`, `mkgtr`, and `genfmt`) when executables are available.
+
+Use `--runtime` to force the Rust runtime serial workflow.
+
+Use `--strict-bin-dir` to point to a specific Fortran executable directory:
+
+```bash
+cargo run -- feff --strict --strict-bin-dir "$(pwd)/feff10/bin/Seq"
+cargo run -- feff --runtime
+```
+
 Supported module commands are:
 
 - `rdinp`
