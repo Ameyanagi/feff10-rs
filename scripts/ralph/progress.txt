@@ -21,6 +21,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - SELF staged spectrum artifacts must provide at least two distinct finite energy points; reject sparse/degenerate inputs with `RUN.SELF_INPUT_PARSE` instead of synthesizing fallback points.
 - For staged EELSMDFF migration, keep sigma-scaling and cross-section accumulation as pure helpers with injectable wavelength dependencies so chunked ports remain testable before full runtime wiring.
 - For EELSMDFF chunk-B/runtime wiring, compose `mdff_readsp -> scale_sigma_rows_with_wavelength -> mdff_qmesh -> mdff_eels` inside `modules/helpers::eelsmdff_workflow_coupling` and call that from both EELS and FULLSPECTRUM models.
+- When adding a fixture that overlaps an existing single-module fixture, keep the new one as `fixtureType: "workflow"` (or multi-module) so CLI default module resolution still prefers the legacy module fixture.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -413,5 +414,19 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Runtime staged-input sanitizers should fail with deterministic module placeholders when data degenerates, rather than fabricating synthetic points.
   - Gotchas encountered: Distinct-row validation is not enough; spectrum normalization can still collapse duplicate energies to a single point, so post-sanitize checks are required.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:30:54 JST - US-017
+- What was implemented
+  - Added `FX-ATOM-SCF-001` to `tasks/golden-fixture-manifest.json` using `feff10/examples/EXAFS/Cu_SCF` as the source scenario.
+  - Defined fixture metadata for entry files and staged inputs (`feff.inp`, staged `REFERENCE/*` POT/SELF artifacts) plus policy-based artifact comparison contract.
+  - Marked the new fixture as a workflow fixture covering `POT` and `SELF` so oracle/report tooling includes it without disrupting existing module-default CLI fixture selection.
+- Files changed
+  - `tasks/golden-fixture-manifest.json`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Using workflow fixture type for overlapping module coverage preserves deterministic CLI fallback to existing single-module fixtures.
+  - Gotchas encountered: `parser_fixture_inputs` only resolves `.inp` entries from `inputDirectory` or committed baseline snapshots; `REFERENCE.zip` contents are not read by that test directly.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

@@ -482,6 +482,46 @@
       }
     },
     {
+      "id": "FX-ATOM-SCF-001",
+      "title": "ATOM/SCF workflow fixture from EXAFS Cu_SCF example",
+      "fixtureType": "workflow",
+      "modulesCovered": [
+        "POT",
+        "SELF"
+      ],
+      "inputDirectory": "feff10/examples/EXAFS/Cu_SCF",
+      "entryFiles": [
+        "feff.inp",
+        "REFERENCE/pot.inp",
+        "REFERENCE/geom.dat",
+        "REFERENCE/sfconv.inp",
+        "REFERENCE/xmu.dat"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu_SCF/REFERENCE.zip"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/EXAFS/Cu_SCF/referencexmu.dat"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "SCF-enabled Cu input exercises ATOM-derived POT setup and SELF staged-spectrum paths in one fixture."
+      }
+    },
+    {
       "id": "FX-EELS-001",
       "title": "EELS compatibility fixture from ELNES Cu example",
       "fixtureType": "module",
