@@ -1,5 +1,9 @@
 use crate::domain::{ComputeModule, ComputeRequest, InputCard, InputDeck};
 use crate::numerics::{deterministic_argsort, distance3, stable_weighted_mean};
+use crate::support::kspace::cgcrac::{CgcracInput, cgcrac};
+use crate::support::kspace::factorial_table;
+use crate::support::kspace::strconfra::strconfra;
+use crate::support::kspace::strfunqjl::strfunqjl;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DistanceShell {
@@ -71,9 +75,48 @@ pub fn cards_for_compute_request<'a>(
     deck.cards_for_module(request.module)
 }
 
+pub(crate) fn kspace_workflow_coupling(
+    ikpath: i32,
+    channel_count: usize,
+    nph: usize,
+    freeprop: bool,
+) -> f64 {
+    let factorials = factorial_table(100);
+    let l = channel_count.clamp(1, 12);
+    let j = nph.min(l);
+
+    let harmonic_prefactor = strfunqjl(&factorials, j, l);
+    let clebsch = cgcrac(
+        &factorials,
+        CgcracInput {
+            j1: l as f64,
+            j2: l as f64,
+            j3: j as f64,
+            m1: 0.0,
+            m2: 0.0,
+            m3: 0.0,
+        },
+    )
+    .abs();
+
+    let aa = ikpath.abs().max(1) as f64 + if freeprop { 0.5 } else { 1.5 };
+    let x = (channel_count.max(1) as f64 * 0.35 + nph.max(1) as f64 * 0.15 + 1.0).max(1.0e-6);
+    let continued_fraction = strconfra(aa, x).abs();
+    let continued_fraction = if continued_fraction.is_finite() {
+        continued_fraction.min(2.0)
+    } else {
+        0.0
+    };
+
+    let freeprop_factor = if freeprop { 1.08 } else { 0.96 };
+    ((0.85 + harmonic_prefactor * 0.35 + clebsch * 0.4 + continued_fraction * 0.2)
+        * freeprop_factor)
+        .clamp(0.25, 2.5)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CoreModuleHelper, cards_for_compute_request};
+    use super::{CoreModuleHelper, cards_for_compute_request, kspace_workflow_coupling};
     use crate::domain::{ComputeModule, ComputeRequest, InputCard, InputCardKind, InputDeck};
 
     #[test]
@@ -125,5 +168,26 @@ mod tests {
 
         assert!((average - 6.5).abs() < 1.0e-12);
         assert_eq!(scaffold.weighted_channel_average(&[1.0], &[0.0]), None);
+    }
+
+    #[test]
+    fn kspace_workflow_coupling_is_finite_and_bounded() {
+        let coupling = kspace_workflow_coupling(2, 8, 4, false);
+        assert!(coupling.is_finite());
+        assert!((0.25..=2.5).contains(&coupling));
+    }
+
+    #[test]
+    fn kspace_workflow_coupling_is_deterministic() {
+        let first = kspace_workflow_coupling(3, 10, 5, true);
+        let second = kspace_workflow_coupling(3, 10, 5, true);
+        assert!((first - second).abs() <= 1.0e-14);
+    }
+
+    #[test]
+    fn kspace_workflow_coupling_respects_freeprop_toggle() {
+        let disabled = kspace_workflow_coupling(1, 6, 3, false);
+        let enabled = kspace_workflow_coupling(1, 6, 3, true);
+        assert!(enabled > disabled);
     }
 }

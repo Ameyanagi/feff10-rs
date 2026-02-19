@@ -13,6 +13,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
 - For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
 - For large ATOM runtime-control ports, provide both a default solver entrypoint and a `*_with` callback-injected variant so iterative control flow is unit-testable with deterministic mock dependencies.
+- For deferred KSPACE angular helpers, keep shared factorial tables in `support/kspace::factorial_table` and integrate through `modules/helpers::kspace_workflow_coupling` so BAND runtime wiring stays deterministic and bounded.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -209,5 +210,26 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Callback-injected wrappers (`*_with`) let large legacy solver loops stay close to Fortran control flow while still allowing deterministic unit tests without full runtime wiring.
   - Gotchas encountered: `yzkteg` development-series denominators can hit singular values for some `(ap, k)` combinations; guard those divisions only when the source coefficient is non-zero to match legacy no-op behavior for zero terms.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 11:29:27 JST - US-009
+- What was implemented
+  - Added a new `crates/feff-core/src/support/kspace/` domain and ported all deferred `US-009` KSPACE rows: `cgcrac`, `strconfra`, and `strfunqjl`, plus a shared `factorial_table` helper.
+  - Integrated migrated KSPACE logic into runtime paths by adding `modules/helpers::kspace_workflow_coupling` and wiring it into `modules/band/model.rs` so BAND output configuration and `logband.dat` consume deterministic KSPACE coupling values.
+  - Marked all `US-009` ledger rows as `status=done` and set `US-009` to `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/kspace/mod.rs`
+  - `crates/feff-core/src/support/kspace/cgcrac.rs`
+  - `crates/feff-core/src/support/kspace/strconfra.rs`
+  - `crates/feff-core/src/support/kspace/strfunqjl.rs`
+  - `crates/feff-core/src/modules/helpers.rs`
+  - `crates/feff-core/src/modules/band/model.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Routing new deferred helper families through `modules/helpers` is a low-friction way to integrate support-domain ports into active runtime modules without duplicating glue logic.
+  - Gotchas encountered: `strfunqjl` non-zero-`j` prefactors are sensitive to factorial-index math; for `(j=1, l=2)` the correct closed form is `sqrt(5 / (12*pi))`.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
