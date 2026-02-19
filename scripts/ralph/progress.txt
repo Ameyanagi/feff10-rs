@@ -14,6 +14,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
 - For large ATOM runtime-control ports, provide both a default solver entrypoint and a `*_with` callback-injected variant so iterative control flow is unit-testable with deterministic mock dependencies.
 - For deferred KSPACE angular helpers, keep shared factorial tables in `support/kspace::factorial_table` and integrate through `modules/helpers::kspace_workflow_coupling` so BAND runtime wiring stays deterministic and bounded.
+- For deferred targets that require `<domain>/<domain>.rs`, export with `#[path = "<domain>.rs"]` plus a re-export alias from the domain `mod.rs` to avoid `clippy::module_inception` while preserving ledger file paths.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -231,5 +232,31 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Routing new deferred helper families through `modules/helpers` is a low-friction way to integrate support-domain ports into active runtime modules without duplicating glue logic.
   - Gotchas encountered: `strfunqjl` non-zero-`j` prefactors are sensitive to factorial-index math; for `(j=1, l=2)` the correct closed form is `sqrt(5 / (12*pi))`.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 11:49:27 JST - US-010
+- What was implemented
+  - Added a new `crates/feff-core/src/support/genfmt/` domain and ported all `US-010` GENFMT chunk-A targets: `fmtrxi`, `genfmt`, `genfmtjas`, `genfmtsub`, `m_genfmt`, `mmtr`, `mmtrjas`, `mmtrjas0`, and `mmtrxi`.
+  - Implemented typed workspace/tensor models (`BmatiTensor`, `FmatiMatrix`, GENFMT artifact bundles) and deterministic Rust kernels for matrix/scattering assembly paths so deferred COMMON-style GENFMT logic is now Rust-native.
+  - Added deterministic unit tests for chunk-A generated-format artifacts (`feff` header/list/nstar outputs) and matrix helper behavior, including top-level `ffmod5` dispatch coverage for EXAFS and NRIXS modes.
+  - Marked all `US-010` GENFMT chunk-A ledger rows as `status=done` and set `US-010` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/genfmt/mod.rs`
+  - `crates/feff-core/src/support/genfmt/fmtrxi.rs`
+  - `crates/feff-core/src/support/genfmt/genfmt.rs`
+  - `crates/feff-core/src/support/genfmt/genfmtjas.rs`
+  - `crates/feff-core/src/support/genfmt/genfmtsub.rs`
+  - `crates/feff-core/src/support/genfmt/m_genfmt.rs`
+  - `crates/feff-core/src/support/genfmt/mmtr.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrjas.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrjas0.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrxi.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep deferred GENFMT ports in an in-memory artifact builder style first (`GenfmtArtifacts`), then wire runtime file I/O later; this keeps chunk migrations testable and deterministic.
+  - Gotchas encountered: Strict clippy gates reject module/file name collisions (`module_inception`), so `<domain>/<domain>.rs` targets should be exported with a `#[path = "..."]` alias from the domain `mod.rs`.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

@@ -3,6 +3,7 @@ pub mod common;
 pub mod errormods;
 pub mod exch;
 pub mod fovrg;
+pub mod genfmt;
 pub mod inpgen;
 pub mod kspace;
 pub mod math;
