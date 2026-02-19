@@ -9,6 +9,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
 - Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
 - For large deferred program/subroutine ports (for example `ATOM`), split orchestration into pure `plan_*` helpers and keep numerical kernels as pure functions so behavior is unit-testable without runtime file I/O.
+- For deferred routines that still depend on COMMON-style shared state, use typed context structs plus callback hooks for missing dependencies (`dsordf`, `yzkrdf`, `getorb`, `somm`) so control-flow can be ported and tested before runtime wiring is complete.
 - For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
 - For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
 ---
@@ -157,5 +158,31 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: For large deferred module ports, separating control-flow planning (`plan_*`) from pure numerical kernels keeps strict lint gates green while preserving legacy behavior.
   - Gotchas encountered: `cargo clippy -- -D warnings` in this codebase denies `needless_range_loop`; prefer iterator/enumerate patterns even inside test helpers when populating fixed-size tables.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 10:48:28 JST - US-007
+- What was implemented
+  - Ported all deferred ATOM chunk-B ledger targets into `crates/feff-core/src/support/atom/`: `fdrirk`, `fpf0`, `inmuat`, `intdir`, `lagdat`, `messer`, `muatco`, `nucdev`, `nucmass`, and `ortdat`.
+  - Implemented Fortran-compatible control-flow helpers with typed Rust interfaces and deterministic unit tests, including callback-based dependency seams for legacy shared-state routines (`dsordf`, `yzkrdf`, `getorb`, `somm`).
+  - Updated `crates/feff-core/src/support/atom/mod.rs` exports so new chunk-B helpers are reachable through crate support paths and test discovery.
+  - Marked all `US-007` ATOM chunk-B ledger rows as `status=done` and set `US-007` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/atom/mod.rs`
+  - `crates/feff-core/src/support/atom/fdrirk.rs`
+  - `crates/feff-core/src/support/atom/fpf0.rs`
+  - `crates/feff-core/src/support/atom/inmuat.rs`
+  - `crates/feff-core/src/support/atom/intdir.rs`
+  - `crates/feff-core/src/support/atom/lagdat.rs`
+  - `crates/feff-core/src/support/atom/messer.rs`
+  - `crates/feff-core/src/support/atom/muatco.rs`
+  - `crates/feff-core/src/support/atom/nucdev.rs`
+  - `crates/feff-core/src/support/atom/nucmass.rs`
+  - `crates/feff-core/src/support/atom/ortdat.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Callback seams around legacy shared-state helpers keep chunked ATOM migrations testable without waiting on full COMMON-block runtime integration.
+  - Gotchas encountered: `cargo clippy -- -D warnings` flags `too_many_arguments`, `manual_swap`, and `int_plus_one` in direct Fortran translations; either restructure into context structs or add narrowly-scoped fixes/attributes while preserving algorithm shape.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
