@@ -9,6 +9,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
 - Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
 - For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
+- For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -99,5 +100,34 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: FEFF/Numerical Recipes elliptic routines (`rc/rf/rj`) converge to stable values with the original errtol settings but should be validated with realistic tolerances (~`1e-9`) instead of machine-epsilon expectations.
   - Gotchas encountered: Running `cargo fmt --all` before the final gate command avoids avoidable `fmt --check` failures on multiline numeric expressions in newly added support helpers.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 10:08:12 JST - US-005
+- What was implemented
+  - Added Rust support ports for all deferred `US-005` files: `FOVRG` (`aprdec`, `aprdep`, `dsordc`, `ortdac`), `INPGEN` (`m_pot_generator`, `pot_generator_test`), and `RHORRP` (`m_density_inp`, `rhorrp`) under `crates/feff-core/src/support/...`.
+  - Wired migrated helpers into active runtime code paths: POT now derives `atomnum_npot` metadata via INPGEN atom-number mapping and applies FOVRG `aprdep` in screening metric calculations; COMPTON rhozzp generation now uses RHORRP grid iteration and line-density helpers.
+  - Exported new support domains through `crates/feff-core/src/support/mod.rs` and stabilized the RHORRP domain export with `#[path = "rhorrp.rs"] pub mod runtime` to keep strict clippy gates green while preserving ledger-target file paths.
+  - Marked all `US-005` ledger rows (`FOVRG`, `INPGEN`, `RHORRP`) as `status=done`.
+- Files changed
+  - `crates/feff-core/src/modules/compton/model.rs`
+  - `crates/feff-core/src/modules/pot/model.rs`
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/fovrg/mod.rs`
+  - `crates/feff-core/src/support/fovrg/aprdec.rs`
+  - `crates/feff-core/src/support/fovrg/aprdep.rs`
+  - `crates/feff-core/src/support/fovrg/dsordc.rs`
+  - `crates/feff-core/src/support/fovrg/ortdac.rs`
+  - `crates/feff-core/src/support/inpgen/mod.rs`
+  - `crates/feff-core/src/support/inpgen/m_pot_generator.rs`
+  - `crates/feff-core/src/support/inpgen/pot_generator_test.rs`
+  - `crates/feff-core/src/support/rhorrp/mod.rs`
+  - `crates/feff-core/src/support/rhorrp/m_density_inp.rs`
+  - `crates/feff-core/src/support/rhorrp/rhorrp.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Reusing `support/rhorrp/runtime` grid primitives in module models prevents subtle index-order drift between generated density tables and helper logic.
+  - Gotchas encountered: When a deferred file path requires `<domain>/<domain>.rs`, use `#[path = "..."]` aliasing in the domain `mod.rs` to avoid `clippy::module_inception` under `-D warnings`.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

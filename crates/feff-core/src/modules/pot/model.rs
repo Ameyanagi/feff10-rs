@@ -2,6 +2,8 @@ use super::POT_BINARY_MAGIC;
 use super::parser::{GeomModel, PotControl, PotentialEntry, parse_geom_input, parse_pot_input};
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_binary_artifact, write_text_artifact};
+use crate::support::fovrg::aprdep::aprdep;
+use crate::support::inpgen::m_pot_generator::{PotGenRule, XyzFormat, gen_pot_from_xyz};
 use std::path::Path;
 
 #[derive(Debug, Clone)]
@@ -172,6 +174,10 @@ impl PotModel {
             self.potentials.len()
         ));
         lines.push(format!(
+            "atomnum_npot {}",
+            self.atomnum_derived_npot().unwrap_or(self.potentials.len())
+        ));
+        lines.push(format!(
             "radius_mean {} radius_rms {} radius_max {}",
             format_fixed_f64(radius_mean, 13, 5),
             format_fixed_f64(radius_rms, 13, 5),
@@ -215,6 +221,7 @@ impl PotModel {
     fn render_log(&self) -> String {
         let (radius_mean, _, radius_max) = self.radius_stats();
         let average_zeff = self.average_zeff();
+        let atomnum_npot = self.atomnum_derived_npot().unwrap_or(self.potentials.len());
         format!(
             "\
  POT true-compute runtime
@@ -224,6 +231,7 @@ impl PotModel {
  output-artifacts: pot.bin pot.dat log1.dat convergence.scf convergence.scf.fine
  atom-count: {}
  potential-count: {}
+ atomnum-derived-potential-count: {}
  radius-mean: {}
  radius-max: {}
  average-zeff: {}
@@ -233,6 +241,7 @@ impl PotModel {
             self.title,
             self.geometry.nat,
             self.potentials.len(),
+            atomnum_npot,
             format_fixed_f64(radius_mean, 13, 5),
             format_fixed_f64(radius_max, 13, 5),
             format_fixed_f64(average_zeff, 13, 5),
@@ -281,11 +290,58 @@ impl PotModel {
         let (radius_mean, radius_rms, _) = self.radius_stats();
         let zeff = potential.atomic_number as f64 - potential.xion;
         let local_density = potential.xnatph.max(0.0_f64) / (radius_rms + 1.0_f64);
-        let screening = potential.folp / (potential.lmaxsc.max(0) as f64 + 1.0_f64);
+        let lmax_scale = potential.lmaxsc.max(0) as f64 + 1.0_f64;
+        let screening = aprdep(
+            &[1.0_f64, potential.folp],
+            &[1.0_f64 / lmax_scale, local_density],
+            2,
+        )
+        .abs()
+        .max(1.0e-9);
         let vmt0 =
             -zeff / (radius_mean + 1.0_f64) * (1.0_f64 + 0.05_f64 * index as f64) - local_density;
         let vxc = -(0.10_f64 + 0.02_f64 * index as f64) * screening;
         (zeff, local_density, vmt0, vxc)
+    }
+
+    fn atomnum_derived_npot(&self) -> Option<usize> {
+        let atom_numbers = self.geometry_atomic_numbers()?;
+        if atom_numbers.is_empty() {
+            return None;
+        }
+        let mut structure = XyzFormat {
+            title: self.title.clone(),
+            atomic_numbers: atom_numbers,
+            xyz: self
+                .geometry
+                .atoms
+                .iter()
+                .map(|atom| [atom.x, atom.y, atom.z])
+                .collect(),
+            potential_indices: Vec::new(),
+            potential_numeric_labels: Vec::new(),
+            potential_string_labels: Vec::new(),
+        };
+        let absorber_index = self
+            .geometry
+            .atoms
+            .iter()
+            .position(|atom| atom.ipot == 0)
+            .map(|index| index + 1)
+            .unwrap_or(1);
+        let pot_list =
+            gen_pot_from_xyz(&PotGenRule::default(), absorber_index, &mut structure).ok()?;
+        Some(pot_list.n_pot())
+    }
+
+    fn geometry_atomic_numbers(&self) -> Option<Vec<i32>> {
+        let mut atomic_numbers = Vec::with_capacity(self.geometry.atoms.len());
+        for atom in &self.geometry.atoms {
+            let potential_index = usize::try_from(atom.ipot).ok()?;
+            let atomic_number = self.potentials.get(potential_index)?.atomic_number;
+            atomic_numbers.push(atomic_number);
+        }
+        Some(atomic_numbers)
     }
 
     fn radius_stats(&self) -> (f64, f64, f64) {
