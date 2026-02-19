@@ -1,0 +1,72 @@
+Running Fortran oracle capture...
+[capture-baselines] Capturing fixture FX-RDINP-001
+[capture-baselines] Captured fixture FX-RDINP-001
+[capture-baselines] Capturing fixture FX-POT-001
+[capture-baselines] Captured fixture FX-POT-001
+[capture-baselines] Capturing fixture FX-PATH-001
+[capture-baselines] Captured fixture FX-PATH-001
+[capture-baselines] Capturing fixture FX-FMS-001
+[capture-baselines] Captured fixture FX-FMS-001
+[capture-baselines] Capturing fixture FX-XSPH-001
+[capture-baselines] Captured fixture FX-XSPH-001
+[capture-baselines] Capturing fixture FX-BAND-001
+[capture-baselines] Captured fixture FX-BAND-001
+[capture-baselines] Capturing fixture FX-LDOS-001
+[capture-baselines] Captured fixture FX-LDOS-001
+[capture-baselines] Capturing fixture FX-RIXS-001
+[capture-baselines] Captured fixture FX-RIXS-001
+[capture-baselines] Capturing fixture FX-CRPA-001
+[capture-baselines] Captured fixture FX-CRPA-001
+[capture-baselines] Capturing fixture FX-COMPTON-001
+[capture-baselines] Captured fixture FX-COMPTON-001
+[capture-baselines] Capturing fixture FX-DEBYE-001
+[capture-baselines] Captured fixture FX-DEBYE-001
+[capture-baselines] Capturing fixture FX-DMDW-001
+[capture-baselines] Captured fixture FX-DMDW-001
+[capture-baselines] Capturing fixture FX-SCREEN-001
+[capture-baselines] Captured fixture FX-SCREEN-001
+[capture-baselines] Capturing fixture FX-SELF-001
+[capture-baselines] Captured fixture FX-SELF-001
+[capture-baselines] Capturing fixture FX-ATOM-SCF-001
+[capture-baselines] Captured fixture FX-ATOM-SCF-001
+[capture-baselines] Capturing fixture FX-KSPACE-GENFMT-001
+[capture-baselines] Captured fixture FX-KSPACE-GENFMT-001
+[capture-baselines] Capturing fixture FX-EELSMDFF-001
+[capture-baselines] Captured fixture FX-EELSMDFF-001
+[capture-baselines] Capturing fixture FX-SELF-OPCONSAT-001
+[capture-baselines] Captured fixture FX-SELF-OPCONSAT-001
+[capture-baselines] Capturing fixture FX-EELS-001
+[capture-baselines] Captured fixture FX-EELS-001
+[capture-baselines] Capturing fixture FX-FULLSPECTRUM-001
+[capture-baselines] Captured fixture FX-FULLSPECTRUM-001
+[capture-baselines] Capturing fixture FX-WORKFLOW-XAS-001
+[capture-baselines] Captured fixture FX-WORKFLOW-XAS-001
+[capture-baselines] Summary: success=21, failure=0, selected=21
+Running Rust-vs-Fortran regression comparison...
+Regression status: PASS
+Fixtures: 21 total (21 passed, 0 failed)
+Artifacts: 1162 total (1162 passed, 0 failed)
+Mismatches: 0 fixture(s), 0 artifact(s)
+Fixture FX-RDINP-001: PASS (49/49 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-POT-001: PASS (49/49 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-PATH-001: PASS (49/49 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-FMS-001: PASS (45/45 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-XSPH-001: PASS (45/45 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-BAND-001: PASS (61/61 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-LDOS-001: PASS (97/97 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-RIXS-001: PASS (5/5 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-CRPA-001: PASS (39/39 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-COMPTON-001: PASS (63/63 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-DEBYE-001: PASS (41/41 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-DMDW-001: PASS (66/66 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-SCREEN-001: PASS (60/60 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-SELF-001: PASS (60/60 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-ATOM-SCF-001: PASS (42/42 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-KSPACE-GENFMT-001: PASS (63/63 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-EELSMDFF-001: PASS (76/76 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-SELF-OPCONSAT-001: PASS (60/60 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-EELS-001: PASS (71/71 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-FULLSPECTRUM-001: PASS (76/76 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+Fixture FX-WORKFLOW-XAS-001: PASS (45/45 artifacts, pass_rate=1.0000, threshold: min_pass_rate=1.0000, max_failures=0)
+No artifact mismatches detected.
+JSON report: /Users/ryuichi/dev/feff10-rs/artifacts/regression/oracle-report.json

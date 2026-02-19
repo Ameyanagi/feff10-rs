@@ -1,6 +1,7 @@
 use crate::domain::{
     FeffError, InputCard, InputCardContinuation, InputCardKind, InputDeck, ParserResult,
 };
+use crate::support::common::itoken::canonical_keyword_for_parser;
 
 const DEFAULT_CONTROL_VALUES: [&str; 6] = ["1", "1", "1", "1", "1", "1"];
 const DEFAULT_PRINT_VALUES: [&str; 6] = ["0", "0", "0", "0", "0", "0"];
@@ -277,7 +278,16 @@ fn normalize_keyword_token(keyword: &str) -> Option<String> {
         return None;
     }
 
-    is_valid_keyword(normalized).then(|| normalized.to_ascii_uppercase())
+    if !is_valid_keyword(normalized) {
+        return None;
+    }
+
+    let uppercase = normalized.to_ascii_uppercase();
+    if let Some(mapped) = canonical_keyword_for_parser(&uppercase) {
+        Some(mapped.to_string())
+    } else {
+        Some(uppercase)
+    }
 }
 
 fn is_valid_keyword(keyword: &str) -> bool {
@@ -444,6 +454,27 @@ mod tests {
         assert_eq!(deck.cards[3].kind, InputCardKind::Cfname);
         assert_eq!(deck.cards[3].continuations.len(), 1);
         assert_eq!(deck.cards[3].continuations[0].values, vec!["NULL"]);
+    }
+
+    #[test]
+    fn parser_supports_feff_four_character_card_prefixes() {
+        let deck = parse_input_deck(
+            "TITL copper test\nEDGE K\nPOTE\n0 29 Cu\nATOM\n0.0 0.0 0.0 0 Cu\nEND\n",
+        )
+        .expect("deck with FEFF prefixes should parse");
+
+        assert_eq!(deck.cards[0].keyword, "TITLE");
+        assert_eq!(deck.cards[2].keyword, "POTENTIALS");
+        assert_eq!(deck.cards[3].keyword, "ATOMS");
+    }
+
+    #[test]
+    fn parser_supports_spring_stretch_prefix_alias() {
+        let deck = parse_input_deck("VDOS 0.03 0.5 1\nSTRE\n0 1 27.9 2.0\n")
+            .expect("spring prefix deck should parse");
+
+        assert_eq!(deck.cards[0].keyword, "VDOS");
+        assert_eq!(deck.cards[1].keyword, "STRETCHES");
     }
 
     #[test]

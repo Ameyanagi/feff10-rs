@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 globset.workspace = true
+num-complex.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

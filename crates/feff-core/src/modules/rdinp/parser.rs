@@ -2,6 +2,7 @@ use super::RDINP_REQUIRED_INPUTS;
 use crate::domain::{
     ComputeArtifact, ComputeModule, ComputeRequest, ComputeResult, FeffError, InputCard, InputDeck,
 };
+use crate::support::common::isedge::canonical_edge_label;
 use std::fs;
 
 #[derive(Debug, Clone)]
@@ -74,7 +75,7 @@ pub(super) fn parse_potentials(deck: &InputDeck) -> ComputeResult<Vec<PotentialE
         .iter()
         .filter(|card| card.keyword == "POTENTIALS" || card.keyword == "POTENTIAL")
     {
-        if card.keyword == "POTENTIAL" && !card.values.is_empty() {
+        if !card.values.is_empty() {
             rows.push((card.source_line, card.values.clone()));
         }
         for continuation in &card.continuations {
@@ -292,11 +293,50 @@ pub(super) fn deck_title(deck: &InputDeck) -> String {
 pub(super) fn deck_edge_label(deck: &InputDeck) -> String {
     first_card(deck, "EDGE")
         .and_then(|card| card.values.first())
-        .map(|value| value.trim().to_ascii_uppercase())
+        .and_then(|value| canonical_edge_label(value).or_else(|| Some(value.trim())))
+        .map(|value| value.to_ascii_uppercase())
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| "NULL".to_string())
 }
 
 pub(super) fn artifact_list(paths: &[&str]) -> Vec<ComputeArtifact> {
     paths.iter().copied().map(ComputeArtifact::new).collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{deck_edge_label, parse_potentials};
+    use crate::domain::{InputCard, InputCardKind, InputDeck};
+
+    #[test]
+    fn parse_potentials_accepts_inline_potentials_rows() {
+        let deck = InputDeck {
+            cards: vec![InputCard::new(
+                "POTENTIALS",
+                InputCardKind::Potentials,
+                vec!["0".to_string(), "29".to_string(), "Cu".to_string()],
+                1,
+            )],
+        };
+
+        let entries = parse_potentials(&deck).expect("inline row should parse");
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].ipot, 0);
+        assert_eq!(entries[0].atomic_number, 29);
+        assert_eq!(entries[0].label, "Cu");
+    }
+
+    #[test]
+    fn deck_edge_label_normalizes_numeric_edge_alias() {
+        let deck = InputDeck {
+            cards: vec![InputCard::new(
+                "EDGE",
+                InputCardKind::Edge,
+                vec!["1".to_string()],
+                2,
+            )],
+        };
+
+        assert_eq!(deck_edge_label(&deck), "K");
+    }
 }

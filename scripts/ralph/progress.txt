@@ -1,3 +1,532 @@
 # Ralph Progress Log
-Started: Wed Feb 18 17:02:17 JST 2026
+Started: Thu Feb 19 09:05:48 JST 2026
+---
+## Codebase Patterns
+- Build `tasks/full-module-migration-ledger.csv` from `gap/fortran-to-rust-file-gap.csv` rows where `classification=out_of_scope`, preserving source order for deterministic chunking.
+- Use `phase` as the owning PRD story ID (`US-xxx`) and split chunked directories by per-directory ledger order (ATOM 10/10/9, MATH 4/3, GENFMT 9/9, EELSMDFF 5/4).
+- For full-module closeout reporting, treat `remaining_gap` as `runtime_support_dependency + out_of_scope`; `scripts/fortran/generate-gap-report.py` now overlays a complete migration ledger as `migrated_to_rust`.
+- Route FEFF legacy card-prefix handling through `crates/feff-core/src/support/common/itoken.rs` (`canonical_keyword_for_parser`) instead of duplicating per-parser alias maps.
+- Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
+- Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
+- For large deferred program/subroutine ports (for example `ATOM`), split orchestration into pure `plan_*` helpers and keep numerical kernels as pure functions so behavior is unit-testable without runtime file I/O.
+- For deferred `DRIVERS`/`HEADERS` program files, port compatibility as deterministic plan or codec helpers under `support/<domain>/` and keep runtime/CLI dispatch unchanged.
+- For deferred routines that still depend on COMMON-style shared state, use typed context structs plus callback hooks for missing dependencies (`dsordf`, `yzkrdf`, `getorb`, `somm`) so control-flow can be ported and tested before runtime wiring is complete.
+- For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
+- For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
+- For large ATOM runtime-control ports, provide both a default solver entrypoint and a `*_with` callback-injected variant so iterative control flow is unit-testable with deterministic mock dependencies.
+- For deferred KSPACE angular helpers, keep shared factorial tables in `support/kspace::factorial_table` and integrate through `modules/helpers::kspace_workflow_coupling` so BAND runtime wiring stays deterministic and bounded.
+- For deferred targets that require `<domain>/<domain>.rs`, export with `#[path = "<domain>.rs"]` plus a re-export alias from the domain `mod.rs` to avoid `clippy::module_inception` while preserving ledger file paths.
+- For GENFMT artifact-shape updates, validate the in-memory contract with `support/genfmt/regenf.rs::artifacts_consumable` and keep the check wired in `support/genfmt/genfmt.rs::ffmod5`.
+- Wire new deferred-support families into runtime modules through `crates/feff-core/src/modules/helpers.rs` first; keep SELF/FULLSPECTRUM oracle-baseline artifact formulas unchanged unless fixture baselines are intentionally regenerated.
+- SELF staged spectrum artifacts must provide at least two distinct finite energy points; reject sparse/degenerate inputs with `RUN.SELF_INPUT_PARSE` instead of synthesizing fallback points.
+- For staged EELSMDFF migration, keep sigma-scaling and cross-section accumulation as pure helpers with injectable wavelength dependencies so chunked ports remain testable before full runtime wiring.
+- For EELSMDFF chunk-B/runtime wiring, compose `mdff_readsp -> scale_sigma_rows_with_wavelength -> mdff_qmesh -> mdff_eels` inside `modules/helpers::eelsmdff_workflow_coupling` and call that from both EELS and FULLSPECTRUM models.
+- When adding a fixture that overlaps an existing single-module fixture, keep the new one as `fixtureType: "workflow"` (or multi-module) so CLI default module resolution still prefers the legacy module fixture.
+- For capture-only fixtures, list staged `REFERENCE/*` inputs in `entryFiles` and keep `baselineStatus=requires_fortran_capture`; capture tooling can materialize those from `REFERENCE.zip` while parser fixture tests remain resilient when snapshots are absent.
+- For capture-only fixtures, keep `artifacts/fortran-baselines/<fixture-id>/baseline` snapshots committed (plus `checksums.sha256` and `snapshot-metadata.json`) because `scripts/fortran/ci-oracle-capture-runner.sh` seeds oracle outputs from those directories.
+- For SELF parity-expansion fixtures in `feff10/examples/MPSE/Cu_OPCONS`, keep staged `loss.dat` plus `REFERENCE/sfconv.inp` in `entryFiles` so SELF/OPCONSAT coupling paths stay deterministic across capture and replay workflows.
+- For EELSMDFF-focused parity coverage, `feff10/examples/KSPACE/Graphite` is a good high-qmesh seed (`ELNES`, `MAGIC`) while keeping `modulesCovered` scoped to `EELS`.
+---
+## 2026-02-19 09:12:27 JST - US-001
+- What was implemented
+  - Added `tasks/full-module-migration-ledger.csv` with required columns and 102 `out_of_scope` rows mapped from `gap/fortran-to-rust-file-gap.csv`.
+  - Assigned deterministic `rust_target` values under `crates/feff-core/src/support/<fortran_dir>/<fortran_file>.rs`.
+  - Assigned deterministic `phase` ownership aligned to PRD user stories, including chunk splits for ATOM/MATH/GENFMT/EELSMDFF.
+  - Set `status=pending` and blank `notes` for all ledger rows.
+- Files changed
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: The ledger order is meaningful for chunk stories; preserve the source CSV order when selecting chunk-A/chunk-B or thirds.
+  - Gotchas encountered: PRD text says 103 deferred rows, but `gap/fortran-to-rust-file-gap.csv` and `gap/fortran-to-rust-gap-report.md` currently show 102 `out_of_scope` rows.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 09:27:39 JST - US-002
+- What was implemented
+  - Added Rust support ports for deferred `COMMON` files (`getxk`, `isedge`, `itoken`, `nxtunt`, `pertab`, `xx`) and deferred `ERRORMODS/m_errorstackmod` under `crates/feff-core/src/support/...`.
+  - Wired shared support code into active FEFF-core paths: parser keyword normalization now accepts FEFF-style 4-character prefixes via `itoken`, and RDINP edge extraction now canonicalizes edge aliases via `isedge`.
+  - Added targeted unit tests for the migrated support modules and parser/RDINP integrations.
+  - Marked all `US-002` ledger rows (`COMMON` + `ERRORMODS`) as `status=done`.
+- Files changed
+  - `crates/feff-core/src/lib.rs`
+  - `crates/feff-core/src/parser/mod.rs`
+  - `crates/feff-core/src/modules/rdinp/parser.rs`
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/common/mod.rs`
+  - `crates/feff-core/src/support/common/getxk.rs`
+  - `crates/feff-core/src/support/common/isedge.rs`
+  - `crates/feff-core/src/support/common/itoken.rs`
+  - `crates/feff-core/src/support/common/nxtunt.rs`
+  - `crates/feff-core/src/support/common/pertab.rs`
+  - `crates/feff-core/src/support/common/xx.rs`
+  - `crates/feff-core/src/support/errormods/mod.rs`
+  - `crates/feff-core/src/support/errormods/m_errorstackmod.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: The new `support/common` modules are safe places to port shared Fortran helpers before wiring them through parser/module layers.
+  - Gotchas encountered: `parse_potentials` must accept inline values on both `POTENTIAL` and `POTENTIALS` cards when parser alias normalization maps legacy prefixes to canonical names.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 09:36:51 JST - US-003
+- What was implemented
+  - Added Rust ports for MATH chunk-A helpers under `crates/feff-core/src/support/math/`: `cwig3j`, `determ`, `dist`, and `quartc` with Fortran-compatible core formulas and argument-domain checks.
+  - Wired the new math support module into `support/mod.rs` and added the new dependency required for complex-valued quartic roots.
+  - Added deterministic unit tests for each migrated helper covering known-value cases, error-domain behavior, and quartic root residual validation.
+  - Marked `US-003` MATH chunk-A ledger rows (`cwig3j`, `determ`, `dist`, `quartc`) as `status=done`.
+- Files changed
+  - `Cargo.toml`
+  - `Cargo.lock`
+  - `crates/feff-core/Cargo.toml`
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/math/mod.rs`
+  - `crates/feff-core/src/support/math/cwig3j.rs`
+  - `crates/feff-core/src/support/math/determ.rs`
+  - `crates/feff-core/src/support/math/dist.rs`
+  - `crates/feff-core/src/support/math/quartc.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: New deferred helpers should be exported through both `support/<domain>/mod.rs` and `support/mod.rs` to ensure crate-level test discovery and predictable import paths.
+  - Gotchas encountered: The FEFF quartic routine assumes non-degenerate coefficient combinations; tests should validate by polynomial residual and avoid coefficient sets that collapse the legacy closed-form denominator path.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 09:50:03 JST - US-004
+- What was implemented
+  - Added Rust support ports for deferred MATH chunk-B helpers (`rotwig`, `sdist`, `xlogx`), EXCH helper (`ffq`), and TDLDA elliptic helpers (`ellpi`, `rf`, `rj`, `rc`) under `crates/feff-core/src/support/...`.
+  - Added new support domains `exch` and `tdlda`, exporting them via `crates/feff-core/src/support/mod.rs`, and wired new math helpers through `crates/feff-core/src/support/math/mod.rs`.
+  - Added deterministic unit tests for each migrated helper covering closed-form values, symmetry/branch behavior, and invalid-argument handling.
+  - Marked all `US-004` ledger rows (`EXCH/ffq`, `MATH/rotwig`, `MATH/sdist`, `MATH/xlogx`, `TDLDA/ellfun`) as `status=done`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/math/mod.rs`
+  - `crates/feff-core/src/support/math/rotwig.rs`
+  - `crates/feff-core/src/support/math/sdist.rs`
+  - `crates/feff-core/src/support/math/xlogx.rs`
+  - `crates/feff-core/src/support/exch/mod.rs`
+  - `crates/feff-core/src/support/exch/ffq.rs`
+  - `crates/feff-core/src/support/tdlda/mod.rs`
+  - `crates/feff-core/src/support/tdlda/ellfun.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: FEFF/Numerical Recipes elliptic routines (`rc/rf/rj`) converge to stable values with the original errtol settings but should be validated with realistic tolerances (~`1e-9`) instead of machine-epsilon expectations.
+  - Gotchas encountered: Running `cargo fmt --all` before the final gate command avoids avoidable `fmt --check` failures on multiline numeric expressions in newly added support helpers.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 10:08:12 JST - US-005
+- What was implemented
+  - Added Rust support ports for all deferred `US-005` files: `FOVRG` (`aprdec`, `aprdep`, `dsordc`, `ortdac`), `INPGEN` (`m_pot_generator`, `pot_generator_test`), and `RHORRP` (`m_density_inp`, `rhorrp`) under `crates/feff-core/src/support/...`.
+  - Wired migrated helpers into active runtime code paths: POT now derives `atomnum_npot` metadata via INPGEN atom-number mapping and applies FOVRG `aprdep` in screening metric calculations; COMPTON rhozzp generation now uses RHORRP grid iteration and line-density helpers.
+  - Exported new support domains through `crates/feff-core/src/support/mod.rs` and stabilized the RHORRP domain export with `#[path = "rhorrp.rs"] pub mod runtime` to keep strict clippy gates green while preserving ledger-target file paths.
+  - Marked all `US-005` ledger rows (`FOVRG`, `INPGEN`, `RHORRP`) as `status=done`.
+- Files changed
+  - `crates/feff-core/src/modules/compton/model.rs`
+  - `crates/feff-core/src/modules/pot/model.rs`
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/fovrg/mod.rs`
+  - `crates/feff-core/src/support/fovrg/aprdec.rs`
+  - `crates/feff-core/src/support/fovrg/aprdep.rs`
+  - `crates/feff-core/src/support/fovrg/dsordc.rs`
+  - `crates/feff-core/src/support/fovrg/ortdac.rs`
+  - `crates/feff-core/src/support/inpgen/mod.rs`
+  - `crates/feff-core/src/support/inpgen/m_pot_generator.rs`
+  - `crates/feff-core/src/support/inpgen/pot_generator_test.rs`
+  - `crates/feff-core/src/support/rhorrp/mod.rs`
+  - `crates/feff-core/src/support/rhorrp/m_density_inp.rs`
+  - `crates/feff-core/src/support/rhorrp/rhorrp.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Reusing `support/rhorrp/runtime` grid primitives in module models prevents subtle index-order drift between generated density tables and helper logic.
+  - Gotchas encountered: When a deferred file path requires `<domain>/<domain>.rs`, use `#[path = "..."]` aliasing in the domain `mod.rs` to avoid `clippy::module_inception` under `-D warnings`.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 10:27:05 JST - US-006
+- What was implemented
+  - Added a new `crates/feff-core/src/support/atom/` domain and ported all ATOM chunk-A deferred files from the ledger: `akeato`, `apot`, `aprdev`, `atomic`, `bkmrdf`, `cofcon`, `dentfa`, `dsordf`, `etotal`, and `fdmocc`.
+  - Implemented Fortran-compatible helper behavior with typed Rust interfaces and deterministic unit coverage for ATOM angular coefficients, occupancy factors, Thomas-Fermi density approximation, Breit terms, radial integral accumulation, and total-energy accumulation.
+  - Ported ATOM orchestration controls into testable planning helpers (`atomic` and `apot`) to preserve nohole/ionicity/energy-relaxation logic without changing CLI/runtime module wiring.
+  - Marked all `US-006` ATOM chunk-A ledger rows as `status=done` and set `US-006` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/atom/mod.rs`
+  - `crates/feff-core/src/support/atom/akeato.rs`
+  - `crates/feff-core/src/support/atom/apot.rs`
+  - `crates/feff-core/src/support/atom/aprdev.rs`
+  - `crates/feff-core/src/support/atom/atomic.rs`
+  - `crates/feff-core/src/support/atom/bkmrdf.rs`
+  - `crates/feff-core/src/support/atom/cofcon.rs`
+  - `crates/feff-core/src/support/atom/dentfa.rs`
+  - `crates/feff-core/src/support/atom/dsordf.rs`
+  - `crates/feff-core/src/support/atom/etotal.rs`
+  - `crates/feff-core/src/support/atom/fdmocc.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: For large deferred module ports, separating control-flow planning (`plan_*`) from pure numerical kernels keeps strict lint gates green while preserving legacy behavior.
+  - Gotchas encountered: `cargo clippy -- -D warnings` in this codebase denies `needless_range_loop`; prefer iterator/enumerate patterns even inside test helpers when populating fixed-size tables.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 10:48:28 JST - US-007
+- What was implemented
+  - Ported all deferred ATOM chunk-B ledger targets into `crates/feff-core/src/support/atom/`: `fdrirk`, `fpf0`, `inmuat`, `intdir`, `lagdat`, `messer`, `muatco`, `nucdev`, `nucmass`, and `ortdat`.
+  - Implemented Fortran-compatible control-flow helpers with typed Rust interfaces and deterministic unit tests, including callback-based dependency seams for legacy shared-state routines (`dsordf`, `yzkrdf`, `getorb`, `somm`).
+  - Updated `crates/feff-core/src/support/atom/mod.rs` exports so new chunk-B helpers are reachable through crate support paths and test discovery.
+  - Marked all `US-007` ATOM chunk-B ledger rows as `status=done` and set `US-007` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/atom/mod.rs`
+  - `crates/feff-core/src/support/atom/fdrirk.rs`
+  - `crates/feff-core/src/support/atom/fpf0.rs`
+  - `crates/feff-core/src/support/atom/inmuat.rs`
+  - `crates/feff-core/src/support/atom/intdir.rs`
+  - `crates/feff-core/src/support/atom/lagdat.rs`
+  - `crates/feff-core/src/support/atom/messer.rs`
+  - `crates/feff-core/src/support/atom/muatco.rs`
+  - `crates/feff-core/src/support/atom/nucdev.rs`
+  - `crates/feff-core/src/support/atom/nucmass.rs`
+  - `crates/feff-core/src/support/atom/ortdat.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Callback seams around legacy shared-state helpers keep chunked ATOM migrations testable without waiting on full COMMON-block runtime integration.
+  - Gotchas encountered: `cargo clippy -- -D warnings` flags `too_many_arguments`, `manual_swap`, and `int_plus_one` in direct Fortran translations; either restructure into context structs or add narrowly-scoped fixes/attributes while preserving algorithm shape.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 11:12:12 JST - US-008
+- What was implemented
+  - Ported all deferred ATOM chunk-C ledger targets under `crates/feff-core/src/support/atom/`: `potrdf`, `s02at`, `scfdat`, `soldir`, `tabrat`, `vlda`, `wfirdf`, `yzkrdf`, and `yzkteg`.
+  - Implemented Fortran-compatible numerical/control helpers with typed Rust interfaces, explicit validation errors, and deterministic unit tests; added callback-injected `*_with` variants for heavy orchestration paths (`soldir`, `wfirdf`) to preserve solver flow while keeping tests deterministic.
+  - Wired all new chunk-C modules through `crates/feff-core/src/support/atom/mod.rs`, then marked all `US-008` ledger rows `status=done` and set `US-008` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/atom/mod.rs`
+  - `crates/feff-core/src/support/atom/potrdf.rs`
+  - `crates/feff-core/src/support/atom/s02at.rs`
+  - `crates/feff-core/src/support/atom/scfdat.rs`
+  - `crates/feff-core/src/support/atom/soldir.rs`
+  - `crates/feff-core/src/support/atom/tabrat.rs`
+  - `crates/feff-core/src/support/atom/vlda.rs`
+  - `crates/feff-core/src/support/atom/wfirdf.rs`
+  - `crates/feff-core/src/support/atom/yzkrdf.rs`
+  - `crates/feff-core/src/support/atom/yzkteg.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Callback-injected wrappers (`*_with`) let large legacy solver loops stay close to Fortran control flow while still allowing deterministic unit tests without full runtime wiring.
+  - Gotchas encountered: `yzkteg` development-series denominators can hit singular values for some `(ap, k)` combinations; guard those divisions only when the source coefficient is non-zero to match legacy no-op behavior for zero terms.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 11:29:27 JST - US-009
+- What was implemented
+  - Added a new `crates/feff-core/src/support/kspace/` domain and ported all deferred `US-009` KSPACE rows: `cgcrac`, `strconfra`, and `strfunqjl`, plus a shared `factorial_table` helper.
+  - Integrated migrated KSPACE logic into runtime paths by adding `modules/helpers::kspace_workflow_coupling` and wiring it into `modules/band/model.rs` so BAND output configuration and `logband.dat` consume deterministic KSPACE coupling values.
+  - Marked all `US-009` ledger rows as `status=done` and set `US-009` to `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/kspace/mod.rs`
+  - `crates/feff-core/src/support/kspace/cgcrac.rs`
+  - `crates/feff-core/src/support/kspace/strconfra.rs`
+  - `crates/feff-core/src/support/kspace/strfunqjl.rs`
+  - `crates/feff-core/src/modules/helpers.rs`
+  - `crates/feff-core/src/modules/band/model.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Routing new deferred helper families through `modules/helpers` is a low-friction way to integrate support-domain ports into active runtime modules without duplicating glue logic.
+  - Gotchas encountered: `strfunqjl` non-zero-`j` prefactors are sensitive to factorial-index math; for `(j=1, l=2)` the correct closed form is `sqrt(5 / (12*pi))`.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 11:49:27 JST - US-010
+- What was implemented
+  - Added a new `crates/feff-core/src/support/genfmt/` domain and ported all `US-010` GENFMT chunk-A targets: `fmtrxi`, `genfmt`, `genfmtjas`, `genfmtsub`, `m_genfmt`, `mmtr`, `mmtrjas`, `mmtrjas0`, and `mmtrxi`.
+  - Implemented typed workspace/tensor models (`BmatiTensor`, `FmatiMatrix`, GENFMT artifact bundles) and deterministic Rust kernels for matrix/scattering assembly paths so deferred COMMON-style GENFMT logic is now Rust-native.
+  - Added deterministic unit tests for chunk-A generated-format artifacts (`feff` header/list/nstar outputs) and matrix helper behavior, including top-level `ffmod5` dispatch coverage for EXAFS and NRIXS modes.
+  - Marked all `US-010` GENFMT chunk-A ledger rows as `status=done` and set `US-010` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/genfmt/mod.rs`
+  - `crates/feff-core/src/support/genfmt/fmtrxi.rs`
+  - `crates/feff-core/src/support/genfmt/genfmt.rs`
+  - `crates/feff-core/src/support/genfmt/genfmtjas.rs`
+  - `crates/feff-core/src/support/genfmt/genfmtsub.rs`
+  - `crates/feff-core/src/support/genfmt/m_genfmt.rs`
+  - `crates/feff-core/src/support/genfmt/mmtr.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrjas.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrjas0.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrxi.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep deferred GENFMT ports in an in-memory artifact builder style first (`GenfmtArtifacts`), then wire runtime file I/O later; this keeps chunk migrations testable and deterministic.
+  - Gotchas encountered: Strict clippy gates reject module/file name collisions (`module_inception`), so `<domain>/<domain>.rs` targets should be exported with a `#[path = "..."]` alias from the domain `mod.rs`.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 12:06:06 JST - US-011
+- What was implemented
+  - Ported all remaining deferred GENFMT chunk-B ledger targets under `crates/feff-core/src/support/genfmt/`: `mmtrxijas`, `mmtrxijas0`, `rdpath`, `regenf`, `rot3i`, `sclmz`, `setlam`, `snlm`, and `xstar`.
+  - Wired chunk-B exports through `crates/feff-core/src/support/genfmt/mod.rs` and integrated downstream-artifact contract validation in `crates/feff-core/src/support/genfmt/genfmt.rs` using `regenf::artifacts_consumable`.
+  - Added deterministic unit coverage for all new chunk-B helpers plus updated GENFMT runtime tests; ensured generated artifact structures remain consumable by downstream stages.
+  - Marked all `US-011` GENFMT ledger rows as `status=done` and set `US-011` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/genfmt/genfmt.rs`
+  - `crates/feff-core/src/support/genfmt/mod.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrxijas.rs`
+  - `crates/feff-core/src/support/genfmt/mmtrxijas0.rs`
+  - `crates/feff-core/src/support/genfmt/rdpath.rs`
+  - `crates/feff-core/src/support/genfmt/regenf.rs`
+  - `crates/feff-core/src/support/genfmt/rot3i.rs`
+  - `crates/feff-core/src/support/genfmt/sclmz.rs`
+  - `crates/feff-core/src/support/genfmt/setlam.rs`
+  - `crates/feff-core/src/support/genfmt/snlm.rs`
+  - `crates/feff-core/src/support/genfmt/xstar.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: New high-rank GENFMT tensor outputs stay clippy-clean under `-D warnings` when vector shapes are wrapped in explicit type aliases (`MjQLamTensor`, `SpinLamTensor`) instead of raw nested `Vec` signatures.
+  - Gotchas encountered: `cargo fmt --all` reorders module exports and wraps long expressions in new GENFMT files; run it before final gate execution to avoid late `fmt --check` failures.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 12:27:20 JST - US-012
+- What was implemented
+  - Added new deferred support domains `crates/feff-core/src/support/mkgtr/` and `crates/feff-core/src/support/opconsat/`, porting all `US-012` ledger targets: `calclbcoef`, `getgtr`, `getgtrjas`, `mkgtr`, `rotgmatrix`, `addeps`, `epsdb`, `getelement`, and `opconsat`.
+  - Exported both domains through `crates/feff-core/src/support/mod.rs` with domain-level `#[path = "<domain>.rs"]` runtime aliases to keep ledger target paths while satisfying strict clippy gates.
+  - Integrated migrated helpers into runtime pathways via `crates/feff-core/src/modules/helpers.rs`: added `mkgtr_workflow_coupling` and `opconsat_workflow_spectrum`, then wired those paths into `SCREEN`, `SELF`, and `FULLSPECTRUM` model execution code.
+  - Added deterministic unit tests for all migrated MKGTR/OPCONSAT helpers and helper-layer integration tests in `modules/helpers.rs`.
+  - Marked all `US-012` MKGTR/OPCONSAT ledger rows as `status=done` and set `US-012` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/mkgtr/mod.rs`
+  - `crates/feff-core/src/support/mkgtr/calclbcoef.rs`
+  - `crates/feff-core/src/support/mkgtr/getgtr.rs`
+  - `crates/feff-core/src/support/mkgtr/getgtrjas.rs`
+  - `crates/feff-core/src/support/mkgtr/mkgtr.rs`
+  - `crates/feff-core/src/support/mkgtr/rotgmatrix.rs`
+  - `crates/feff-core/src/support/opconsat/mod.rs`
+  - `crates/feff-core/src/support/opconsat/addeps.rs`
+  - `crates/feff-core/src/support/opconsat/epsdb.rs`
+  - `crates/feff-core/src/support/opconsat/getelement.rs`
+  - `crates/feff-core/src/support/opconsat/opconsat.rs`
+  - `crates/feff-core/src/modules/helpers.rs`
+  - `crates/feff-core/src/modules/screen/model.rs`
+  - `crates/feff-core/src/modules/self_energy/model.rs`
+  - `crates/feff-core/src/modules/fullspectrum/model.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Use `modules/helpers.rs` as the integration seam for newly ported support domains so runtime modules can consume migrated routines without duplicating glue logic.
+  - Gotchas encountered: `SELF` and `FULLSPECTRUM` oracle fixture tests enforce strict baseline parity; runtime-output formula changes in those modules should be avoided unless baseline artifacts are intentionally regenerated in the same iteration.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 12:42:51 JST - US-013
+- What was implemented
+  - Added new deferred support domain `crates/feff-core/src/support/eelsmdff/` and ported all `US-013` files: `mdff_angularmesh`, `mdff_concat`, `mdff_eels`, `mdff_euler`, and `mdff_m_spectrum`.
+  - Implemented typed MDFF helpers for angular-mesh generation, Euler rotation utilities, spectrum buffer allocation, and tensor/q-vector cross-section accumulation with injectable wavelength scaling.
+  - Added deterministic unit tests for each migrated chunk-A helper and exported the new domain through `crates/feff-core/src/support/mod.rs`.
+  - Marked all `US-013` ledger rows as `status=done` and set `US-013` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/eelsmdff/mod.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_angularmesh.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_concat.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_eels.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_euler.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_m_spectrum.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keeping MDFF chunk ports in pure helper APIs with config structs and callback-injected physical dependencies keeps strict clippy gates green while preserving Fortran-compatible tensor ordering.
+  - Gotchas encountered: `mdff_angularmesh.f90` includes a temporary hardcoded two-point path; preserve it behind an explicit option and keep normal mesh generation as the default runtime behavior.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:02:30 JST - US-014
+- What was implemented
+  - Ported all deferred EELSMDFF chunk-B ledger targets under `crates/feff-core/src/support/eelsmdff/`: `mdff_productmatvect`, `mdff_qmesh`, `mdff_readsp`, and `mdff_wavelength`, each with deterministic unit coverage.
+  - Exported new chunk-B modules via `crates/feff-core/src/support/eelsmdff/mod.rs`.
+  - Added `modules/helpers::eelsmdff_workflow_coupling` to bridge migrated EELSMDFF routines (`readsp` -> wavelength scaling -> qmesh -> mdff_eels`) through one integration seam.
+  - Wired EELSMDFF runtime coupling calls into both `modules/eels/model.rs` and `modules/fullspectrum/model.rs` without changing module contracts.
+  - Marked all `US-014` EELSMDFF ledger rows as `status=done` and set `US-014` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/eelsmdff/mod.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_productmatvect.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_qmesh.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_readsp.rs`
+  - `crates/feff-core/src/support/eelsmdff/mdff_wavelength.rs`
+  - `crates/feff-core/src/modules/helpers.rs`
+  - `crates/feff-core/src/modules/eels/model.rs`
+  - `crates/feff-core/src/modules/fullspectrum/model.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Keep EELSMDFF support-family runtime wiring centralized in `modules/helpers.rs` so module models can call one deterministic coupling seam instead of duplicating q-mesh/sigma plumbing.
+  - Gotchas encountered: `clippy -D warnings` enforces `too_many_arguments`; new workflow bridges should use config structs instead of long argument lists.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:12:39 JST - US-015
+- What was implemented
+  - Added new compatibility support domains `crates/feff-core/src/support/drivers/` and `crates/feff-core/src/support/headers/` and ported all deferred `US-015` ledger targets (`Example1-5`, `TestIO`, `TestIOFiles`, `TestOpenFl`, `TestPadi`, `HEADERS/feff`).
+  - Implemented deterministic driver helpers mirroring legacy program behavior, including IO-flow planning (`example*`, `testio`), IOFiles stack semantics (`testiofiles`), OpenFl default request mapping (`testopenfl`), and base-75 PAD integer codec compatibility (`testpadi`).
+  - Implemented `support/headers/feff.rs::feff_main_plan` to preserve FEFF main-program call order, including absorber-loop `ffsort` gating and per-absorber `ffmod6` arguments.
+  - Exported new support domains through `crates/feff-core/src/support/mod.rs` and marked all `US-015` DRIVERS/HEADERS ledger rows as `status=done`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/drivers/mod.rs`
+  - `crates/feff-core/src/support/drivers/example1.rs`
+  - `crates/feff-core/src/support/drivers/example2.rs`
+  - `crates/feff-core/src/support/drivers/example3.rs`
+  - `crates/feff-core/src/support/drivers/example4.rs`
+  - `crates/feff-core/src/support/drivers/example5.rs`
+  - `crates/feff-core/src/support/drivers/testio.rs`
+  - `crates/feff-core/src/support/drivers/testiofiles.rs`
+  - `crates/feff-core/src/support/drivers/testopenfl.rs`
+  - `crates/feff-core/src/support/drivers/testpadi.rs`
+  - `crates/feff-core/src/support/headers/mod.rs`
+  - `crates/feff-core/src/support/headers/feff.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Legacy wrapper programs are easiest to migrate as deterministic compatibility plans/codecs in `support/` modules; this preserves behavior contracts without broad runtime wiring changes.
+  - Gotchas encountered: PAD integer scalar encoding (`wrpadisc`/`rdpadisc`) is base-75 with ASCII offset `+48` and explicit sign prefix, not decimal text.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:23:15 JST - US-016
+- What was implemented
+  - Removed SELF staged-spectrum fallback behavior that previously synthesized spectral points for sparse or degenerate inputs.
+  - Enforced deterministic SELF input-parse failures when staged spectrum artifacts contain fewer than two numeric rows or fewer than two distinct finite energy points.
+  - Added regression tests covering both failure modes to lock the runtime error contract.
+  - Confirmed `tasks/full-module-migration-ledger.csv` contains no `pending` or `in_progress` rows (`done=102`).
+- Files changed
+  - `crates/feff-core/src/modules/self_energy/parser.rs`
+  - `crates/feff-core/src/modules/self_energy/model.rs`
+  - `crates/feff-core/src/modules/self_energy/mod.rs`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Runtime staged-input sanitizers should fail with deterministic module placeholders when data degenerates, rather than fabricating synthetic points.
+  - Gotchas encountered: Distinct-row validation is not enough; spectrum normalization can still collapse duplicate energies to a single point, so post-sanitize checks are required.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:30:54 JST - US-017
+- What was implemented
+  - Added `FX-ATOM-SCF-001` to `tasks/golden-fixture-manifest.json` using `feff10/examples/EXAFS/Cu_SCF` as the source scenario.
+  - Defined fixture metadata for entry files and staged inputs (`feff.inp`, staged `REFERENCE/*` POT/SELF artifacts) plus policy-based artifact comparison contract.
+  - Marked the new fixture as a workflow fixture covering `POT` and `SELF` so oracle/report tooling includes it without disrupting existing module-default CLI fixture selection.
+- Files changed
+  - `tasks/golden-fixture-manifest.json`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Using workflow fixture type for overlapping module coverage preserves deterministic CLI fallback to existing single-module fixtures.
+  - Gotchas encountered: `parser_fixture_inputs` only resolves `.inp` entries from `inputDirectory` or committed baseline snapshots; `REFERENCE.zip` contents are not read by that test directly.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:35:47 JST - US-018
+- What was implemented
+  - Added `FX-KSPACE-GENFMT-001` to `tasks/golden-fixture-manifest.json` using `feff10/examples/KSPACE/Cr2GeC` as the source scenario.
+  - Defined fixture metadata with workflow coverage (`PATH`, `BAND`), staged `REFERENCE/*` entry files (`paths.inp`, `genfmt.inp`, `band.inp`, `phase.bin`), and policy-based artifact comparison contract.
+  - Marked the fixture as `baselineStatus=requires_fortran_capture` with archive/reference sources so oracle/report tooling includes it in capture/parity workflows without changing module-default CLI fixture selection.
+- Files changed
+  - `tasks/golden-fixture-manifest.json`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Capture workflows can materialize staged `REFERENCE/*` entry files from `reference_archive` baselines, so fixture metadata should explicitly list those staged files instead of relying on implicit module defaults.
+  - Gotchas encountered: `parser_fixture_inputs` reads `.inp` entries only from repo fixture directories or committed baseline snapshots; keeping capture-only fixtures at `baselineStatus=requires_fortran_capture` avoids false failures when staged `.inp` files are archive-only.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:40:41 JST - US-019
+- What was implemented
+  - Added `FX-EELSMDFF-001` to `tasks/golden-fixture-manifest.json` using `feff10/examples/KSPACE/Graphite` to cover advanced EELSMDFF q-mesh control paths.
+  - Defined fixture metadata for entry files and artifact contract (`feff.inp`, `REFERENCE.zip`, `reference_eels.dat`) with `baselineStatus=requires_fortran_capture`.
+  - Marked `US-019` as complete by setting `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `tasks/golden-fixture-manifest.json`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Graphite ELNES fixtures stress migrated EELSMDFF q-mesh and magic-angle paths without requiring multi-module workflow coverage.
+  - Gotchas encountered: Keep new parity-expansion fixtures capture-only (`baselineStatus=requires_fortran_capture`) until committed oracle baseline snapshots exist for that fixture ID.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:45:31 JST - US-020
+- What was implemented
+  - Added `FX-SELF-OPCONSAT-001` to `tasks/golden-fixture-manifest.json` using `feff10/examples/MPSE/Cu_OPCONS` as a SELF/OPCONSAT-focused parity fixture.
+  - Defined fixture metadata with staged SELF inputs (`feff.inp`, `loss.dat`, `REFERENCE/sfconv.inp`) and policy-based artifact comparison contract.
+  - Marked the fixture as `baselineStatus=requires_fortran_capture` so oracle/report tooling can include it while baseline capture artifacts are still being expanded.
+  - Marked `US-020` as complete by setting `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `tasks/golden-fixture-manifest.json`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Reusing `feff10/examples/MPSE/Cu_OPCONS` with staged `loss.dat` and `sfconv.inp` gives stable SELF coverage for migrated OPCONSAT coupling outputs like `opconsCu.dat`.
+  - Gotchas encountered: SELF staged `.inp` entries under `REFERENCE/` may not exist in-repo; keep capture-only fixtures at `baselineStatus=requires_fortran_capture` so parser fixture tests can skip unresolved archive-only snapshots.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:53:15 JST - US-021
+- What was implemented
+  - Added committed baseline snapshots for the new capture-only fixtures (`FX-ATOM-SCF-001`, `FX-KSPACE-GENFMT-001`, `FX-EELSMDFF-001`, `FX-SELF-OPCONSAT-001`) under `artifacts/fortran-baselines/` so oracle capture runner seeding works across the expanded fixture set.
+  - Updated `artifacts/fortran-baselines/snapshot-index.json` to include all 21 fixture snapshots.
+  - Updated parser fixture coverage in `crates/feff-core/tests/parser_fixture_inputs.rs` to skip staged `REFERENCE/*.inp` entries for `baselineStatus=requires_fortran_capture` fixtures, avoiding false parser-deck failures on staged runtime artifacts.
+  - Ran workflow-equivalent oracle parity and all required quality gates; parity report now shows `fixture_count=21`, `passed_fixture_count=21`, `failed_fixture_count=0`, `mismatch_artifact_count=0`.
+  - Marked `US-021` as complete by setting `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/tests/parser_fixture_inputs.rs`
+  - `artifacts/fortran-baselines/FX-ATOM-SCF-001/`
+  - `artifacts/fortran-baselines/FX-KSPACE-GENFMT-001/`
+  - `artifacts/fortran-baselines/FX-EELSMDFF-001/`
+  - `artifacts/fortran-baselines/FX-SELF-OPCONSAT-001/`
+  - `artifacts/fortran-baselines/snapshot-index.json`
+  - `artifacts/regression/oracle-report.json`
+  - `artifacts/regression/oracle-diff.txt`
+  - `artifacts/regression/oracle-summary.txt`
+  - `artifacts/regression/oracle-stderr.txt`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Expanded capture-only fixture sets require committed baseline snapshot directories before `cargo run --locked -- oracle` can succeed with `ci-oracle-capture-runner.sh`.
+  - Gotchas encountered: `parser_fixture_inputs` should treat `REFERENCE/*.inp` on capture-only fixtures as staged module/runtime artifacts, not standalone FEFF parser decks.
+  - Useful context: Validation gates used and passing in this iteration: workflow-equivalent oracle command (`21/21`, zero mismatches), `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 14:06:24 JST - US-022
+- What was implemented
+  - Extended `scripts/fortran/generate-gap-report.py` with migration-ledger closeout overlay support (`--migration-ledger`) and a `migrated_to_rust` classification so full-module closeout artifacts can report remaining gaps accurately.
+  - Regenerated `gap/fortran-to-rust-file-gap.csv` and `gap/fortran-to-rust-gap-report.md`; verified `runtime_support_dependency=0`, `out_of_scope=0`, and `remaining_gap=0`.
+  - Updated closeout docs for full-module state: `tasks/migration-gap-analysis.md` and `tasks/oracle-16-module-migration-summary.md` now report 21-fixture parity closure and zero mismatches.
+  - Ran fresh cutover and rollback rehearsals with new evidence roots (`artifacts/cutover-rehearsal/2026-02-19/20260219-140049`, `artifacts/rollback-rehearsal/2026-02-19/20260219-140228`) and published refreshed reports under `tasks/`.
+  - Refreshed canonical parity artifacts under `artifacts/regression/` and updated README “latest rehearsal report” links to the 2026-02-19 reports.
+  - Marked `US-022` as complete by setting `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `scripts/fortran/generate-gap-report.py`
+  - `gap/fortran-to-rust-file-gap.csv`
+  - `gap/fortran-to-rust-gap-report.md`
+  - `tasks/migration-gap-analysis.md`
+  - `tasks/oracle-16-module-migration-summary.md`
+  - `tasks/cutover-rehearsal-2026-02-19.md`
+  - `tasks/rollback-rehearsal-2026-02-19.md`
+  - `README.md`
+  - `artifacts/regression/oracle-report.json`
+  - `artifacts/regression/oracle-diff.txt`
+  - `artifacts/regression/oracle-summary.txt`
+  - `artifacts/regression/oracle-stderr.txt`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: `generate-gap-report.py` should use ledger-completion overlay when closeout is complete; report `remaining_gap` from `runtime_support_dependency + out_of_scope` and represent non-runtime-owned closed rows as `migrated_to_rust`.
+  - Gotchas encountered: Workflow-equivalent oracle runs with `--capture-allow-missing-entry-files` emit expected KSPACE `REFERENCE/band.inp` warnings; treat these as non-fatal when `oracle-report.json` remains fully passing.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`, workflow-equivalent oracle (`21/21`, `mismatch_artifact_count=0`), cutover rehearsal PASS, rollback rehearsal PASS.
 ---

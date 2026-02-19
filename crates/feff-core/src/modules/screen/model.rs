@@ -3,6 +3,7 @@ use super::parser::{
     parse_geom_source, parse_ldos_source, parse_pot_source, parse_screen_override_source,
 };
 use crate::domain::{ComputeResult, FeffError};
+use crate::modules::helpers::mkgtr_workflow_coupling;
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::path::Path;
 
@@ -29,6 +30,7 @@ struct ScreenOutputConfig {
     ner: i32,
     nei: i32,
     rfms: f64,
+    mkgtr_coupling: f64,
 }
 
 impl ScreenModel {
@@ -138,13 +140,17 @@ impl ScreenModel {
             .map(|atom| atom.ipot as f64)
             .sum::<f64>()
             / self.geom.atoms.len() as f64;
+        let mkgtr_coupling = mkgtr_workflow_coupling(maxl, ner, nei, false);
 
         let screen_level = (self.pot.mean_folp.max(0.05) + 0.02 * self.pot.gamach.abs())
-            * (1.0 + 0.015 * maxl as f64 + 0.005 * lfxc as f64 + 0.01 * ipot_mean.abs());
+            * (1.0 + 0.015 * maxl as f64 + 0.005 * lfxc as f64 + 0.01 * ipot_mean.abs())
+            * (0.9 + 0.2 * mkgtr_coupling);
         let screen_amplitude = (self.geom.radius_rms + self.ldos.rgrd.abs() + ermin)
             * (1.0 + 0.01 * ner as f64 + 0.02 * eimax.abs());
+        let screen_amplitude = screen_amplitude * (0.85 + 0.15 * mkgtr_coupling.sqrt());
         let charge_delta = (self.pot.mean_xion.abs() + self.ldos.toler1 + self.ldos.toler2 + 0.1)
-            * (1.0 + 0.005 * (self.geom.nat as f64).sqrt());
+            * (1.0 + 0.005 * (self.geom.nat as f64).sqrt())
+            * (1.0 + 0.05 * (mkgtr_coupling - 1.0));
         let decay_rate = 1.0 / (rfms + self.geom.radius_mean + 1.0);
         let energy_bias = energy_span / (self.ldos.neldos.max(1) as f64 * 25.0);
 
@@ -161,6 +167,7 @@ impl ScreenModel {
             ner,
             nei,
             rfms,
+            mkgtr_coupling,
         }
     }
 
@@ -229,6 +236,7 @@ neldos: {}\n\
 radial_points: {}\n\
 rfms: {}\n\
 ner: {} nei: {} maxl: {}\n\
+mkgtr_coupling: {}\n\
 optional_screen_inp: {}\n\
 nrptx0: {}\n\
 ",
@@ -243,6 +251,7 @@ nrptx0: {}\n\
             config.ner,
             config.nei,
             config.maxl,
+            format_fixed_f64(config.mkgtr_coupling, 10, 6),
             has_override,
             nrptx0,
         )

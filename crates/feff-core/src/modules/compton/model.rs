@@ -4,6 +4,8 @@ use super::parser::{
 };
 use crate::domain::{ComputeResult, FeffError};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
+use crate::support::rhorrp::m_density_inp::{DensityCommand, DensityGrid};
+use crate::support::rhorrp::runtime::{iter_grid_points, line_density_with_broadening};
 use std::f64::consts::PI;
 use std::path::Path;
 
@@ -292,18 +294,21 @@ impl ComptonModel {
     fn render_rhozzp(&self) -> String {
         let config = self.output_config();
         let mut lines = Vec::with_capacity(config.rhozzp_rows + 6);
-        let dz = if config.rhozzp_rows > 1 {
-            2.0 * config.z_extent / (config.rhozzp_rows - 1) as f64
-        } else {
-            0.0
+        let density_grid = DensityGrid {
+            command: DensityCommand::Line,
+            filename: "rhozzp.dat".to_string(),
+            origin: [-config.z_extent, 0.0, 0.0],
+            npts: vec![config.rhozzp_rows],
+            axes: vec![[2.0 * config.z_extent, 0.0, 0.0]],
+            core: false,
         };
 
         lines.push("# COMPTON true-compute rhozzp density".to_string());
         lines.push(format!("# fixture: {}", self.fixture_id));
         lines.push("# columns: index z rhozzp line_density".to_string());
 
-        for index in 0..config.rhozzp_rows {
-            let z = -config.z_extent + index as f64 * dz;
+        for (index, point) in iter_grid_points(&density_grid).enumerate() {
+            let z = point[0];
             let normalized_z = if config.z_extent > 1.0e-12 {
                 z / config.z_extent
             } else {
@@ -320,7 +325,8 @@ impl ComptonModel {
                 rhozzp_value *= 0.03;
             }
 
-            let line_density = rhozzp_value * (1.0 + normalized_z.abs() * config.broadening);
+            let line_density =
+                line_density_with_broadening(rhozzp_value, normalized_z, config.broadening);
             lines.push(format!(
                 "{:5} {} {} {}",
                 index + 1,

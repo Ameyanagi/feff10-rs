@@ -7,7 +7,14 @@ use feff_core::modules::regression::{
     RegressionRunnerConfig, render_human_summary, run_regression,
 };
 use feff_core::modules::{runtime_compute_engine_available, runtime_engine_unavailable_error};
-use std::path::PathBuf;
+use std::io::ErrorKind;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+
+const STRICT_SERIAL_CHAIN_MODULES: [&str; 18] = [
+    "rdinp", "dmdw", "atomic", "pot", "ldos", "screen", "crpa", "opconsat", "xsph", "fms", "mkgtr",
+    "path", "genfmt", "ff2x", "sfconv", "compton", "eels", "rhorrp",
+];
 
 #[derive(clap::Args)]
 pub(super) struct RegressionArgs {
@@ -157,6 +164,35 @@ pub(super) struct RunModuleFlags {
     run_fullspectrum: bool,
 }
 
+#[derive(clap::Args, Debug, Clone, Default)]
+pub(super) struct FeffArgs {
+    /// Run strict legacy serial chain through external FEFF executables.
+    ///
+    /// Chain order: rdinp dmdw atomic pot ldos screen crpa opconsat xsph fms mkgtr path genfmt ff2x sfconv compton eels rhorrp
+    #[arg(long)]
+    strict: bool,
+
+    /// Run Rust runtime serial workflow instead of strict legacy chain.
+    #[arg(long, conflicts_with = "strict")]
+    runtime: bool,
+
+    /// Directory containing strict legacy FEFF executables.
+    ///
+    /// If omitted, defaults to '<workspace>/feff10/bin/Seq' when available.
+    #[arg(long, value_name = "DIR")]
+    strict_bin_dir: Option<PathBuf>,
+}
+
+#[derive(clap::Args, Debug, Clone)]
+pub(super) struct FeffmpiArgs {
+    /// Number of MPI processes
+    #[arg(value_name = "nprocs")]
+    nprocs: usize,
+
+    #[command(flatten)]
+    feff: FeffArgs,
+}
+
 impl RegressionArgs {
     fn into_config(self) -> RegressionRunnerConfig {
         RegressionRunnerConfig {
@@ -268,7 +304,30 @@ pub(super) fn run_oracle_command(args: OracleArgs) -> Result<i32, CliError> {
     if report.passed { Ok(0) } else { Ok(1) }
 }
 
-pub(super) fn run_feff_command() -> Result<i32, CliError> {
+pub(super) fn run_feff_command(args: FeffArgs) -> Result<i32, CliError> {
+    if !args.runtime {
+        let working_dir = current_working_dir().map_err(CliError::Compute)?;
+        let strict_bin_dir = resolve_strict_bin_dir(&working_dir, args.strict_bin_dir.as_deref());
+
+        match run_strict_serial_chain(&working_dir, strict_bin_dir.as_deref()) {
+            Ok(()) => {
+                println!("Completed serial workflow (strict legacy chain).");
+                return Ok(0);
+            }
+            Err(error) => {
+                // Explicit strict requests should fail hard; default strict mode can
+                // fall back so local development remains usable without Fortran binaries.
+                if args.strict || args.strict_bin_dir.is_some() {
+                    return Err(CliError::Compute(error));
+                }
+                tracing::warn!(
+                    "WARNING: [RUN.STRICT_UNAVAILABLE] strict legacy chain unavailable ({}); falling back to Rust runtime serial workflow.",
+                    error
+                );
+            }
+        }
+    }
+
     let context = load_cli_context()?;
     let fixture = select_serial_fixture(&context).map_err(CliError::Compute)?;
     let modules = modules_for_serial_fixture(&fixture);
@@ -301,7 +360,8 @@ pub(super) fn run_feff_command() -> Result<i32, CliError> {
     Ok(0)
 }
 
-pub(super) fn run_feffmpi_command(process_count: usize) -> Result<i32, CliError> {
+pub(super) fn run_feffmpi_command(args: FeffmpiArgs) -> Result<i32, CliError> {
+    let process_count = args.nprocs;
     if process_count == 0 {
         return Err(CliError::Usage(
             "Invalid process count '0'; expected a positive integer.".to_string(),
@@ -316,7 +376,78 @@ pub(super) fn run_feffmpi_command(process_count: usize) -> Result<i32, CliError>
         );
     }
 
-    run_feff_command()
+    run_feff_command(args.feff)
+}
+
+fn resolve_strict_bin_dir(working_dir: &Path, explicit: Option<&Path>) -> Option<PathBuf> {
+    if let Some(path) = explicit {
+        return Some(resolve_cli_path(working_dir, path));
+    }
+
+    find_workspace_root(working_dir).and_then(|workspace_root| {
+        let candidate = workspace_root.join("feff10/bin/Seq");
+        candidate.is_dir().then_some(candidate)
+    })
+}
+
+fn run_strict_serial_chain(
+    working_dir: &Path,
+    strict_bin_dir: Option<&Path>,
+) -> Result<(), FeffError> {
+    for module in STRICT_SERIAL_CHAIN_MODULES {
+        let executable = if let Some(bin_dir) = strict_bin_dir {
+            bin_dir.join(module)
+        } else {
+            PathBuf::from(module)
+        };
+
+        if strict_bin_dir.is_some() && !executable.is_file() {
+            return Err(FeffError::input_validation(
+                "INPUT.CLI_STRICT_BIN_DIR",
+                format!(
+                    "strict executable '{}' was not found at '{}'",
+                    module,
+                    executable.display()
+                ),
+            ));
+        }
+
+        println!("Running {} (strict)...", module.to_ascii_uppercase());
+        let status = Command::new(&executable)
+            .current_dir(working_dir)
+            .status()
+            .map_err(|source| {
+                if source.kind() == ErrorKind::NotFound {
+                    return FeffError::input_validation(
+                        "INPUT.CLI_STRICT_EXEC",
+                        format!(
+                            "strict module '{}' executable was not found at '{}'; pass --strict-bin-dir or add it to PATH",
+                            module,
+                            executable.display()
+                        ),
+                    );
+                }
+
+                FeffError::io_system(
+                    "IO.CLI_STRICT_EXEC",
+                    format!(
+                        "failed to execute strict module '{}' using '{}': {}",
+                        module,
+                        executable.display(),
+                        source
+                    ),
+                )
+            })?;
+
+        if !status.success() {
+            return Err(FeffError::computation(
+                "RUN.CLI_STRICT_EXEC",
+                format!("strict module '{}' exited with status {}", module, status),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) fn run_module_command(spec: ModuleCommandSpec) -> Result<i32, CliError> {

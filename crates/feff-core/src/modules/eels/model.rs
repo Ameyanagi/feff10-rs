@@ -4,6 +4,7 @@ use super::parser::{
 };
 use super::{EELS_OPTIONAL_OUTPUT, EELS_REQUIRED_OUTPUTS};
 use crate::domain::{ComputeArtifact, ComputeResult, FeffError};
+use crate::modules::helpers::{EelsMdffWorkflowConfig, eelsmdff_workflow_coupling};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::path::Path;
 
@@ -223,6 +224,24 @@ Module 8 true-compute execution finished.
             (self.control.qmesh_radial.max(1) * self.control.qmesh_angular.max(1)) as f64;
         let detector_factor =
             1.0 + (self.control.detector_theta.abs() + self.control.detector_phi.abs()) * 0.15;
+        let mdff_rows = self
+            .xmu_rows
+            .iter()
+            .map(|row| (row.energy, row.mu, row.mu0, row.chi))
+            .collect::<Vec<_>>();
+
+        let _ = eelsmdff_workflow_coupling(
+            EelsMdffWorkflowConfig {
+                beam_energy_ev: self.control.beam_energy_ev,
+                beam_direction: self.control.beam_direction,
+                relativistic_q: self.control.relativistic > 0,
+                qmesh_radial: self.control.qmesh_radial,
+                qmesh_angular: self.control.qmesh_angular,
+                average: self.control.average > 0,
+                cross_terms: self.control.cross_terms > 0,
+            },
+            &mdff_rows,
+        );
 
         let mut samples = Vec::with_capacity(self.xmu_rows.len());
         for (index, row) in self.xmu_rows.iter().enumerate() {

@@ -804,6 +804,34 @@ fn top_level_help_lists_compatibility_commands() {
     assert!(stdout.contains("rdinp"));
 }
 
+#[test]
+fn feff_help_includes_strict_legacy_options() {
+    let temp = fixture_tempdir();
+    let output = run_cli_command(temp.path(), &["help", "feff"]);
+
+    assert!(
+        output.status.success(),
+        "help feff should succeed, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("--strict"));
+    assert!(stdout.contains("--runtime"));
+    assert!(stdout.contains("--strict-bin-dir"));
+
+    let mpi_output = run_cli_command(temp.path(), &["help", "feffmpi"]);
+    assert!(
+        mpi_output.status.success(),
+        "help feffmpi should succeed, stderr: {}",
+        String::from_utf8_lossy(&mpi_output.stderr)
+    );
+    let mpi_stdout = String::from_utf8_lossy(&mpi_output.stdout);
+    assert!(mpi_stdout.contains("--strict"));
+    assert!(mpi_stdout.contains("--runtime"));
+    assert!(mpi_stdout.contains("--strict-bin-dir"));
+}
+
 #[cfg(unix)]
 #[test]
 fn executable_name_alias_dispatches_module_command() {

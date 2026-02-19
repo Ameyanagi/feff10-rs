@@ -12,8 +12,8 @@
 - FEFF10 third-party license: `THIRD_PARTY_LICENSES/FEFF10-LICENSE`
 - Cutover rehearsal checklist: `docs/cutover-rehearsal-checklist.md`
 - Rollback rehearsal checklist: `docs/rollback-rehearsal-checklist.md`
-- Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-18.md`
-- Latest rollback rehearsal and GA sign-off report: `tasks/rollback-rehearsal-2026-02-18.md`
+- Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-19.md`
+- Latest rollback rehearsal and GA sign-off report: `tasks/rollback-rehearsal-2026-02-19.md`
 
 ## License And Attribution
 
@@ -125,6 +125,17 @@ cargo run -- oracle --help
 cargo run -- rdinp
 cargo run -- pot
 cargo run -- xsph
+```
+
+`feff` and `feffmpi` now default to strict legacy Fortran-chain execution (including `atomic`, `mkgtr`, and `genfmt`) when executables are available.
+
+Use `--runtime` to force the Rust runtime serial workflow.
+
+Use `--strict-bin-dir` to point to a specific Fortran executable directory:
+
+```bash
+cargo run -- feff --strict --strict-bin-dir "$(pwd)/feff10/bin/Seq"
+cargo run -- feff --runtime
 ```
 
 Supported module commands are:

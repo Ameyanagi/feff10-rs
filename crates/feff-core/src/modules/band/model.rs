@@ -3,6 +3,7 @@ use super::parser::{
     parse_geom_source, parse_global_source, parse_phase_source,
 };
 use crate::domain::{ComputeResult, FeffError};
+use crate::modules::helpers::kspace_workflow_coupling;
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::f64::consts::PI;
 use std::path::Path;
@@ -26,6 +27,7 @@ struct BandOutputConfig {
     curvature: f64,
     phase_shift: f64,
     global_bias: f64,
+    kspace_coupling: f64,
 }
 
 impl BandModel {
@@ -46,6 +48,13 @@ impl BandModel {
     }
 
     fn output_config(&self) -> BandOutputConfig {
+        let kspace_coupling = kspace_workflow_coupling(
+            self.control.ikpath,
+            self.phase.channel_count,
+            self.geom.nph,
+            self.control.freeprop,
+        );
+
         let k_points = if self.control.nkp > 1 {
             self.control.nkp as usize
         } else {
@@ -82,10 +91,15 @@ impl BandModel {
         let k_extent = (self.control.ikpath.abs().max(1) as f64 * 0.25
             + self.geom.radius_mean * 0.03
             + self.phase.channel_count as f64 * 0.02)
-            .max(0.25);
+            .max(0.25)
+            * (0.85 + 0.15 * kspace_coupling);
+        let k_extent = k_extent.clamp(0.25, 32.0);
 
         let curvature =
-            (1.0 + self.geom.radius_rms + self.control.mband.abs().max(1) as f64 * 0.2) * 0.08;
+            ((1.0 + self.geom.radius_rms + self.control.mband.abs().max(1) as f64 * 0.2)
+                * 0.08
+                * (0.85 + 0.15 * kspace_coupling))
+                .max(1.0e-6);
 
         let phase_shift = (self.phase.base_phase
             + if self.control.freeprop { 0.35 } else { 0.0 }
@@ -93,12 +107,15 @@ impl BandModel {
                 0.15
             } else {
                 -0.05
-            })
-        .clamp(-PI, PI);
+            }
+            + (kspace_coupling - 1.0) * 0.1)
+            .clamp(-PI, PI);
 
         let global_bias =
-            (0.5 + self.global.rms * 0.02 + (self.phase.checksum as f64 / u64::MAX as f64) * 0.3)
-                .max(0.1);
+            ((0.5 + self.global.rms * 0.02 + (self.phase.checksum as f64 / u64::MAX as f64) * 0.3)
+                .max(0.1)
+                * (0.9 + 0.1 * kspace_coupling))
+                .max(0.05);
 
         BandOutputConfig {
             k_points,
@@ -109,6 +126,7 @@ impl BandModel {
             curvature,
             phase_shift,
             global_bias,
+            kspace_coupling,
         }
     }
 
@@ -201,12 +219,15 @@ impl BandModel {
         let dispersion = (k_value * (0.65 + 0.05 * band_number) + config.phase_shift).cos();
         let phase_term = (k_value * 0.4 + self.phase.base_phase + band_number * 0.17).sin();
         let damping = (-0.015 * band_number * (1.0 + k_fraction)).exp();
+        let kspace_modulation = (band_number * 0.3 + k_value * 0.8 + self.phase.base_phase).sin()
+            * (config.kspace_coupling - 1.0);
 
         config.energy_origin
             + config.band_spacing * band_index as f64
             + parabolic
             + config.global_bias * dispersion * damping
             + 0.12 * phase_term
+            + 0.05 * kspace_modulation
             + self.control.mband as f64 * 0.01
     }
 
@@ -233,7 +254,8 @@ emin: {} emax: {} estep: {}\n\
 radius-mean: {} radius-rms: {} radius-max: {} ipot-mean: {}\n\
 global-tokens: {} global-mean: {} global-rms: {} global-max-abs: {}\n\
 k-points: {} bands: {}\n\
-energy-origin: {} band-spacing: {} k-extent: {}\n",
+energy-origin: {} band-spacing: {} k-extent: {}\n\
+kspace-coupling: {}\n",
             self.fixture_id,
             self.geom.nat,
             self.geom.nph,
@@ -261,6 +283,7 @@ energy-origin: {} band-spacing: {} k-extent: {}\n",
             format_fixed_f64(config.energy_origin, 11, 6),
             format_fixed_f64(config.band_spacing, 11, 6),
             format_fixed_f64(config.k_extent, 11, 6),
+            format_fixed_f64(config.kspace_coupling, 11, 6),
         )
     }
 }

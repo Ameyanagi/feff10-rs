@@ -78,13 +78,9 @@ enum CliCommand {
     /// Run validation-only dual-run oracle capture and comparison
     Oracle(commands::OracleArgs),
     /// Run serial FEFF compatibility chain in current directory
-    Feff,
+    Feff(commands::FeffArgs),
     /// Run MPI-compatible FEFF entrypoint (serial fallback in v1)
-    Feffmpi {
-        /// Number of MPI processes
-        #[arg(value_name = "nprocs")]
-        nprocs: usize,
-    },
+    Feffmpi(commands::FeffmpiArgs),
     /// Run RDINP module in current directory
     Rdinp,
     /// Run POT module in current directory
@@ -125,8 +121,8 @@ fn dispatch_parsed(command: CliCommand) -> Result<i32, CliError> {
     match command {
         CliCommand::Regression(args) => commands::run_regression_command(args),
         CliCommand::Oracle(args) => commands::run_oracle_command(args),
-        CliCommand::Feff => commands::run_feff_command(),
-        CliCommand::Feffmpi { nprocs } => commands::run_feffmpi_command(nprocs),
+        CliCommand::Feff(args) => commands::run_feff_command(args),
+        CliCommand::Feffmpi(args) => commands::run_feffmpi_command(args),
         CliCommand::Rdinp => dispatch_module("rdinp"),
         CliCommand::Pot => dispatch_module("pot"),
         CliCommand::Xsph => dispatch_module("xsph"),

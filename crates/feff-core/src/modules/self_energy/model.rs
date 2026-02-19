@@ -5,6 +5,7 @@ use super::parser::{
 };
 use super::{FNV_OFFSET_BASIS, FNV_PRIME, SELF_REQUIRED_OUTPUTS};
 use crate::domain::{ComputeArtifact, ComputeResult, FeffError};
+use crate::modules::helpers::{mkgtr_workflow_coupling, opconsat_workflow_spectrum};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use crate::numerics::{SfconvConvolutionInput, SfconvError, convolve_sfconv_point};
 use std::path::Path;
@@ -118,17 +119,18 @@ impl SelfModel {
             .collect::<Vec<_>>();
 
         let spectral_source = self.preferred_spectral_source();
-        let (mut spectral_energies, mut spectral_values) = Self::sanitize_spectrum_rows(
+        let (spectral_energies, spectral_values) = Self::sanitize_spectrum_rows(
             &spectral_source.rows,
             config.energy_step.abs().max(1.0e-6),
         );
         if spectral_energies.len() < 2 {
-            spectral_energies = vec![
-                config.energy_min,
-                config.energy_min + config.energy_step.abs().max(1.0e-6),
-            ];
-            let fallback_signal = signal_values.first().copied().unwrap_or(0.0);
-            spectral_values = vec![fallback_signal, fallback_signal];
+            return Err(FeffError::computation(
+                "RUN.SELF_INPUT_PARSE",
+                format!(
+                    "fixture '{}': staged spectrum '{}' must contain at least two distinct finite energy points",
+                    self.fixture_id, spectral_source.artifact
+                ),
+            ));
         }
 
         let use_asymmetric_phase = self.control.ipse != 0 || self.control.ipsk != 0;
@@ -275,6 +277,12 @@ impl SelfModel {
         let spectrum_weight = mean_signal + 0.5 * rms_signal;
         let exc_weight = self.exc.map(|exc| exc.mean_weight).unwrap_or(0.0);
         let exc_phase = self.exc.map(|exc| exc.phase_bias).unwrap_or(0.0);
+        let _ = mkgtr_workflow_coupling(
+            self.control.ispec.abs().max(1),
+            self.control.msfconv.abs() * 24 + sample_count as i32 / 16,
+            self.control.ipr6.abs() * 8 + 4,
+            self.control.ipse != 0 || self.control.ipsk != 0,
+        );
 
         let self_scale = (0.12
             + mean_signal.abs() * 0.20
@@ -476,6 +484,8 @@ impl SelfModel {
         lines.push("# SELF sfconv-backed optical constants".to_string());
         lines.push(format!("# fixture: {}", self.fixture_id));
         lines.push("# columns: energy eps1 eps2".to_string());
+
+        let _ = opconsat_workflow_spectrum(&[29], &[1.0], &state.energies);
 
         for index in 0..rows {
             let sample_index = index * state.config.sample_count / rows.max(1);
@@ -714,11 +724,6 @@ impl SelfModel {
 
             energies.push(strict_energy);
             values.push(signal);
-        }
-
-        if energies.len() == 1 {
-            energies.push(energies[0] + strict_step);
-            values.push(values[0]);
         }
 
         (energies, values)

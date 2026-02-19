@@ -38,6 +38,13 @@ Help:
 - `feff10-rs oracle --help`
 - `feff10-rs <module> --help`
 
+Strict legacy serial-chain mode:
+
+- `feff10-rs feff` (default)
+- `feff10-rs feff --strict --strict-bin-dir <path-to-fortran-bin-dir>`
+- `feff10-rs feffmpi <nprocs>` (default)
+- `feff10-rs feff --runtime` (force Rust runtime serial workflow)
+
 ## Compatibility Guarantees
 
 ### CLI And Output Contracts
@@ -65,6 +72,8 @@ Exit code mapping:
 
 - `feffmpi <nprocs>` is available for compatibility, but MPI parity is deferred in v1.
 - When `nprocs > 1`, the command emits `WARNING: [RUN.MPI_DEFERRED]` and executes the serial compatibility chain.
+- `feff` and `feffmpi` default to strict legacy-chain execution and fall back to Rust runtime workflow only when strict executables are unavailable and strict mode was not explicitly requested.
+- `feff --strict` and `feffmpi --strict` execute the full legacy Fortran serial module chain: `rdinp dmdw atomic pot ldos screen crpa opconsat xsph fms mkgtr path genfmt ff2x sfconv compton eels rhorrp`
 - Runtime compute engines are available for all supported module commands (`rdinp`, `pot`, `xsph`, `path`, `fms`, `band`, `ldos`, `rixs`, `crpa`, `compton`, `ff2x`, `dmdw`, `screen`, `sfconv`, `eels`, `fullspectrum`).
 - Module command fixture selection uses `tasks/golden-fixture-manifest.json` when a workspace root is discoverable from the current directory, and falls back to deterministic module-default fixture IDs when no workspace manifest is available.
 - Runtime commands (`feff`, `feffmpi`, and module commands) must not read from `artifacts/fortran-baselines` to generate outputs.

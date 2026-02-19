@@ -1,0 +1,20 @@
+mpot, nph, ntitle, ihole, ipr1, iafolp, ixc,ispec
+   1   2   1   1   0   0   0   1
+nmix, nohole, jumprm, inters, nscmt, icoul, lfms1, iunf
+   1   2   0   0 100   0   0   0
+graphite                                                                        
+gamach, rgrd, ca1, ecv, totvol, rfms1
+      0.08676      0.05000      0.20000    -40.00000      0.00000      4.50000
+ iz, lmaxsc, xnatph, xion, folp
+    6    2      1.00000      0.00000      1.15000
+    6    2    200.00000      0.00000      1.15000
+    6    2    200.00000      0.00000      1.15000
+ExternalPot switch, StartFromFile switch
+ F F
+OVERLAP option: novr(iph)
+   0   0   0
+ iphovr  nnovr rovr 
+ChSh_Type:
+   0
+ConfigType:
+   1

@@ -482,6 +482,158 @@
       }
     },
     {
+      "id": "FX-ATOM-SCF-001",
+      "title": "ATOM/SCF workflow fixture from EXAFS Cu_SCF example",
+      "fixtureType": "workflow",
+      "modulesCovered": [
+        "POT",
+        "SELF"
+      ],
+      "inputDirectory": "feff10/examples/EXAFS/Cu_SCF",
+      "entryFiles": [
+        "feff.inp",
+        "REFERENCE/pot.inp",
+        "REFERENCE/geom.dat",
+        "REFERENCE/sfconv.inp",
+        "REFERENCE/xmu.dat"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/EXAFS/Cu_SCF/REFERENCE.zip"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/EXAFS/Cu_SCF/referencexmu.dat"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "SCF-enabled Cu input exercises ATOM-derived POT setup and SELF staged-spectrum paths in one fixture."
+      }
+    },
+    {
+      "id": "FX-KSPACE-GENFMT-001",
+      "title": "KSPACE/GENFMT workflow fixture from KSPACE Cr2GeC example",
+      "fixtureType": "workflow",
+      "modulesCovered": [
+        "PATH",
+        "BAND"
+      ],
+      "inputDirectory": "feff10/examples/KSPACE/Cr2GeC",
+      "entryFiles": [
+        "feff.inp",
+        "REFERENCE/paths.inp",
+        "REFERENCE/genfmt.inp",
+        "REFERENCE/band.inp",
+        "REFERENCE/phase.bin"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/KSPACE/Cr2GeC/REFERENCE.zip"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/KSPACE/Cr2GeC/referenceldos00.dat"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/KSPACE/Cr2GeC/referencexmu.dat"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Crystalline KSPACE input exercises BAND k-path coupling while PATH/GENFMT staged inputs are materialized from archive snapshots."
+      }
+    },
+    {
+      "id": "FX-EELSMDFF-001",
+      "title": "EELSMDFF q-mesh fixture from KSPACE Graphite example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "EELS"
+      ],
+      "inputDirectory": "feff10/examples/KSPACE/Graphite",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/KSPACE/Graphite/REFERENCE.zip"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/KSPACE/Graphite/reference_eels.dat"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Graphite ELNES setup drives high radial q-mesh integration and MAGIC-angle controls that exercise migrated EELSMDFF coupling paths."
+      }
+    },
+    {
+      "id": "FX-SELF-OPCONSAT-001",
+      "title": "SELF/OPCONSAT coupling fixture from MPSE Cu_OPCONS example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "SELF"
+      ],
+      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
+      "entryFiles": [
+        "feff.inp",
+        "loss.dat",
+        "REFERENCE/sfconv.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Cu_OPCONS SELF staging drives migrated OPCONSAT dielectric coupling and opconsCu.dat output generation."
+      }
+    },
+    {
       "id": "FX-EELS-001",
       "title": "EELS compatibility fixture from ELNES Cu example",
       "fixtureType": "module",

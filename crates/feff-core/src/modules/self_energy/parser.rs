@@ -214,6 +214,15 @@ pub(super) fn parse_spectrum_source(
             ),
         ));
     }
+    if rows.len() < 2 {
+        return Err(self_parse_error(
+            fixture_id,
+            format!(
+                "spectrum input '{}' requires at least two numeric rows",
+                artifact
+            ),
+        ));
+    }
 
     let energy_min = rows
         .iter()
