@@ -7,6 +7,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - Current gap artifacts report `out_of_scope=102`; verify counts from the CSV before assuming the target value in narrative docs.
 - Route FEFF legacy card-prefix handling through `crates/feff-core/src/support/common/itoken.rs` (`canonical_keyword_for_parser`) instead of duplicating per-parser alias maps.
 - Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
+- Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -49,5 +50,29 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: The new `support/common` modules are safe places to port shared Fortran helpers before wiring them through parser/module layers.
   - Gotchas encountered: `parse_potentials` must accept inline values on both `POTENTIAL` and `POTENTIALS` cards when parser alias normalization maps legacy prefixes to canonical names.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 09:36:51 JST - US-003
+- What was implemented
+  - Added Rust ports for MATH chunk-A helpers under `crates/feff-core/src/support/math/`: `cwig3j`, `determ`, `dist`, and `quartc` with Fortran-compatible core formulas and argument-domain checks.
+  - Wired the new math support module into `support/mod.rs` and added the new dependency required for complex-valued quartic roots.
+  - Added deterministic unit tests for each migrated helper covering known-value cases, error-domain behavior, and quartic root residual validation.
+  - Marked `US-003` MATH chunk-A ledger rows (`cwig3j`, `determ`, `dist`, `quartc`) as `status=done`.
+- Files changed
+  - `Cargo.toml`
+  - `Cargo.lock`
+  - `crates/feff-core/Cargo.toml`
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/math/mod.rs`
+  - `crates/feff-core/src/support/math/cwig3j.rs`
+  - `crates/feff-core/src/support/math/determ.rs`
+  - `crates/feff-core/src/support/math/dist.rs`
+  - `crates/feff-core/src/support/math/quartc.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: New deferred helpers should be exported through both `support/<domain>/mod.rs` and `support/mod.rs` to ensure crate-level test discovery and predictable import paths.
+  - Gotchas encountered: The FEFF quartic routine assumes non-degenerate coefficient combinations; tests should validate by polynomial residual and avoid coefficient sets that collapse the legacy closed-form denominator path.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
