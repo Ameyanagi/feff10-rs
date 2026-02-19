@@ -566,6 +566,41 @@
       }
     },
     {
+      "id": "FX-EELSMDFF-001",
+      "title": "EELSMDFF q-mesh fixture from KSPACE Graphite example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "EELS"
+      ],
+      "inputDirectory": "feff10/examples/KSPACE/Graphite",
+      "entryFiles": [
+        "feff.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/KSPACE/Graphite/REFERENCE.zip"
+        },
+        {
+          "kind": "reference_file",
+          "path": "feff10/examples/KSPACE/Graphite/reference_eels.dat"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Graphite ELNES setup drives high radial q-mesh integration and MAGIC-angle controls that exercise migrated EELSMDFF coupling paths."
+      }
+    },
+    {
       "id": "FX-EELS-001",
       "title": "EELS compatibility fixture from ELNES Cu example",
       "fixtureType": "module",
