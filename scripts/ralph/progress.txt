@@ -22,6 +22,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For staged EELSMDFF migration, keep sigma-scaling and cross-section accumulation as pure helpers with injectable wavelength dependencies so chunked ports remain testable before full runtime wiring.
 - For EELSMDFF chunk-B/runtime wiring, compose `mdff_readsp -> scale_sigma_rows_with_wavelength -> mdff_qmesh -> mdff_eels` inside `modules/helpers::eelsmdff_workflow_coupling` and call that from both EELS and FULLSPECTRUM models.
 - When adding a fixture that overlaps an existing single-module fixture, keep the new one as `fixtureType: "workflow"` (or multi-module) so CLI default module resolution still prefers the legacy module fixture.
+- For capture-only fixtures, list staged `REFERENCE/*` inputs in `entryFiles` and keep `baselineStatus=requires_fortran_capture`; capture tooling can materialize those from `REFERENCE.zip` while parser fixture tests remain resilient when snapshots are absent.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -428,5 +429,19 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Using workflow fixture type for overlapping module coverage preserves deterministic CLI fallback to existing single-module fixtures.
   - Gotchas encountered: `parser_fixture_inputs` only resolves `.inp` entries from `inputDirectory` or committed baseline snapshots; `REFERENCE.zip` contents are not read by that test directly.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:35:47 JST - US-018
+- What was implemented
+  - Added `FX-KSPACE-GENFMT-001` to `tasks/golden-fixture-manifest.json` using `feff10/examples/KSPACE/Cr2GeC` as the source scenario.
+  - Defined fixture metadata with workflow coverage (`PATH`, `BAND`), staged `REFERENCE/*` entry files (`paths.inp`, `genfmt.inp`, `band.inp`, `phase.bin`), and policy-based artifact comparison contract.
+  - Marked the fixture as `baselineStatus=requires_fortran_capture` with archive/reference sources so oracle/report tooling includes it in capture/parity workflows without changing module-default CLI fixture selection.
+- Files changed
+  - `tasks/golden-fixture-manifest.json`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Capture workflows can materialize staged `REFERENCE/*` entry files from `reference_archive` baselines, so fixture metadata should explicitly list those staged files instead of relying on implicit module defaults.
+  - Gotchas encountered: `parser_fixture_inputs` reads `.inp` entries only from repo fixture directories or committed baseline snapshots; keeping capture-only fixtures at `baselineStatus=requires_fortran_capture` avoids false failures when staged `.inp` files are archive-only.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
