@@ -5,6 +5,8 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - Build `tasks/full-module-migration-ledger.csv` from `gap/fortran-to-rust-file-gap.csv` rows where `classification=out_of_scope`, preserving source order for deterministic chunking.
 - Use `phase` as the owning PRD story ID (`US-xxx`) and split chunked directories by per-directory ledger order (ATOM 10/10/9, MATH 4/3, GENFMT 9/9, EELSMDFF 5/4).
 - Current gap artifacts report `out_of_scope=102`; verify counts from the CSV before assuming the target value in narrative docs.
+- Route FEFF legacy card-prefix handling through `crates/feff-core/src/support/common/itoken.rs` (`canonical_keyword_for_parser`) instead of duplicating per-parser alias maps.
+- Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -19,5 +21,33 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: The ledger order is meaningful for chunk stories; preserve the source CSV order when selecting chunk-A/chunk-B or thirds.
   - Gotchas encountered: PRD text says 103 deferred rows, but `gap/fortran-to-rust-file-gap.csv` and `gap/fortran-to-rust-gap-report.md` currently show 102 `out_of_scope` rows.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 09:27:39 JST - US-002
+- What was implemented
+  - Added Rust support ports for deferred `COMMON` files (`getxk`, `isedge`, `itoken`, `nxtunt`, `pertab`, `xx`) and deferred `ERRORMODS/m_errorstackmod` under `crates/feff-core/src/support/...`.
+  - Wired shared support code into active FEFF-core paths: parser keyword normalization now accepts FEFF-style 4-character prefixes via `itoken`, and RDINP edge extraction now canonicalizes edge aliases via `isedge`.
+  - Added targeted unit tests for the migrated support modules and parser/RDINP integrations.
+  - Marked all `US-002` ledger rows (`COMMON` + `ERRORMODS`) as `status=done`.
+- Files changed
+  - `crates/feff-core/src/lib.rs`
+  - `crates/feff-core/src/parser/mod.rs`
+  - `crates/feff-core/src/modules/rdinp/parser.rs`
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/common/mod.rs`
+  - `crates/feff-core/src/support/common/getxk.rs`
+  - `crates/feff-core/src/support/common/isedge.rs`
+  - `crates/feff-core/src/support/common/itoken.rs`
+  - `crates/feff-core/src/support/common/nxtunt.rs`
+  - `crates/feff-core/src/support/common/pertab.rs`
+  - `crates/feff-core/src/support/common/xx.rs`
+  - `crates/feff-core/src/support/errormods/mod.rs`
+  - `crates/feff-core/src/support/errormods/m_errorstackmod.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: The new `support/common` modules are safe places to port shared Fortran helpers before wiring them through parser/module layers.
+  - Gotchas encountered: `parse_potentials` must accept inline values on both `POTENTIAL` and `POTENTIALS` cards when parser alias normalization maps legacy prefixes to canonical names.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
