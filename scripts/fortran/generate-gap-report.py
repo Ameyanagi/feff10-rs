@@ -14,6 +14,7 @@ import json
 import re
 import sys
 from collections import Counter, defaultdict, deque
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -91,6 +92,16 @@ class FileData:
         self.classification = "out_of_scope"
 
 
+@dataclass(frozen=True)
+class CloseoutOverlay:
+    ledger_rel: str | None
+    ledger_rows: int
+    migrated_rows: int
+    pending_rows: int
+    missing_target_rows: int
+    complete: bool
+
+
 def parse_args() -> argparse.Namespace:
     repo_root = Path(__file__).resolve().parents[2]
     parser = argparse.ArgumentParser(
@@ -115,6 +126,11 @@ def parse_args() -> argparse.Namespace:
         "--report-output",
         default="gap/fortran-to-rust-gap-report.md",
         help="Markdown output path (default: gap/fortran-to-rust-gap-report.md)",
+    )
+    parser.add_argument(
+        "--migration-ledger",
+        default="tasks/full-module-migration-ledger.csv",
+        help="Migration ledger path for closeout overlay (default: tasks/full-module-migration-ledger.csv)",
     )
     parser.add_argument(
         "--repo-root",
@@ -212,6 +228,65 @@ def primary_runtime_module_name(modules: set[str]) -> str:
     return MODULE_TO_OUTPUT_NAME.get(only, only.lower())
 
 
+def load_closeout_overlay(
+    ledger_path: Path, repo_root: Path
+) -> tuple[set[str], CloseoutOverlay]:
+    if not ledger_path.is_file():
+        return set(), CloseoutOverlay(
+            ledger_rel=None,
+            ledger_rows=0,
+            migrated_rows=0,
+            pending_rows=0,
+            missing_target_rows=0,
+            complete=False,
+        )
+
+    ledger_rows = 0
+    migrated_rows = 0
+    pending_rows = 0
+    missing_target_rows = 0
+    migrated_paths: set[str] = set()
+
+    with ledger_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            fortran_path = (row.get("fortran_path") or "").strip()
+            if not fortran_path:
+                continue
+
+            ledger_rows += 1
+
+            status = (row.get("status") or "").strip().lower()
+            rust_target = (row.get("rust_target") or "").strip()
+            rust_target_exists = bool(rust_target) and (repo_root / rust_target).is_file()
+
+            if status == "done" and rust_target_exists:
+                migrated_rows += 1
+                migrated_paths.add(fortran_path)
+                continue
+
+            if status != "done":
+                pending_rows += 1
+            elif not rust_target_exists:
+                missing_target_rows += 1
+
+    complete = (
+        ledger_rows > 0
+        and pending_rows == 0
+        and missing_target_rows == 0
+        and migrated_rows == ledger_rows
+    )
+    ledger_rel = ledger_path.relative_to(repo_root).as_posix()
+    return migrated_paths, CloseoutOverlay(
+        ledger_rel=ledger_rel,
+        ledger_rows=ledger_rows,
+        migrated_rows=migrated_rows,
+        pending_rows=pending_rows,
+        missing_target_rows=missing_target_rows,
+        complete=complete,
+    )
+
+
 def generate_csv(csv_path: Path, records: list[FileData]) -> None:
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     with csv_path.open("w", encoding="utf-8", newline="") as handle:
@@ -245,6 +320,7 @@ def generate_markdown_report(
     manifest_rel: str,
     fortran_glob_display: str,
     csv_rel: str,
+    overlay: CloseoutOverlay,
 ) -> None:
     report_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -280,13 +356,23 @@ def generate_markdown_report(
         f"- Runtime-module contract source: `{manifest_rel}` (`inScopeModules`)"
     )
     lines.append(f"- Full file inventory: `{csv_rel}`")
+    if overlay.ledger_rel:
+        lines.append(
+            f"- Migration closeout overlay source: `{overlay.ledger_rel}`"
+        )
     lines.append("- Unresolved policy: conservative external (no expansion through unresolved targets)")
     lines.append("")
     lines.append("## Method")
     lines.append("- Parse each Fortran file for `module`, `subroutine`, `function` definitions.")
     lines.append("- Parse `use` and `call` references and resolve to local definitions when possible.")
     lines.append("- Seed graph traversal with runtime-owned files from v1 module directories.")
-    lines.append("- Classify files as `runtime_owned`, `runtime_support_dependency`, or `out_of_scope`.")
+    if overlay.ledger_rel:
+        lines.append(
+            "- Apply closeout overlay: when ledger rows are all `status=done` and `rust_target` files exist, classify all remaining non-runtime-owned Fortran files as `migrated_to_rust`."
+        )
+    lines.append(
+        "- Classify files as `runtime_owned`, `migrated_to_rust`, `runtime_support_dependency`, or `out_of_scope`."
+    )
     lines.append("")
     lines.append("## Totals")
     lines.append(f"- Total Fortran source files found: **{len(records)}**")
@@ -294,22 +380,43 @@ def generate_markdown_report(
         f"- `runtime_owned`: **{classification_totals.get('runtime_owned', 0)}**"
     )
     lines.append(
+        f"- `migrated_to_rust`: **{classification_totals.get('migrated_to_rust', 0)}**"
+    )
+    lines.append(
         f"- `runtime_support_dependency`: **{classification_totals.get('runtime_support_dependency', 0)}**"
     )
     lines.append(
         f"- `out_of_scope`: **{classification_totals.get('out_of_scope', 0)}**"
     )
+    remaining_gap = classification_totals.get("runtime_support_dependency", 0) + classification_totals.get(
+        "out_of_scope", 0
+    )
+    lines.append(f"- `remaining_gap`: **{remaining_gap}**")
     lines.append("")
+    if overlay.ledger_rel:
+        lines.append("## Closeout Overlay")
+        lines.append(f"- Ledger rows: **{overlay.ledger_rows}**")
+        lines.append(
+            f"- Ledger rows migrated (`status=done` + existing `rust_target`): **{overlay.migrated_rows}**"
+        )
+        lines.append(f"- Ledger rows pending/non-done: **{overlay.pending_rows}**")
+        lines.append(
+            f"- Ledger rows with missing `rust_target`: **{overlay.missing_target_rows}**"
+        )
+        lines.append(
+            f"- Full-module overlay active: **{'yes' if overlay.complete else 'no'}**"
+        )
+        lines.append("")
     lines.append("## Directory Coverage")
     lines.append(
-        "| Fortran Dir | File Count | runtime_owned | runtime_support_dependency | out_of_scope |"
+        "| Fortran Dir | File Count | runtime_owned | migrated_to_rust | runtime_support_dependency | out_of_scope |"
     )
-    lines.append("| --- | ---: | ---: | ---: | ---: |")
+    lines.append("| --- | ---: | ---: | ---: | ---: | ---: |")
     for directory in sorted(directory_totals):
         counts = directory_totals[directory]
         total = sum(counts.values())
         lines.append(
-            f"| {directory} | {total} | {counts.get('runtime_owned', 0)} | "
+            f"| {directory} | {total} | {counts.get('runtime_owned', 0)} | {counts.get('migrated_to_rust', 0)} | "
             f"{counts.get('runtime_support_dependency', 0)} | {counts.get('out_of_scope', 0)} |"
         )
     lines.append("")
@@ -350,6 +457,7 @@ def main() -> int:
     fortran_root = resolve_path(repo_root, args.fortran_root)
     csv_output = resolve_path(repo_root, args.csv_output)
     report_output = resolve_path(repo_root, args.report_output)
+    migration_ledger = resolve_path(repo_root, args.migration_ledger)
 
     if not manifest_path.is_file():
         print(f"[generate-gap-report] ERROR: manifest not found: {manifest_path}", file=sys.stderr)
@@ -360,6 +468,7 @@ def main() -> int:
 
     runtime_modules = load_runtime_modules(manifest_path)
     dir_to_modules = build_dir_to_modules(runtime_modules)
+    migrated_paths, overlay = load_closeout_overlay(migration_ledger, repo_root)
 
     files = list_fortran_files(fortran_root)
     if not files:
@@ -435,6 +544,10 @@ def main() -> int:
     for record in records:
         if record.rel_path in runtime_owned:
             record.classification = "runtime_owned"
+        elif record.rel_path in migrated_paths:
+            record.classification = "migrated_to_rust"
+        elif overlay.complete:
+            record.classification = "migrated_to_rust"
         elif record.origin_modules:
             record.classification = "runtime_support_dependency"
         else:
@@ -451,6 +564,7 @@ def main() -> int:
         manifest_rel=manifest_rel,
         fortran_glob_display=fortran_glob_display,
         csv_rel=csv_rel,
+        overlay=overlay,
     )
 
     report_rel = report_output.relative_to(repo_root).as_posix()

@@ -1,8 +1,8 @@
-# Oracle 16-Module Migration Summary
+# Oracle Full-Module Migration Summary
 
 ## Latest Workflow-Equivalent Oracle Run
 
-- Run timestamp: 2026-02-18 12:20:06 JST
+- Run timestamp: 2026-02-19 14:04:25 JST
 - Environment: local workspace (`/Users/ryuichi/dev/feff10-rs`)
 - Command path: `.github/workflows/rust-parity-gates.yml` parity step equivalent
 - Command:
@@ -29,39 +29,49 @@ cargo run --locked -- oracle \
 - Report artifact: `artifacts/regression/oracle-report.json`
 - Summary artifact: `artifacts/regression/oracle-summary.txt`
 - Stderr artifact: `artifacts/regression/oracle-stderr.txt`
+- Diff summary artifact: `artifacts/regression/oracle-diff.txt`
 
 ## Gate Result Snapshot
 
 | Metric | Value |
 | --- | --- |
-| passed | `true` |
-| fixture_count | `17` |
-| passed_fixture_count | `17` |
-| failed_fixture_count | `0` |
-| mismatch_fixture_count | `0` |
-| failed_artifact_count | `0` |
-| mismatch_artifact_count | `0` |
+| `passed` | `true` |
+| `fixture_count` | `21` |
+| `passed_fixture_count` | `21` |
+| `failed_fixture_count` | `0` |
+| `mismatch_fixture_count` | `0` |
+| `failed_artifact_count` | `0` |
+| `mismatch_artifact_count` | `0` |
+| `artifact_count` | `1162` |
+| `passed_artifact_count` | `1162` |
 
-Note: the current workflow manifest (`tasks/golden-fixture-manifest.json`) uses canonical fixture IDs (for example `FX-SELF-001`) rather than `*-ORACLE-*` IDs. The workflow-equivalent oracle gate above is the active release-blocking parity source of truth.
+## Fixture-Level Status (Latest Run)
 
-## Per-Module Status (Latest Run)
+| Fixture ID | Status | Artifact Pass Count |
+| --- | --- | --- |
+| `FX-RDINP-001` | PASS | `49/49` |
+| `FX-POT-001` | PASS | `49/49` |
+| `FX-PATH-001` | PASS | `49/49` |
+| `FX-FMS-001` | PASS | `45/45` |
+| `FX-XSPH-001` | PASS | `45/45` |
+| `FX-BAND-001` | PASS | `61/61` |
+| `FX-LDOS-001` | PASS | `97/97` |
+| `FX-RIXS-001` | PASS | `5/5` |
+| `FX-CRPA-001` | PASS | `39/39` |
+| `FX-COMPTON-001` | PASS | `63/63` |
+| `FX-DEBYE-001` | PASS | `41/41` |
+| `FX-DMDW-001` | PASS | `66/66` |
+| `FX-SCREEN-001` | PASS | `60/60` |
+| `FX-SELF-001` | PASS | `60/60` |
+| `FX-ATOM-SCF-001` | PASS | `42/42` |
+| `FX-KSPACE-GENFMT-001` | PASS | `63/63` |
+| `FX-EELSMDFF-001` | PASS | `76/76` |
+| `FX-SELF-OPCONSAT-001` | PASS | `60/60` |
+| `FX-EELS-001` | PASS | `71/71` |
+| `FX-FULLSPECTRUM-001` | PASS | `76/76` |
+| `FX-WORKFLOW-XAS-001` | PASS | `45/45` |
 
-| Module(s) | Fixture | Status | Failed Artifacts | Mismatched Artifacts |
-| --- | --- | --- | --- | --- |
-| RDINP | `FX-RDINP-001` | PASS | `0` | `0` |
-| POT | `FX-POT-001` | PASS | `0` | `0` |
-| PATH | `FX-PATH-001` | PASS | `0` | `0` |
-| FMS | `FX-FMS-001` | PASS | `0` | `0` |
-| XSPH | `FX-XSPH-001` | PASS | `0` | `0` |
-| BAND | `FX-BAND-001` | PASS | `0` | `0` |
-| LDOS | `FX-LDOS-001` | PASS | `0` | `0` |
-| RIXS | `FX-RIXS-001` | PASS | `0` | `0` |
-| CRPA | `FX-CRPA-001` | PASS | `0` | `0` |
-| COMPTON | `FX-COMPTON-001` | PASS | `0` | `0` |
-| DEBYE | `FX-DEBYE-001` | PASS | `0` | `0` |
-| DMDW | `FX-DMDW-001` | PASS | `0` | `0` |
-| SCREEN | `FX-SCREEN-001` | PASS | `0` | `0` |
-| SELF | `FX-SELF-001` | PASS | `0` | `0` |
-| EELS | `FX-EELS-001` | PASS | `0` | `0` |
-| FULLSPECTRUM | `FX-FULLSPECTRUM-001` | PASS | `0` | `0` |
-| RDINP, POT, XSPH, FMS, PATH (workflow integration) | `FX-WORKFLOW-XAS-001` | PASS | `0` | `0` |
+## Notes
+
+- `artifacts/regression/oracle-stderr.txt` contains expected capture warnings for missing staged `REFERENCE/band.inp` entries in KSPACE fixtures when `--capture-allow-missing-entry-files` is enabled; this does not affect parity pass/fail.
+- The full-module migration parity gate is currently green at `21/21` fixtures and `0` mismatched artifacts.

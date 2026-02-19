@@ -12,8 +12,8 @@
 - FEFF10 third-party license: `THIRD_PARTY_LICENSES/FEFF10-LICENSE`
 - Cutover rehearsal checklist: `docs/cutover-rehearsal-checklist.md`
 - Rollback rehearsal checklist: `docs/rollback-rehearsal-checklist.md`
-- Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-18.md`
-- Latest rollback rehearsal and GA sign-off report: `tasks/rollback-rehearsal-2026-02-18.md`
+- Latest cutover rehearsal report: `tasks/cutover-rehearsal-2026-02-19.md`
+- Latest rollback rehearsal and GA sign-off report: `tasks/rollback-rehearsal-2026-02-19.md`
 
 ## License And Attribution
 

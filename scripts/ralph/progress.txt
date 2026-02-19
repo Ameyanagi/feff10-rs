@@ -4,7 +4,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 ## Codebase Patterns
 - Build `tasks/full-module-migration-ledger.csv` from `gap/fortran-to-rust-file-gap.csv` rows where `classification=out_of_scope`, preserving source order for deterministic chunking.
 - Use `phase` as the owning PRD story ID (`US-xxx`) and split chunked directories by per-directory ledger order (ATOM 10/10/9, MATH 4/3, GENFMT 9/9, EELSMDFF 5/4).
-- Current gap artifacts report `out_of_scope=102`; verify counts from the CSV before assuming the target value in narrative docs.
+- For full-module closeout reporting, treat `remaining_gap` as `runtime_support_dependency + out_of_scope`; `scripts/fortran/generate-gap-report.py` now overlays a complete migration ledger as `migrated_to_rust`.
 - Route FEFF legacy card-prefix handling through `crates/feff-core/src/support/common/itoken.rs` (`canonical_keyword_for_parser`) instead of duplicating per-parser alias maps.
 - Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
 - Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
@@ -501,4 +501,32 @@ Started: Thu Feb 19 09:05:48 JST 2026
   - Patterns discovered: Expanded capture-only fixture sets require committed baseline snapshot directories before `cargo run --locked -- oracle` can succeed with `ci-oracle-capture-runner.sh`.
   - Gotchas encountered: `parser_fixture_inputs` should treat `REFERENCE/*.inp` on capture-only fixtures as staged module/runtime artifacts, not standalone FEFF parser decks.
   - Useful context: Validation gates used and passing in this iteration: workflow-equivalent oracle command (`21/21`, zero mismatches), `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 14:06:24 JST - US-022
+- What was implemented
+  - Extended `scripts/fortran/generate-gap-report.py` with migration-ledger closeout overlay support (`--migration-ledger`) and a `migrated_to_rust` classification so full-module closeout artifacts can report remaining gaps accurately.
+  - Regenerated `gap/fortran-to-rust-file-gap.csv` and `gap/fortran-to-rust-gap-report.md`; verified `runtime_support_dependency=0`, `out_of_scope=0`, and `remaining_gap=0`.
+  - Updated closeout docs for full-module state: `tasks/migration-gap-analysis.md` and `tasks/oracle-16-module-migration-summary.md` now report 21-fixture parity closure and zero mismatches.
+  - Ran fresh cutover and rollback rehearsals with new evidence roots (`artifacts/cutover-rehearsal/2026-02-19/20260219-140049`, `artifacts/rollback-rehearsal/2026-02-19/20260219-140228`) and published refreshed reports under `tasks/`.
+  - Refreshed canonical parity artifacts under `artifacts/regression/` and updated README “latest rehearsal report” links to the 2026-02-19 reports.
+  - Marked `US-022` as complete by setting `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `scripts/fortran/generate-gap-report.py`
+  - `gap/fortran-to-rust-file-gap.csv`
+  - `gap/fortran-to-rust-gap-report.md`
+  - `tasks/migration-gap-analysis.md`
+  - `tasks/oracle-16-module-migration-summary.md`
+  - `tasks/cutover-rehearsal-2026-02-19.md`
+  - `tasks/rollback-rehearsal-2026-02-19.md`
+  - `README.md`
+  - `artifacts/regression/oracle-report.json`
+  - `artifacts/regression/oracle-diff.txt`
+  - `artifacts/regression/oracle-summary.txt`
+  - `artifacts/regression/oracle-stderr.txt`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: `generate-gap-report.py` should use ledger-completion overlay when closeout is complete; report `remaining_gap` from `runtime_support_dependency + out_of_scope` and represent non-runtime-owned closed rows as `migrated_to_rust`.
+  - Gotchas encountered: Workflow-equivalent oracle runs with `--capture-allow-missing-entry-files` emit expected KSPACE `REFERENCE/band.inp` warnings; treat these as non-fatal when `oracle-report.json` remains fully passing.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`, workflow-equivalent oracle (`21/21`, `mismatch_artifact_count=0`), cutover rehearsal PASS, rollback rehearsal PASS.
 ---

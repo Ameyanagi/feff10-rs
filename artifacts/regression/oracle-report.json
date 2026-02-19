@@ -1,5 +1,5 @@
 {
-  "generated_at_unix_seconds": 1771476743,
+  "generated_at_unix_seconds": 1771477465,
   "passed": true,
   "manifest_path": "/Users/ryuichi/dev/feff10-rs/tasks/golden-fixture-manifest.json",
   "policy_path": "/Users/ryuichi/dev/feff10-rs/tasks/numeric-tolerance-policy.json",

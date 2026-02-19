@@ -1,4 +1,4 @@
-    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.25s
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 0.26s
      Running `target/debug/feff10-rs oracle --manifest tasks/golden-fixture-manifest.json --policy tasks/numeric-tolerance-policy.json --oracle-root artifacts/fortran-oracle-capture --oracle-subdir outputs --actual-root artifacts/fortran-baselines --actual-subdir baseline --report artifacts/regression/oracle-report.json --capture-runner /Users/ryuichi/dev/feff10-rs/scripts/fortran/ci-oracle-capture-runner.sh --capture-allow-missing-entry-files`
 [capture-baselines] ERROR: Unable to materialize fixture entry 'REFERENCE/band.inp' for '/Users/ryuichi/dev/feff10-rs/feff10/examples/KSPACE/Cr2GeC'.
 [capture-baselines] WARNING: Fixture 'FX-BAND-001' could not materialize entry 'REFERENCE/band.inp'. Continuing because --allow-missing-entry-files is set.
