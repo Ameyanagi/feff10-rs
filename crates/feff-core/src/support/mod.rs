@@ -1,3 +1,4 @@
+pub mod atom;
 pub mod common;
 pub mod errormods;
 pub mod exch;

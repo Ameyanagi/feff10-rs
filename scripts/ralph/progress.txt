@@ -8,6 +8,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - Route FEFF legacy card-prefix handling through `crates/feff-core/src/support/common/itoken.rs` (`canonical_keyword_for_parser`) instead of duplicating per-parser alias maps.
 - Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
 - Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
+- For large deferred program/subroutine ports (for example `ATOM`), split orchestration into pure `plan_*` helpers and keep numerical kernels as pure functions so behavior is unit-testable without runtime file I/O.
 - For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
 - For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
 ---
@@ -129,5 +130,32 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Reusing `support/rhorrp/runtime` grid primitives in module models prevents subtle index-order drift between generated density tables and helper logic.
   - Gotchas encountered: When a deferred file path requires `<domain>/<domain>.rs`, use `#[path = "..."]` aliasing in the domain `mod.rs` to avoid `clippy::module_inception` under `-D warnings`.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 10:27:05 JST - US-006
+- What was implemented
+  - Added a new `crates/feff-core/src/support/atom/` domain and ported all ATOM chunk-A deferred files from the ledger: `akeato`, `apot`, `aprdev`, `atomic`, `bkmrdf`, `cofcon`, `dentfa`, `dsordf`, `etotal`, and `fdmocc`.
+  - Implemented Fortran-compatible helper behavior with typed Rust interfaces and deterministic unit coverage for ATOM angular coefficients, occupancy factors, Thomas-Fermi density approximation, Breit terms, radial integral accumulation, and total-energy accumulation.
+  - Ported ATOM orchestration controls into testable planning helpers (`atomic` and `apot`) to preserve nohole/ionicity/energy-relaxation logic without changing CLI/runtime module wiring.
+  - Marked all `US-006` ATOM chunk-A ledger rows as `status=done` and set `US-006` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/atom/mod.rs`
+  - `crates/feff-core/src/support/atom/akeato.rs`
+  - `crates/feff-core/src/support/atom/apot.rs`
+  - `crates/feff-core/src/support/atom/aprdev.rs`
+  - `crates/feff-core/src/support/atom/atomic.rs`
+  - `crates/feff-core/src/support/atom/bkmrdf.rs`
+  - `crates/feff-core/src/support/atom/cofcon.rs`
+  - `crates/feff-core/src/support/atom/dentfa.rs`
+  - `crates/feff-core/src/support/atom/dsordf.rs`
+  - `crates/feff-core/src/support/atom/etotal.rs`
+  - `crates/feff-core/src/support/atom/fdmocc.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: For large deferred module ports, separating control-flow planning (`plan_*`) from pure numerical kernels keeps strict lint gates green while preserving legacy behavior.
+  - Gotchas encountered: `cargo clippy -- -D warnings` in this codebase denies `needless_range_loop`; prefer iterator/enumerate patterns even inside test helpers when populating fixed-size tables.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
