@@ -1,6 +1,7 @@
 use super::genfmtjas::{GenfmtJasConfig, genfmtjas};
 use super::genfmtsub::{GenfmtPathInput, GenfmtSubConfig, genfmt as genfmt_subroutine};
 use super::m_genfmt::GenfmtArtifacts;
+use super::regenf::artifacts_consumable;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GenfmtMode {
@@ -60,6 +61,11 @@ pub fn ffmod5(config: &GenfmtRunConfig, paths: &[GenfmtPathInput]) -> GenfmtRunO
             paths,
         ),
     };
+    if artifacts_consumable(&artifacts) {
+        logs.push("Validated GENFMT artifacts for downstream consumption.".to_string());
+    } else {
+        logs.push("GENFMT artifacts failed downstream consumability checks.".to_string());
+    }
     logs.push("Done with module: EXAFS parameters (GENFMT).".to_string());
 
     GenfmtRunOutput {
@@ -126,7 +132,8 @@ mod tests {
             &sample_paths(),
         );
 
-        assert_eq!(output.logs.len(), 2);
+        assert_eq!(output.logs.len(), 3);
+        assert!(output.logs[1].contains("Validated GENFMT artifacts"));
         let artifacts = output.artifacts.expect("artifacts should be generated");
         assert_eq!(artifacts.list_rows.len(), 2);
         assert!(!artifacts.nstar_rows.is_empty());
