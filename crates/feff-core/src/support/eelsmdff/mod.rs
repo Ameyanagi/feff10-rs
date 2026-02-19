@@ -3,3 +3,7 @@ pub mod mdff_concat;
 pub mod mdff_eels;
 pub mod mdff_euler;
 pub mod mdff_m_spectrum;
+pub mod mdff_productmatvect;
+pub mod mdff_qmesh;
+pub mod mdff_readsp;
+pub mod mdff_wavelength;

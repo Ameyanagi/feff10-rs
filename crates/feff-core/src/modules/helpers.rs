@@ -1,11 +1,25 @@
 use crate::domain::{ComputeModule, ComputeRequest, InputCard, InputDeck};
 use crate::numerics::{deterministic_argsort, distance3, stable_weighted_mean};
+use crate::support::eelsmdff::mdff_angularmesh::{AngularMeshConfig, mdff_angularmesh};
+use crate::support::eelsmdff::mdff_eels::{
+    EnergyQMesh, MdffEelsConfig, mdff_eels, normalize_wave_amplitudes,
+    scale_sigma_rows_with_wavelength,
+};
+use crate::support::eelsmdff::mdff_qmesh::{MdffQMeshConfig, MdffQMeshPoint, mdff_qmesh};
+use crate::support::eelsmdff::mdff_readsp::{MdffInputKind, MdffReadspConfig, mdff_readsp};
+use crate::support::eelsmdff::mdff_wavelength::{
+    DEFAULT_H_ON_SQRT_TWO_ME_AU, DEFAULT_ME_C2_EV, mdff_wavelength,
+};
 use crate::support::kspace::cgcrac::{CgcracInput, cgcrac};
 use crate::support::kspace::factorial_table;
 use crate::support::kspace::strconfra::strconfra;
 use crate::support::kspace::strfunqjl::strfunqjl;
 use crate::support::mkgtr::mkgtr::{MkgtrConfig, MkgtrMode, mkgtr_coupling};
 use crate::support::opconsat::opconsat::{OpconsatComponent, opconsat, sample_dielectric};
+use num_complex::Complex64;
+use std::collections::BTreeMap;
+
+const HBARC_ATOMIC_EV_A0: f64 = 3727.3794066;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DistanceShell {
@@ -75,6 +89,178 @@ pub fn cards_for_compute_request<'a>(
     request: &ComputeRequest,
 ) -> Vec<&'a InputCard> {
     deck.cards_for_module(request.module)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct EelsMdffCouplingSummary {
+    pub spectrum_norm: f64,
+    pub mean_q_length: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub(crate) struct EelsMdffWorkflowConfig {
+    pub beam_energy_ev: f64,
+    pub beam_direction: [f64; 3],
+    pub relativistic_q: bool,
+    pub qmesh_radial: usize,
+    pub qmesh_angular: usize,
+    pub average: bool,
+    pub cross_terms: bool,
+}
+
+pub(crate) fn eelsmdff_workflow_coupling(
+    config: EelsMdffWorkflowConfig,
+    xmu_rows: &[(f64, f64, f64, f64)],
+) -> Option<EelsMdffCouplingSummary> {
+    if xmu_rows.is_empty() {
+        return None;
+    }
+
+    let nqr = config.qmesh_radial.clamp(1, 3);
+    let nqf = config.qmesh_angular.clamp(1, 2);
+    let npos = nqr * nqr * nqf;
+    let mesh = mdff_angularmesh(&AngularMeshConfig {
+        theta_x_center: 0.0,
+        theta_y_center: 0.0,
+        npos,
+        nqr,
+        nqf,
+        qmodus: 'U',
+        th0: 1.0e-3,
+        thpart: 0.0012 / nqr as f64,
+        acoll: 0.0024,
+        aconv: 0.0,
+        legacy_manual_hack: false,
+    })
+    .ok()?;
+
+    let detector_points = mesh
+        .theta_x
+        .iter()
+        .zip(mesh.theta_y.iter())
+        .take(4)
+        .map(|(&theta_x, &theta_y)| MdffQMeshPoint { theta_x, theta_y })
+        .collect::<Vec<_>>();
+    if detector_points.is_empty() {
+        return None;
+    }
+
+    let mut sources_by_ip = BTreeMap::new();
+    for ip in 1..=9 {
+        let mut source = String::from("# omega e k mu mu0 chi\n");
+        for &(energy, mu, mu0, chi) in xmu_rows {
+            let value = match ip {
+                1 => mu,
+                2 => (mu - mu0) * 0.5,
+                3 => chi,
+                4 => (mu0 - mu) * 0.5,
+                5 => mu0,
+                6 => chi * 0.25,
+                7 => chi * 0.10,
+                8 => chi * 0.20,
+                9 => (mu + mu0).abs() * 0.5,
+                _ => 0.0,
+            };
+            source.push_str(&format!(
+                "{energy:.8} 0.0 0.0 {value:.12E} {mu0:.12E} {chi:.12E}\n"
+            ));
+        }
+        sources_by_ip.insert(ip, source);
+    }
+    let borrowed_sources = sources_by_ip
+        .iter()
+        .map(|(&ip, source)| (ip, source.as_str()))
+        .collect::<BTreeMap<_, _>>();
+
+    let mut sigma_rows = mdff_readsp(
+        &borrowed_sources,
+        MdffReadspConfig {
+            ipmin: 1,
+            ipmax: 9,
+            ipstep: if config.cross_terms { 1 } else { 4 },
+            average: config.average,
+            cross_terms: config.cross_terms,
+            spcol: 4,
+            input_kind: MdffInputKind::Xmu,
+        },
+    )
+    .ok()?;
+
+    scale_sigma_rows_with_wavelength(
+        &mut sigma_rows,
+        config.beam_energy_ev.max(1.0),
+        HBARC_ATOMIC_EV_A0,
+        DEFAULT_ME_C2_EV,
+        |energy| mdff_wavelength(energy).unwrap_or(f64::NAN),
+    )
+    .ok()?;
+
+    let mut q_mesh_rows = Vec::with_capacity(sigma_rows.len());
+    for sigma_row in &sigma_rows {
+        let scattered_energy_ev = (config.beam_energy_ev - sigma_row.energy_loss_ev).max(1.0);
+        let q_mesh = mdff_qmesh(
+            &detector_points,
+            MdffQMeshConfig {
+                beam_energy_ev: config.beam_energy_ev.max(1.0),
+                scattered_energy_ev,
+                beam_direction: config.beam_direction,
+                relativistic_q: config.relativistic_q,
+                h_on_sqrt_two_me: DEFAULT_H_ON_SQRT_TWO_ME_AU,
+                me_c2_ev: DEFAULT_ME_C2_EV,
+            },
+        )
+        .ok()?;
+
+        q_mesh_rows.push(EnergyQMesh {
+            q_vectors: q_mesh.rows.iter().map(|row| row.q_vector).collect(),
+            q_lengths_classical: q_mesh
+                .rows
+                .iter()
+                .map(|row| row.q_length_classical)
+                .collect(),
+        });
+    }
+
+    let mut amplitudes = (0..detector_points.len())
+        .map(|index| Complex64::new(1.0 - index as f64 * 0.08, index as f64 * 0.05))
+        .collect::<Vec<_>>();
+    normalize_wave_amplitudes(&mut amplitudes);
+
+    let spectrum = mdff_eels(
+        &sigma_rows,
+        &q_mesh_rows,
+        &amplitudes,
+        MdffEelsConfig {
+            relativistic_q: config.relativistic_q,
+            hbarc_ev: HBARC_ATOMIC_EV_A0,
+        },
+    )
+    .ok()?;
+
+    let spectrum_norm =
+        spectrum.x.iter().map(|row| row[0].norm()).sum::<f64>() / spectrum.ne as f64;
+    let mut q_length_sum = 0.0_f64;
+    let mut q_length_count = 0_usize;
+    for row in &q_mesh_rows {
+        for &q_length in &row.q_lengths_classical {
+            q_length_sum += q_length;
+            q_length_count += 1;
+        }
+    }
+
+    if !spectrum_norm.is_finite() || q_length_count == 0 {
+        return None;
+    }
+
+    let mean_q_length = q_length_sum / q_length_count as f64;
+    if !mean_q_length.is_finite() {
+        return None;
+    }
+
+    Some(EelsMdffCouplingSummary {
+        spectrum_norm,
+        mean_q_length,
+    })
 }
 
 pub(crate) fn kspace_workflow_coupling(
@@ -174,8 +360,9 @@ pub(crate) fn opconsat_workflow_spectrum(
 #[cfg(test)]
 mod tests {
     use super::{
-        CoreModuleHelper, cards_for_compute_request, kspace_workflow_coupling,
-        mkgtr_workflow_coupling, opconsat_workflow_spectrum,
+        CoreModuleHelper, EelsMdffWorkflowConfig, cards_for_compute_request,
+        eelsmdff_workflow_coupling, kspace_workflow_coupling, mkgtr_workflow_coupling,
+        opconsat_workflow_spectrum,
     };
     use crate::domain::{ComputeModule, ComputeRequest, InputCard, InputCardKind, InputDeck};
 
@@ -273,5 +460,55 @@ mod tests {
             assert!(eps2 >= 0.0);
             assert!(loss >= 0.0);
         }
+    }
+
+    #[test]
+    fn eelsmdff_workflow_coupling_is_finite_and_deterministic() {
+        let xmu_rows = vec![
+            (8979.411, 5.56205e-6, 6.25832e-6, -6.96262e-7),
+            (8980.979, 6.61771e-6, 7.52318e-6, -9.05473e-7),
+            (8982.398, 7.99662e-6, 9.19560e-6, -1.19897e-6),
+            (8983.667, 9.85468e-6, 1.14689e-5, -1.61419e-6),
+        ];
+
+        let first = eelsmdff_workflow_coupling(
+            EelsMdffWorkflowConfig {
+                beam_energy_ev: 300_000.0,
+                beam_direction: [0.0, 1.0, 0.0],
+                relativistic_q: true,
+                qmesh_radial: 5,
+                qmesh_angular: 3,
+                average: false,
+                cross_terms: true,
+            },
+            &xmu_rows,
+        )
+        .expect("workflow coupling should be available");
+        let second = eelsmdff_workflow_coupling(
+            EelsMdffWorkflowConfig {
+                beam_energy_ev: 300_000.0,
+                beam_direction: [0.0, 1.0, 0.0],
+                relativistic_q: true,
+                qmesh_radial: 5,
+                qmesh_angular: 3,
+                average: false,
+                cross_terms: true,
+            },
+            &xmu_rows,
+        )
+        .expect("workflow coupling should be deterministic");
+
+        assert!(first.spectrum_norm.is_finite());
+        assert!(first.mean_q_length.is_finite());
+        assert!(first.spectrum_norm > 0.0);
+        assert!(first.mean_q_length > 0.0);
+        assert_eq!(
+            first.spectrum_norm.to_bits(),
+            second.spectrum_norm.to_bits()
+        );
+        assert_eq!(
+            first.mean_q_length.to_bits(),
+            second.mean_q_length.to_bits()
+        );
     }
 }

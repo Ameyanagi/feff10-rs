@@ -3,7 +3,10 @@ use super::parser::{
     parse_fullspectrum_source, parse_xmu_source, summarize_xmu_rows,
 };
 use crate::domain::{ComputeResult, FeffError};
-use crate::modules::helpers::{mkgtr_workflow_coupling, opconsat_workflow_spectrum};
+use crate::modules::helpers::{
+    EelsMdffWorkflowConfig, eelsmdff_workflow_coupling, mkgtr_workflow_coupling,
+    opconsat_workflow_spectrum,
+};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::path::Path;
 
@@ -303,6 +306,23 @@ Module 9 true-compute execution finished.\n",
             .iter()
             .map(|row| row.energy.abs().max(1.0e-6))
             .collect::<Vec<_>>();
+        let mdff_rows = self
+            .xmu_rows
+            .iter()
+            .map(|row| (row.energy, row.mu, row.mu0, row.chi))
+            .collect::<Vec<_>>();
+        let _ = eelsmdff_workflow_coupling(
+            EelsMdffWorkflowConfig {
+                beam_energy_ev: 200_000.0 + self.xmu_summary.energy_max.abs(),
+                beam_direction: [0.0, 0.0, 1.0],
+                relativistic_q: self.control.run_mode != 0,
+                qmesh_radial: 3,
+                qmesh_angular: 2,
+                average: false,
+                cross_terms: false,
+            },
+            &mdff_rows,
+        );
         let _ = opconsat_workflow_spectrum(&[29], &[1.0], &energies);
 
         let mut samples = Vec::with_capacity(self.xmu_rows.len());
