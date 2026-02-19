@@ -8,6 +8,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - Route FEFF legacy card-prefix handling through `crates/feff-core/src/support/common/itoken.rs` (`canonical_keyword_for_parser`) instead of duplicating per-parser alias maps.
 - Normalize EDGE card values with `crates/feff-core/src/support/common/isedge.rs` so numeric aliases (`1`, `35`, etc.) collapse to canonical labels (`K`, `R3`, etc.).
 - Port deferred low-level helper files into `crates/feff-core/src/support/<domain>/` and export from the domain `mod.rs` plus `support/mod.rs` so unit tests are discoverable through the main crate test suite.
+- For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -74,5 +75,29 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: New deferred helpers should be exported through both `support/<domain>/mod.rs` and `support/mod.rs` to ensure crate-level test discovery and predictable import paths.
   - Gotchas encountered: The FEFF quartic routine assumes non-degenerate coefficient combinations; tests should validate by polynomial residual and avoid coefficient sets that collapse the legacy closed-form denominator path.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 09:50:03 JST - US-004
+- What was implemented
+  - Added Rust support ports for deferred MATH chunk-B helpers (`rotwig`, `sdist`, `xlogx`), EXCH helper (`ffq`), and TDLDA elliptic helpers (`ellpi`, `rf`, `rj`, `rc`) under `crates/feff-core/src/support/...`.
+  - Added new support domains `exch` and `tdlda`, exporting them via `crates/feff-core/src/support/mod.rs`, and wired new math helpers through `crates/feff-core/src/support/math/mod.rs`.
+  - Added deterministic unit tests for each migrated helper covering closed-form values, symmetry/branch behavior, and invalid-argument handling.
+  - Marked all `US-004` ledger rows (`EXCH/ffq`, `MATH/rotwig`, `MATH/sdist`, `MATH/xlogx`, `TDLDA/ellfun`) as `status=done`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/math/mod.rs`
+  - `crates/feff-core/src/support/math/rotwig.rs`
+  - `crates/feff-core/src/support/math/sdist.rs`
+  - `crates/feff-core/src/support/math/xlogx.rs`
+  - `crates/feff-core/src/support/exch/mod.rs`
+  - `crates/feff-core/src/support/exch/ffq.rs`
+  - `crates/feff-core/src/support/tdlda/mod.rs`
+  - `crates/feff-core/src/support/tdlda/ellfun.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: FEFF/Numerical Recipes elliptic routines (`rc/rf/rj`) converge to stable values with the original errtol settings but should be validated with realistic tolerances (~`1e-9`) instead of machine-epsilon expectations.
+  - Gotchas encountered: Running `cargo fmt --all` before the final gate command avoids avoidable `fmt --check` failures on multiline numeric expressions in newly added support helpers.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
