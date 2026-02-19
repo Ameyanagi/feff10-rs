@@ -601,6 +601,39 @@
       }
     },
     {
+      "id": "FX-SELF-OPCONSAT-001",
+      "title": "SELF/OPCONSAT coupling fixture from MPSE Cu_OPCONS example",
+      "fixtureType": "module",
+      "modulesCovered": [
+        "SELF"
+      ],
+      "inputDirectory": "feff10/examples/MPSE/Cu_OPCONS",
+      "entryFiles": [
+        "feff.inp",
+        "loss.dat",
+        "REFERENCE/sfconv.inp"
+      ],
+      "baselineSources": [
+        {
+          "kind": "reference_archive",
+          "path": "feff10/examples/MPSE/Cu_OPCONS/REFERENCE.zip"
+        }
+      ],
+      "baselineStatus": "requires_fortran_capture",
+      "comparison": {
+        "mode": "policy_by_artifact",
+        "policyFile": "tasks/numeric-tolerance-policy.json",
+        "passFailThreshold": {
+          "minimumArtifactPassRate": 1.0,
+          "maxArtifactFailures": 0
+        }
+      },
+      "edgeCase": {
+        "isEdgeCase": true,
+        "reason": "Cu_OPCONS SELF staging drives migrated OPCONSAT dielectric coupling and opconsCu.dat output generation."
+      }
+    },
+    {
       "id": "FX-EELS-001",
       "title": "EELS compatibility fixture from ELNES Cu example",
       "fixtureType": "module",
