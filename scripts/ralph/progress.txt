@@ -12,6 +12,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For deferred routines that still depend on COMMON-style shared state, use typed context structs plus callback hooks for missing dependencies (`dsordf`, `yzkrdf`, `getorb`, `somm`) so control-flow can be ported and tested before runtime wiring is complete.
 - For Numerical Recipes-style helper ports, keep numeric assertions near `1e-9` unless the legacy routine uses tighter convergence tolerances than FEFF defaults.
 - For RHORRP-style grid calculations, centralize iteration in `crates/feff-core/src/support/rhorrp/runtime.rs` (`iter_grid_points`, `next_index`, `point_at_index`) and reuse that from runtime modules instead of duplicating index math.
+- For large ATOM runtime-control ports, provide both a default solver entrypoint and a `*_with` callback-injected variant so iterative control flow is unit-testable with deterministic mock dependencies.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -184,5 +185,29 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: Callback seams around legacy shared-state helpers keep chunked ATOM migrations testable without waiting on full COMMON-block runtime integration.
   - Gotchas encountered: `cargo clippy -- -D warnings` flags `too_many_arguments`, `manual_swap`, and `int_plus_one` in direct Fortran translations; either restructure into context structs or add narrowly-scoped fixes/attributes while preserving algorithm shape.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 11:12:12 JST - US-008
+- What was implemented
+  - Ported all deferred ATOM chunk-C ledger targets under `crates/feff-core/src/support/atom/`: `potrdf`, `s02at`, `scfdat`, `soldir`, `tabrat`, `vlda`, `wfirdf`, `yzkrdf`, and `yzkteg`.
+  - Implemented Fortran-compatible numerical/control helpers with typed Rust interfaces, explicit validation errors, and deterministic unit tests; added callback-injected `*_with` variants for heavy orchestration paths (`soldir`, `wfirdf`) to preserve solver flow while keeping tests deterministic.
+  - Wired all new chunk-C modules through `crates/feff-core/src/support/atom/mod.rs`, then marked all `US-008` ledger rows `status=done` and set `US-008` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/atom/mod.rs`
+  - `crates/feff-core/src/support/atom/potrdf.rs`
+  - `crates/feff-core/src/support/atom/s02at.rs`
+  - `crates/feff-core/src/support/atom/scfdat.rs`
+  - `crates/feff-core/src/support/atom/soldir.rs`
+  - `crates/feff-core/src/support/atom/tabrat.rs`
+  - `crates/feff-core/src/support/atom/vlda.rs`
+  - `crates/feff-core/src/support/atom/wfirdf.rs`
+  - `crates/feff-core/src/support/atom/yzkrdf.rs`
+  - `crates/feff-core/src/support/atom/yzkteg.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Callback-injected wrappers (`*_with`) let large legacy solver loops stay close to Fortran control flow while still allowing deterministic unit tests without full runtime wiring.
+  - Gotchas encountered: `yzkteg` development-series denominators can hit singular values for some `(ap, k)` combinations; guard those divisions only when the source coefficient is non-zero to match legacy no-op behavior for zero terms.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---
