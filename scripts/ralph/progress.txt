@@ -1,3 +1,23 @@
 # Ralph Progress Log
-Started: Wed Feb 18 17:02:17 JST 2026
+Started: Thu Feb 19 09:05:48 JST 2026
+---
+## Codebase Patterns
+- Build `tasks/full-module-migration-ledger.csv` from `gap/fortran-to-rust-file-gap.csv` rows where `classification=out_of_scope`, preserving source order for deterministic chunking.
+- Use `phase` as the owning PRD story ID (`US-xxx`) and split chunked directories by per-directory ledger order (ATOM 10/10/9, MATH 4/3, GENFMT 9/9, EELSMDFF 5/4).
+- Current gap artifacts report `out_of_scope=102`; verify counts from the CSV before assuming the target value in narrative docs.
+---
+## 2026-02-19 09:12:27 JST - US-001
+- What was implemented
+  - Added `tasks/full-module-migration-ledger.csv` with required columns and 102 `out_of_scope` rows mapped from `gap/fortran-to-rust-file-gap.csv`.
+  - Assigned deterministic `rust_target` values under `crates/feff-core/src/support/<fortran_dir>/<fortran_file>.rs`.
+  - Assigned deterministic `phase` ownership aligned to PRD user stories, including chunk splits for ATOM/MATH/GENFMT/EELSMDFF.
+  - Set `status=pending` and blank `notes` for all ledger rows.
+- Files changed
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: The ledger order is meaningful for chunk stories; preserve the source CSV order when selecting chunk-A/chunk-B or thirds.
+  - Gotchas encountered: PRD text says 103 deferred rows, but `gap/fortran-to-rust-file-gap.csv` and `gap/fortran-to-rust-gap-report.md` currently show 102 `out_of_scope` rows.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

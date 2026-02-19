@@ -1,30 +1,31 @@
 {
   "project": "feff10-rs",
-  "branchName": "ralph/runtime-support-migration-phase1",
-  "description": "Phase 1 full migration: eliminate runtime_support_dependency files module-by-module while keeping existing 16-module quality and oracle parity gates green; defer out_of_scope files to phase 2.",
+  "branchName": "ralph/full-feff-module-migration-phase2",
+  "description": "Complete phase-2 migration by porting all 103 deferred Fortran files to Rust, integrating full runtime support, and closing expanded oracle parity with zero mismatches.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add module-scoped runtime-support tracking",
-      "description": "As a maintainer, I want module-level gap visibility so each migration batch can prove end-to-end closure per module.",
+      "title": "Create full-module migration ledger",
+      "description": "As a maintainer, I want a file-level migration ledger so every deferred Fortran file has a deterministic Rust destination and completion status.",
       "acceptanceCriteria": [
-        "Extend scripts/fortran/generate-gap-report.py to emit module-scoped support counts per runtime module",
-        "Add report output section with per-module runtime_support_dependency remaining count",
-        "Regenerated gap artifacts are deterministic across repeated runs",
+        "Add tasks/full-module-migration-ledger.csv with columns: fortran_path, fortran_dir, rust_target, phase, status, notes",
+        "Populate ledger from gap/fortran-to-rust-file-gap.csv for all 103 out_of_scope files",
+        "Set initial status=pending for every ledger row",
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {
       "id": "US-002",
-      "title": "Close POT runtime-support gap",
-      "description": "As a maintainer, I want POT to have no remaining runtime-support dependency files so POT runtime is self-contained in Rust scope.",
+      "title": "Port deferred COMMON and ERRORMODS files",
+      "description": "As a maintainer, I want shared config and error infrastructure migrated first so later module ports rely on Rust-native foundations.",
       "acceptanceCriteria": [
-        "POT module-scoped support count reaches zero in generated gap artifacts",
-        "POT parity regression remains green in crates/feff-core/tests/pot_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Implement Rust equivalents for deferred COMMON and ERRORMODS entries listed in the migration ledger",
+        "Wire migrated shared code into current feff-core support paths without adding new CLI commands",
+        "Mark COMMON and ERRORMODS ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 2,
@@ -33,12 +34,13 @@
     },
     {
       "id": "US-003",
-      "title": "Close DEBYE runtime-support gap",
-      "description": "As a maintainer, I want DEBYE to have no remaining runtime-support dependency files so DEBYE runtime is self-contained in Rust scope.",
+      "title": "Port deferred MATH chunk A",
+      "description": "As a maintainer, I want a first subset of deferred math kernels migrated so core interpolation and matrix helpers are Rust-native.",
       "acceptanceCriteria": [
-        "DEBYE module-scoped support count reaches zero in generated gap artifacts",
-        "DEBYE parity regression remains green in crates/feff-core/tests/debye_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate the first half of deferred MATH ledger rows (chunk A) to Rust implementations",
+        "Add deterministic unit tests for each migrated chunk-A math kernel",
+        "Mark MATH chunk-A ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 3,
@@ -47,12 +49,14 @@
     },
     {
       "id": "US-004",
-      "title": "Close PATH runtime-support gap",
-      "description": "As a maintainer, I want PATH to have no remaining runtime-support dependency files so PATH runtime is self-contained in Rust scope.",
+      "title": "Port deferred MATH chunk B plus EXCH and TDLDA leftovers",
+      "description": "As a maintainer, I want remaining deferred numerical helpers migrated so no deferred low-level numerics remain.",
       "acceptanceCriteria": [
-        "PATH module-scoped support count reaches zero in generated gap artifacts",
-        "PATH parity regression remains green in crates/feff-core/tests/path_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate remaining deferred MATH ledger rows (chunk B) to Rust implementations",
+        "Migrate deferred EXCH and deferred TDLDA ledger rows",
+        "Add/update tests for migrated chunk-B, EXCH, and TDLDA helpers",
+        "Mark those ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 4,
@@ -61,12 +65,13 @@
     },
     {
       "id": "US-005",
-      "title": "Close FMS runtime-support gap",
-      "description": "As a maintainer, I want FMS to have no remaining runtime-support dependency files so FMS runtime is self-contained in Rust scope.",
+      "title": "Port deferred INPGEN, RHORRP, and FOVRG helpers",
+      "description": "As a maintainer, I want deferred input and potential-support helpers migrated so downstream POT and SELF integrations are unblockable.",
       "acceptanceCriteria": [
-        "FMS module-scoped support count reaches zero in generated gap artifacts",
-        "FMS parity regression remains green in crates/feff-core/tests/fms_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate all deferred INPGEN, RHORRP, and FOVRG ledger rows to Rust",
+        "Integrate migrated helpers into existing module execution wiring",
+        "Mark INPGEN, RHORRP, and FOVRG ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 5,
@@ -75,12 +80,13 @@
     },
     {
       "id": "US-006",
-      "title": "Close LDOS runtime-support gap",
-      "description": "As a maintainer, I want LDOS to have no remaining runtime-support dependency files so LDOS runtime is self-contained in Rust scope.",
+      "title": "Port deferred ATOM chunk A",
+      "description": "As a maintainer, I want the first ATOM subset migrated so atomic-state and lightweight routines are Rust-native.",
       "acceptanceCriteria": [
-        "LDOS module-scoped support count reaches zero in generated gap artifacts",
-        "LDOS parity regression remains green in crates/feff-core/tests/ldos_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate ATOM chunk A ledger rows (first third by ledger order)",
+        "Add tests validating migrated ATOM chunk-A outputs against existing fixture contracts",
+        "Mark ATOM chunk-A ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 6,
@@ -89,12 +95,13 @@
     },
     {
       "id": "US-007",
-      "title": "Close SELF runtime-support gap",
-      "description": "As a maintainer, I want SELF to have no remaining runtime-support dependency files so SELF runtime is self-contained in Rust scope.",
+      "title": "Port deferred ATOM chunk B",
+      "description": "As a maintainer, I want the second ATOM subset migrated so mid-level atomic routines move off deferred Fortran inventory.",
       "acceptanceCriteria": [
-        "SELF module-scoped support count reaches zero in generated gap artifacts",
-        "SELF parity regression remains green in crates/feff-core/tests/self_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate ATOM chunk B ledger rows (second third by ledger order)",
+        "Add or update tests covering chunk-B atomic behavior",
+        "Mark ATOM chunk-B ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 7,
@@ -103,12 +110,13 @@
     },
     {
       "id": "US-008",
-      "title": "Close RIXS runtime-support gap",
-      "description": "As a maintainer, I want RIXS to have no remaining runtime-support dependency files so RIXS runtime is self-contained in Rust scope.",
+      "title": "Port deferred ATOM chunk C and close ATOM backlog",
+      "description": "As a maintainer, I want the final ATOM subset migrated so POT/XSPH/SCREEN pipelines are fully Rust-native for atomic support.",
       "acceptanceCriteria": [
-        "RIXS module-scoped support count reaches zero in generated gap artifacts",
-        "RIXS parity regression remains green in crates/feff-core/tests/rixs_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate ATOM chunk C ledger rows (final third by ledger order)",
+        "Ensure runtime pipelines compile without deferred ATOM path assumptions",
+        "Mark all remaining ATOM ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 8,
@@ -117,12 +125,13 @@
     },
     {
       "id": "US-009",
-      "title": "Close EELS runtime-support gap",
-      "description": "As a maintainer, I want EELS to have no remaining runtime-support dependency files so EELS runtime is self-contained in Rust scope.",
+      "title": "Port deferred KSPACE rows",
+      "description": "As a maintainer, I want deferred KSPACE support migrated so crystalline structure workflows are fully represented in Rust.",
       "acceptanceCriteria": [
-        "EELS module-scoped support count reaches zero in generated gap artifacts",
-        "EELS parity regression remains green in crates/feff-core/tests/eels_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate all deferred KSPACE ledger rows",
+        "Integrate migrated KSPACE logic into existing BAND and workflow-support paths",
+        "Mark KSPACE ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 9,
@@ -131,12 +140,13 @@
     },
     {
       "id": "US-010",
-      "title": "Close FULLSPECTRUM runtime-support gap",
-      "description": "As a maintainer, I want FULLSPECTRUM to have no remaining runtime-support dependency files so FULLSPECTRUM runtime is self-contained in Rust scope.",
+      "title": "Port deferred GENFMT chunk A",
+      "description": "As a maintainer, I want the first GENFMT subset migrated so path-format generation moves to Rust incrementally.",
       "acceptanceCriteria": [
-        "FULLSPECTRUM module-scoped support count reaches zero in generated gap artifacts",
-        "FULLSPECTRUM parity regression remains green in crates/feff-core/tests/fullspectrum_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate GENFMT chunk A ledger rows (first half by ledger order)",
+        "Add/update tests for chunk-A generated-format artifacts",
+        "Mark GENFMT chunk-A ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 10,
@@ -145,12 +155,13 @@
     },
     {
       "id": "US-011",
-      "title": "Close COMPTON runtime-support gap",
-      "description": "As a maintainer, I want COMPTON to have no remaining runtime-support dependency files so COMPTON runtime is self-contained in Rust scope.",
+      "title": "Port deferred GENFMT chunk B and close GENFMT backlog",
+      "description": "As a maintainer, I want remaining GENFMT deferred files migrated so downstream artifacts are generated by Rust-native code paths.",
       "acceptanceCriteria": [
-        "COMPTON module-scoped support count reaches zero in generated gap artifacts",
-        "COMPTON parity regression remains green in crates/feff-core/tests/compton_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate GENFMT chunk B ledger rows (remaining half)",
+        "Validate generated artifacts remain consumable by downstream runtime stages",
+        "Mark all remaining GENFMT ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 11,
@@ -159,12 +170,13 @@
     },
     {
       "id": "US-012",
-      "title": "Close XSPH runtime-support gap",
-      "description": "As a maintainer, I want XSPH to have no remaining runtime-support dependency files so XSPH runtime is self-contained in Rust scope.",
+      "title": "Port deferred MKGTR and OPCONSAT rows",
+      "description": "As a maintainer, I want deferred Green-function and optical-constant helpers migrated so advanced spectral workflows are Rust-native.",
       "acceptanceCriteria": [
-        "XSPH module-scoped support count reaches zero in generated gap artifacts",
-        "XSPH parity regression remains green in crates/feff-core/tests/xsph_parity.rs",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate all deferred MKGTR and OPCONSAT ledger rows",
+        "Integrate migrated helpers with SCREEN, SELF, and FULLSPECTRUM pathways where required",
+        "Mark MKGTR and OPCONSAT ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 12,
@@ -173,12 +185,13 @@
     },
     {
       "id": "US-013",
-      "title": "Burn down shared multi-module support remainder",
-      "description": "As a maintainer, I want shared support code used across multiple runtime modules to be migrated so no runtime-support dependencies remain.",
+      "title": "Port deferred EELSMDFF chunk A",
+      "description": "As a maintainer, I want the first EELSMDFF subset migrated so advanced q-mesh support begins moving to Rust-native execution.",
       "acceptanceCriteria": [
-        "Shared support remainder across COMMON, KSPACE, MATH, TDLDA, FOVRG, EXCH, IOMODS, ERRORMODS, INPGEN, PAR, UTILITY, and RHORRP is migrated for runtime usage paths",
-        "Global runtime_support_dependency count reaches 0 in gap/fortran-to-rust-file-gap.csv",
-        "Existing oracle gate still reports zero failed and mismatched fixtures",
+        "Migrate EELSMDFF chunk A ledger rows (first half by ledger order)",
+        "Add or update tests for chunk-A EELSMDFF support outputs",
+        "Mark EELSMDFF chunk-A ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 13,
@@ -187,15 +200,136 @@
     },
     {
       "id": "US-014",
-      "title": "Complete phase-1 docs and toolchain cleanup",
-      "description": "As a maintainer, I want migration docs and automation to reflect phase-1 closure so status is auditable and reproducible.",
+      "title": "Port deferred EELSMDFF chunk B and close EELSMDFF backlog",
+      "description": "As a maintainer, I want remaining EELSMDFF files migrated so EELS/FULLSPECTRUM advanced paths are fully Rust-native.",
       "acceptanceCriteria": [
-        "Update tasks/migration-gap-analysis.md with phase-1 results and deferred phase-2 scope",
-        "Update README.md and docs/developer-workflows.md references to include the gap-report workflow",
-        "Add one reproducible command block for regenerating gap artifacts from a clean checkout",
+        "Migrate EELSMDFF chunk B ledger rows (remaining half)",
+        "Integrate migrated EELSMDFF logic into EELS and FULLSPECTRUM runtime paths",
+        "Mark all remaining EELSMDFF ledger rows status=done",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 14,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Port deferred HEADERS and DRIVERS compatibility rows",
+      "description": "As a maintainer, I want deferred compatibility wrapper and driver files migrated so full-module inventory is closed without changing CLI surface.",
+      "acceptanceCriteria": [
+        "Migrate all deferred HEADERS and DRIVERS ledger rows",
+        "Keep runtime command interface unchanged",
+        "Mark HEADERS and DRIVERS ledger rows status=done",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Remove temporary migration fallbacks",
+      "description": "As a maintainer, I want phase-2 temporary fallbacks removed so full-module status is technically accurate and maintainable.",
+      "acceptanceCriteria": [
+        "Remove temporary fallback code introduced for phase-2 incremental migration",
+        "Ensure deterministic runtime errors for missing staged artifacts",
+        "Confirm ledger has no remaining rows with status=pending or in_progress",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Add oracle fixture FX-ATOM-SCF-001",
+      "description": "As a maintainer, I want an ATOM/SCF-focused fixture so migrated atomic support is covered by parity gates.",
+      "acceptanceCriteria": [
+        "Add fixture FX-ATOM-SCF-001 to tasks/golden-fixture-manifest.json",
+        "Define entry files, staged inputs, and artifact contract for FX-ATOM-SCF-001",
+        "Oracle/report tooling recognizes FX-ATOM-SCF-001 in fixture set",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Add oracle fixture FX-KSPACE-GENFMT-001",
+      "description": "As a maintainer, I want a KSPACE/GENFMT-focused fixture so migrated crystalline formatting paths are covered by parity gates.",
+      "acceptanceCriteria": [
+        "Add fixture FX-KSPACE-GENFMT-001 to tasks/golden-fixture-manifest.json",
+        "Define entry files, staged inputs, and artifact contract for FX-KSPACE-GENFMT-001",
+        "Oracle/report tooling recognizes FX-KSPACE-GENFMT-001 in fixture set",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Add oracle fixture FX-EELSMDFF-001",
+      "description": "As a maintainer, I want an EELSMDFF-focused fixture so migrated advanced q-mesh paths are covered by parity gates.",
+      "acceptanceCriteria": [
+        "Add fixture FX-EELSMDFF-001 to tasks/golden-fixture-manifest.json",
+        "Define entry files, staged inputs, and artifact contract for FX-EELSMDFF-001",
+        "Oracle/report tooling recognizes FX-EELSMDFF-001 in fixture set",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Add oracle fixture FX-SELF-OPCONSAT-001",
+      "description": "As a maintainer, I want a SELF/OPCONSAT-focused fixture so migrated optical-constant coupling paths are covered by parity gates.",
+      "acceptanceCriteria": [
+        "Add fixture FX-SELF-OPCONSAT-001 to tasks/golden-fixture-manifest.json",
+        "Define entry files, staged inputs, and artifact contract for FX-SELF-OPCONSAT-001",
+        "Oracle/report tooling recognizes FX-SELF-OPCONSAT-001 in fixture set",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Pass expanded oracle and quality gates",
+      "description": "As a maintainer, I want strict parity and quality closure across the expanded fixture set so full-module migration is release-safe.",
+      "acceptanceCriteria": [
+        "Run workflow-equivalent oracle command against expanded manifest and produce artifacts/regression/oracle-report.json",
+        "Oracle report shows fixture_count=21, passed_fixture_count=21, failed_fixture_count=0, mismatch_artifact_count=0",
+        "Run quality gates: cargo check --locked, cargo test --locked, cargo clippy --locked --all-targets -- -D warnings, cargo fmt --all -- --check",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Publish full-module migration closeout artifacts",
+      "description": "As an operator, I want migration closeout documents regenerated so full-module completion is auditable and reproducible.",
+      "acceptanceCriteria": [
+        "Regenerate gap artifacts and verify out_of_scope=0 and runtime_support_dependency=0",
+        "Update tasks/migration-gap-analysis.md and tasks/oracle-16-module-migration-summary.md for full-module state",
+        "Publish refreshed cutover and rollback rehearsal reports under tasks/",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 22,
       "passes": false,
       "notes": ""
     }
