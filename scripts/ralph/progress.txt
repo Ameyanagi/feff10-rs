@@ -16,6 +16,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For deferred KSPACE angular helpers, keep shared factorial tables in `support/kspace::factorial_table` and integrate through `modules/helpers::kspace_workflow_coupling` so BAND runtime wiring stays deterministic and bounded.
 - For deferred targets that require `<domain>/<domain>.rs`, export with `#[path = "<domain>.rs"]` plus a re-export alias from the domain `mod.rs` to avoid `clippy::module_inception` while preserving ledger file paths.
 - For GENFMT artifact-shape updates, validate the in-memory contract with `support/genfmt/regenf.rs::artifacts_consumable` and keep the check wired in `support/genfmt/genfmt.rs::ffmod5`.
+- Wire new deferred-support families into runtime modules through `crates/feff-core/src/modules/helpers.rs` first; keep SELF/FULLSPECTRUM oracle-baseline artifact formulas unchanged unless fixture baselines are intentionally regenerated.
 ---
 ## 2026-02-19 09:12:27 JST - US-001
 - What was implemented
@@ -285,5 +286,37 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - **Learnings for future iterations:**
   - Patterns discovered: New high-rank GENFMT tensor outputs stay clippy-clean under `-D warnings` when vector shapes are wrapped in explicit type aliases (`MjQLamTensor`, `SpinLamTensor`) instead of raw nested `Vec` signatures.
   - Gotchas encountered: `cargo fmt --all` reorders module exports and wraps long expressions in new GENFMT files; run it before final gate execution to avoid late `fmt --check` failures.
+  - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 12:27:20 JST - US-012
+- What was implemented
+  - Added new deferred support domains `crates/feff-core/src/support/mkgtr/` and `crates/feff-core/src/support/opconsat/`, porting all `US-012` ledger targets: `calclbcoef`, `getgtr`, `getgtrjas`, `mkgtr`, `rotgmatrix`, `addeps`, `epsdb`, `getelement`, and `opconsat`.
+  - Exported both domains through `crates/feff-core/src/support/mod.rs` with domain-level `#[path = "<domain>.rs"]` runtime aliases to keep ledger target paths while satisfying strict clippy gates.
+  - Integrated migrated helpers into runtime pathways via `crates/feff-core/src/modules/helpers.rs`: added `mkgtr_workflow_coupling` and `opconsat_workflow_spectrum`, then wired those paths into `SCREEN`, `SELF`, and `FULLSPECTRUM` model execution code.
+  - Added deterministic unit tests for all migrated MKGTR/OPCONSAT helpers and helper-layer integration tests in `modules/helpers.rs`.
+  - Marked all `US-012` MKGTR/OPCONSAT ledger rows as `status=done` and set `US-012` `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/src/support/mod.rs`
+  - `crates/feff-core/src/support/mkgtr/mod.rs`
+  - `crates/feff-core/src/support/mkgtr/calclbcoef.rs`
+  - `crates/feff-core/src/support/mkgtr/getgtr.rs`
+  - `crates/feff-core/src/support/mkgtr/getgtrjas.rs`
+  - `crates/feff-core/src/support/mkgtr/mkgtr.rs`
+  - `crates/feff-core/src/support/mkgtr/rotgmatrix.rs`
+  - `crates/feff-core/src/support/opconsat/mod.rs`
+  - `crates/feff-core/src/support/opconsat/addeps.rs`
+  - `crates/feff-core/src/support/opconsat/epsdb.rs`
+  - `crates/feff-core/src/support/opconsat/getelement.rs`
+  - `crates/feff-core/src/support/opconsat/opconsat.rs`
+  - `crates/feff-core/src/modules/helpers.rs`
+  - `crates/feff-core/src/modules/screen/model.rs`
+  - `crates/feff-core/src/modules/self_energy/model.rs`
+  - `crates/feff-core/src/modules/fullspectrum/model.rs`
+  - `tasks/full-module-migration-ledger.csv`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Use `modules/helpers.rs` as the integration seam for newly ported support domains so runtime modules can consume migrated routines without duplicating glue logic.
+  - Gotchas encountered: `SELF` and `FULLSPECTRUM` oracle fixture tests enforce strict baseline parity; runtime-output formula changes in those modules should be avoided unless baseline artifacts are intentionally regenerated in the same iteration.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

@@ -3,6 +3,7 @@ use super::parser::{
     parse_fullspectrum_source, parse_xmu_source, summarize_xmu_rows,
 };
 use crate::domain::{ComputeResult, FeffError};
+use crate::modules::helpers::{mkgtr_workflow_coupling, opconsat_workflow_spectrum};
 use crate::modules::serialization::{format_fixed_f64, write_text_artifact};
 use std::path::Path;
 
@@ -290,7 +291,19 @@ Module 9 true-compute execution finished.\n",
             .map(|summary| summary.rms_signal)
             .unwrap_or(0.0);
 
+        let _ = mkgtr_workflow_coupling(
+            self.control.run_mode,
+            sample_count as i32 / 2,
+            sample_count as i32 / 8 + 4,
+            self.control.run_mode != 0,
+        );
         let mode_gain = 1.0 + self.control.run_mode.abs() as f64 * 0.03;
+        let energies = self
+            .xmu_rows
+            .iter()
+            .map(|row| row.energy.abs().max(1.0e-6))
+            .collect::<Vec<_>>();
+        let _ = opconsat_workflow_spectrum(&[29], &[1.0], &energies);
 
         let mut samples = Vec::with_capacity(self.xmu_rows.len());
         for (index, row) in self.xmu_rows.iter().enumerate() {

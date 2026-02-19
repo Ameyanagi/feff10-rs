@@ -7,5 +7,7 @@ pub mod genfmt;
 pub mod inpgen;
 pub mod kspace;
 pub mod math;
+pub mod mkgtr;
+pub mod opconsat;
 pub mod rhorrp;
 pub mod tdlda;

@@ -4,6 +4,8 @@ use crate::support::kspace::cgcrac::{CgcracInput, cgcrac};
 use crate::support::kspace::factorial_table;
 use crate::support::kspace::strconfra::strconfra;
 use crate::support::kspace::strfunqjl::strfunqjl;
+use crate::support::mkgtr::mkgtr::{MkgtrConfig, MkgtrMode, mkgtr_coupling};
+use crate::support::opconsat::opconsat::{OpconsatComponent, opconsat, sample_dielectric};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DistanceShell {
@@ -114,9 +116,67 @@ pub(crate) fn kspace_workflow_coupling(
         .clamp(0.25, 2.5)
 }
 
+pub(crate) fn mkgtr_workflow_coupling(maxl: i32, ner: i32, nei: i32, use_nrixs: bool) -> f64 {
+    let mode = if use_nrixs {
+        MkgtrMode::Nrixs
+    } else {
+        MkgtrMode::Standard
+    };
+
+    let config = MkgtrConfig {
+        mode,
+        nsp: if maxl.abs() > 2 { 2 } else { 1 },
+        lx: maxl.abs().max(1) as usize,
+        channel_count: ((ner.unsigned_abs() as usize / 6) + (nei.unsigned_abs() as usize / 4))
+            .clamp(2, 12),
+        q_weight: 1.0 + (ner.abs() + nei.abs()) as f64 * 1.0e-3,
+        elpty: if use_nrixs { 1.0 } else { -1.0 },
+    };
+
+    mkgtr_coupling(&config).unwrap_or(1.0)
+}
+
+pub(crate) fn opconsat_workflow_spectrum(
+    atomic_numbers: &[usize],
+    number_densities: &[f64],
+    energies_ev: &[f64],
+) -> Option<Vec<(f64, f64, f64)>> {
+    if atomic_numbers.is_empty() || atomic_numbers.len() != number_densities.len() {
+        return None;
+    }
+
+    let components = atomic_numbers
+        .iter()
+        .zip(number_densities.iter())
+        .map(|(&atomic_number, &number_density)| OpconsatComponent {
+            atomic_number,
+            number_density,
+        })
+        .collect::<Vec<_>>();
+
+    let mut energy_grid = energies_ev
+        .iter()
+        .map(|energy| energy.abs().max(1.0e-6))
+        .collect::<Vec<_>>();
+    if energy_grid.is_empty() {
+        return Some(Vec::new());
+    }
+    energy_grid.sort_by(f64::total_cmp);
+    energy_grid.dedup_by(|lhs, rhs| (*lhs - *rhs).abs() <= 1.0e-9);
+
+    let opcons = opconsat(&components, &energy_grid).ok()?;
+    energies_ev
+        .iter()
+        .map(|energy| sample_dielectric(&opcons, energy.abs().max(1.0e-6)))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{CoreModuleHelper, cards_for_compute_request, kspace_workflow_coupling};
+    use super::{
+        CoreModuleHelper, cards_for_compute_request, kspace_workflow_coupling,
+        mkgtr_workflow_coupling, opconsat_workflow_spectrum,
+    };
     use crate::domain::{ComputeModule, ComputeRequest, InputCard, InputCardKind, InputDeck};
 
     #[test]
@@ -189,5 +249,29 @@ mod tests {
         let disabled = kspace_workflow_coupling(1, 6, 3, false);
         let enabled = kspace_workflow_coupling(1, 6, 3, true);
         assert!(enabled > disabled);
+    }
+
+    #[test]
+    fn mkgtr_workflow_coupling_is_deterministic_and_bounded() {
+        let first = mkgtr_workflow_coupling(3, 48, 12, true);
+        let second = mkgtr_workflow_coupling(3, 48, 12, true);
+
+        assert!((0.10..=4.0).contains(&first));
+        assert_eq!(first.to_bits(), second.to_bits());
+    }
+
+    #[test]
+    fn opconsat_workflow_spectrum_samples_requested_energies() {
+        let samples = opconsat_workflow_spectrum(&[29, 8], &[0.8, 0.2], &[1.0, 2.5, 10.0, 50.0])
+            .expect("opconsat helper should produce spectrum");
+
+        assert_eq!(samples.len(), 4);
+        for (eps1, eps2, loss) in samples {
+            assert!(eps1.is_finite());
+            assert!(eps2.is_finite());
+            assert!(loss.is_finite());
+            assert!(eps2 >= 0.0);
+            assert!(loss >= 0.0);
+        }
     }
 }
