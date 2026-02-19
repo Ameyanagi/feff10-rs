@@ -1,0 +1,27 @@
+spacy
+   0
+lattice vectors  (in A, in Carthesian coordinates)
+      2.54611     -1.47000      0.00000
+      0.00000      2.94000      0.00000
+      0.00000      0.00000     12.11000
+Volume scaling factor (A^3); eimag; core hole
+     -1.00000      0.00000      1.00000
+lattice type  (P,I,F,R,B,CXY,CYZ,CXZ)
+H  
+#atoms in unit cell ; position absorber ; corehole?
+   8   7   0
+# k-points total/x/y/z ; ktype; use symmetry?
+         200         200           0           0           1           0
+ppos
+      0.28868      0.50000      1.02976
+      0.28868      0.50000      3.08929
+      0.00000      0.00000      1.37302
+      0.57735      0.00000      3.43254
+      0.57735      0.00000      0.68651
+      0.00000      0.00000      2.74603
+      0.00000      0.00000      0.00000
+      0.57735      0.00000      2.05952
+ppot
+   1   1   2   2   2   2   3   3
+streta,strgmax,strrmax
+      1.00000      0.00000      0.00000

@@ -23,6 +23,7 @@ Started: Thu Feb 19 09:05:48 JST 2026
 - For EELSMDFF chunk-B/runtime wiring, compose `mdff_readsp -> scale_sigma_rows_with_wavelength -> mdff_qmesh -> mdff_eels` inside `modules/helpers::eelsmdff_workflow_coupling` and call that from both EELS and FULLSPECTRUM models.
 - When adding a fixture that overlaps an existing single-module fixture, keep the new one as `fixtureType: "workflow"` (or multi-module) so CLI default module resolution still prefers the legacy module fixture.
 - For capture-only fixtures, list staged `REFERENCE/*` inputs in `entryFiles` and keep `baselineStatus=requires_fortran_capture`; capture tooling can materialize those from `REFERENCE.zip` while parser fixture tests remain resilient when snapshots are absent.
+- For capture-only fixtures, keep `artifacts/fortran-baselines/<fixture-id>/baseline` snapshots committed (plus `checksums.sha256` and `snapshot-metadata.json`) because `scripts/fortran/ci-oracle-capture-runner.sh` seeds oracle outputs from those directories.
 - For SELF parity-expansion fixtures in `feff10/examples/MPSE/Cu_OPCONS`, keep staged `loss.dat` plus `REFERENCE/sfconv.inp` in `entryFiles` so SELF/OPCONSAT coupling paths stay deterministic across capture and replay workflows.
 - For EELSMDFF-focused parity coverage, `feff10/examples/KSPACE/Graphite` is a good high-qmesh seed (`ELNES`, `MAGIC`) while keeping `modulesCovered` scoped to `EELS`.
 ---
@@ -475,4 +476,29 @@ Started: Thu Feb 19 09:05:48 JST 2026
   - Patterns discovered: Reusing `feff10/examples/MPSE/Cu_OPCONS` with staged `loss.dat` and `sfconv.inp` gives stable SELF coverage for migrated OPCONSAT coupling outputs like `opconsCu.dat`.
   - Gotchas encountered: SELF staged `.inp` entries under `REFERENCE/` may not exist in-repo; keep capture-only fixtures at `baselineStatus=requires_fortran_capture` so parser fixture tests can skip unresolved archive-only snapshots.
   - Useful context: Validation gates used and passing in this iteration: `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
+---
+## 2026-02-19 13:53:15 JST - US-021
+- What was implemented
+  - Added committed baseline snapshots for the new capture-only fixtures (`FX-ATOM-SCF-001`, `FX-KSPACE-GENFMT-001`, `FX-EELSMDFF-001`, `FX-SELF-OPCONSAT-001`) under `artifacts/fortran-baselines/` so oracle capture runner seeding works across the expanded fixture set.
+  - Updated `artifacts/fortran-baselines/snapshot-index.json` to include all 21 fixture snapshots.
+  - Updated parser fixture coverage in `crates/feff-core/tests/parser_fixture_inputs.rs` to skip staged `REFERENCE/*.inp` entries for `baselineStatus=requires_fortran_capture` fixtures, avoiding false parser-deck failures on staged runtime artifacts.
+  - Ran workflow-equivalent oracle parity and all required quality gates; parity report now shows `fixture_count=21`, `passed_fixture_count=21`, `failed_fixture_count=0`, `mismatch_artifact_count=0`.
+  - Marked `US-021` as complete by setting `passes=true` in `scripts/ralph/prd.json`.
+- Files changed
+  - `crates/feff-core/tests/parser_fixture_inputs.rs`
+  - `artifacts/fortran-baselines/FX-ATOM-SCF-001/`
+  - `artifacts/fortran-baselines/FX-KSPACE-GENFMT-001/`
+  - `artifacts/fortran-baselines/FX-EELSMDFF-001/`
+  - `artifacts/fortran-baselines/FX-SELF-OPCONSAT-001/`
+  - `artifacts/fortran-baselines/snapshot-index.json`
+  - `artifacts/regression/oracle-report.json`
+  - `artifacts/regression/oracle-diff.txt`
+  - `artifacts/regression/oracle-summary.txt`
+  - `artifacts/regression/oracle-stderr.txt`
+  - `scripts/ralph/prd.json`
+  - `scripts/ralph/progress.txt`
+- **Learnings for future iterations:**
+  - Patterns discovered: Expanded capture-only fixture sets require committed baseline snapshot directories before `cargo run --locked -- oracle` can succeed with `ci-oracle-capture-runner.sh`.
+  - Gotchas encountered: `parser_fixture_inputs` should treat `REFERENCE/*.inp` on capture-only fixtures as staged module/runtime artifacts, not standalone FEFF parser decks.
+  - Useful context: Validation gates used and passing in this iteration: workflow-equivalent oracle command (`21/21`, zero mismatches), `cargo check --locked`, `cargo test --locked`, `cargo clippy --locked --all-targets -- -D warnings`, `cargo fmt --all -- --check`.
 ---

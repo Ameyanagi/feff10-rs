@@ -1,0 +1,5 @@
+Oracle parity status: PASS
+Fixture count: 21
+Passed fixtures: 21
+Failed fixtures: 0
+Mismatched artifacts: 0

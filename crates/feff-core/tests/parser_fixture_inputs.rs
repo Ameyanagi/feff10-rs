@@ -38,6 +38,16 @@ fn parser_supports_known_cards_in_fixture_entry_input_files() {
                 continue;
             }
 
+            if fixture.baseline_status == "requires_fortran_capture"
+                && entry_file.starts_with("REFERENCE/")
+            {
+                eprintln!(
+                    "skipping capture-only fixture {} staged entry file {}",
+                    fixture.id, entry_file
+                );
+                continue;
+            }
+
             let source = match read_fixture_entry_source(&project_root, fixture, entry_file) {
                 Ok(source) => source,
                 Err(error) if fixture.baseline_status == "requires_fortran_capture" => {
