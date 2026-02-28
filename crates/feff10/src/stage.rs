@@ -85,6 +85,43 @@ impl Stage {
     }
 }
 
+impl Stage {
+    /// Call the corresponding FEFF10 Fortran subroutine via FFI.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure:
+    /// - The current working directory is set to the FEFF working directory
+    /// - No other FEFF stage is running concurrently (Fortran global state)
+    pub unsafe fn call_ffi(&self) {
+        // SAFETY: Each call invokes a Fortran subroutine that operates on files
+        // in the current working directory. The caller guarantees cwd is set
+        // correctly and no concurrent FEFF calls are in progress.
+        unsafe {
+            match self {
+                Stage::Rdinp => feff10_sys::feff_rdinp(),
+                Stage::Dmdw => feff10_sys::feff_dmdw(),
+                Stage::Atomic => feff10_sys::feff_atomic(),
+                Stage::Pot => feff10_sys::feff_pot(),
+                Stage::Ldos => feff10_sys::feff_ldos(),
+                Stage::Screen => feff10_sys::feff_screen(),
+                Stage::Crpa => feff10_sys::feff_crpa(),
+                Stage::Opconsat => feff10_sys::feff_opconsat(),
+                Stage::Xsph => feff10_sys::feff_xsph(),
+                Stage::Fms => feff10_sys::feff_fms(),
+                Stage::Mkgtr => feff10_sys::feff_mkgtr(),
+                Stage::Path => feff10_sys::feff_path(),
+                Stage::Genfmt => feff10_sys::feff_genfmt(),
+                Stage::Ff2x => feff10_sys::feff_ff2x(),
+                Stage::Sfconv => feff10_sys::feff_sfconv(),
+                Stage::Compton => feff10_sys::feff_compton(),
+                Stage::Eels => feff10_sys::feff_eels(),
+                Stage::Rhorrp => feff10_sys::feff_rhorrp(),
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for Stage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.executable_name())

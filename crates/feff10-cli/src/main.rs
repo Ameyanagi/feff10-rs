@@ -152,10 +152,7 @@ fn cmd_run(input: PathBuf, work_dir: Option<PathBuf>, stage_names: Option<Vec<St
         StageProgress::Starting => {
             pb.set_message(format!("Running {stage}..."));
         }
-        StageProgress::Finished {
-            exit_code: _,
-            duration,
-        } => {
+        StageProgress::Finished { duration } => {
             pb.set_message(format!("{stage} done ({:.1}s)", duration.as_secs_f64()));
             pb.inc(1);
         }

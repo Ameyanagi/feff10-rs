@@ -180,6 +180,7 @@ name = "feff10"
 version = "0.1.0"
 dependencies = [
  "feff10-sys",
+ "libc",
  "tempfile",
  "which",
 ]

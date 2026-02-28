@@ -4,6 +4,40 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Mapping: (pipeline_stage_name, source_file_relative_path, fortran_program_name)
+const DRIVERS: &[(&str, &str, &str)] = &[
+    ("rdinp", "RDINP/rdinp.f90", "rdinp"),
+    ("dmdw", "DMDW/dmdw.f90", "dmdw"),
+    ("atomic", "ATOM/atomic.f90", "atomic_pot"),
+    ("pot", "POT/pot.f90", "ffmod1"),
+    ("ldos", "LDOS/ldos.f90", "ffmod7"),
+    ("screen", "SCREEN/screen.f90", "ffmod8"),
+    ("crpa", "CRPA/crpa.f90", "crpa"),
+    ("opconsat", "OPCONSAT/opconsat.f90", "opconsAt"),
+    ("xsph", "XSPH/xsph.f90", "ffmod2"),
+    ("fms", "FMS/fms.f90", "ffmod3"),
+    ("mkgtr", "MKGTR/mkgtr.f90", "mkgtr"),
+    ("path", "PATH/path.f90", "ffmod4"),
+    ("genfmt", "GENFMT/genfmt.f90", "ffmod5"),
+    ("ff2x", "FF2X/ff2x.f90", "ffmod6"),
+    ("sfconv", "SFCONV/sfconv.f90", "ffmod9"),
+    ("compton", "COMPTON/compton.f90", "compton"),
+    ("eels", "EELS/eels.f90", "eelsmod"),
+    ("rhorrp", "RHORRP/rhorrp.f90", "rhorrp_prog"),
+];
+
+/// Which BLAS/LAPACK implementation was detected.
+enum BlasType {
+    Mkl {
+        lib_dir: PathBuf,
+        interface: String,
+    },
+    OpenBlas,
+    SystemBlas,
+    Accelerate,
+    None,
+}
+
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -16,94 +50,352 @@ fn main() {
 
     // 2. Copy source tree to OUT_DIR (don't pollute submodule)
     let build_src = out_dir.join("feff10-src");
-    if build_src.exists() {
-        // Only re-copy if source is newer
-        // For simplicity, always copy - make will handle incremental compilation
-    }
     copy_dir_recursive(&feff_src, &build_src);
 
-    // 3. Detect optimized BLAS/LAPACK and generate Compiler.mk
-    let mut ldflags = ldflags_for(&compiler);
-    let (blas_ldflags, deptype) = detect_blas(&compiler);
-    if !blas_ldflags.is_empty() {
-        if !ldflags.is_empty() {
-            ldflags.push(' ');
-        }
-        ldflags.push_str(&blas_ldflags);
-    }
-
-    let compiler_mk = build_src.join("Compiler.mk");
-    let mut f = fs::File::create(&compiler_mk).expect("Failed to create Compiler.mk");
-    writeln!(f, "F90 = {compiler}").unwrap();
-    writeln!(f, "FLAGS = {flags}").unwrap();
-    writeln!(f, "MPIF90 = mpif90").unwrap();
-    writeln!(f, "MPIFLAGS = -O3").unwrap();
-    writeln!(f, "LDFLAGS = {ldflags}").unwrap();
-    writeln!(f, "FCINCLUDE =").unwrap();
-    writeln!(f, "DEPTYPE = {deptype}").unwrap();
-    drop(f);
-
-    // 4. Copy PAR/sequential.src -> PAR/parallel.f90
+    // 3. Copy PAR/sequential.src -> PAR/parallel.f90 and patch par_stop
     let par_dir = build_src.join("PAR");
     let seq_src = par_dir.join("sequential.src");
     let parallel_f90 = par_dir.join("parallel.f90");
     if seq_src.exists() {
         fs::copy(&seq_src, &parallel_f90).expect("Failed to copy PAR/sequential.src");
     }
+    patch_par_stop(&parallel_f90);
 
-    // 5. Create bin directory and invoke make
-    let bin_dir = out_dir.join("bin");
-    fs::create_dir_all(&bin_dir).expect("Failed to create bin directory");
+    // 4. Patch driver files: convert `program` → `subroutine ... bind(C)`
+    //    This transforms the 18 Fortran executables into library entry points
+    //    callable from Rust via FFI.
+    patch_drivers_for_library(&build_src);
 
-    let executables = [
-        "rdinp", "dmdw", "atomic", "pot", "ldos", "screen", "crpa", "opconsat", "xsph", "fms",
-        "mkgtr", "path", "genfmt", "ff2x", "sfconv", "compton", "eels", "rhorrp",
+    // 5. Detect BLAS/LAPACK and generate Compiler.mk
+    let (blas_ldflags, deptype, blas_type) = detect_blas_full(&compiler);
+    let compiler_mk = build_src.join("Compiler.mk");
+    {
+        let mut f = fs::File::create(&compiler_mk).expect("Failed to create Compiler.mk");
+        writeln!(f, "F90 = {compiler}").unwrap();
+        writeln!(f, "FLAGS = {flags}").unwrap();
+        writeln!(f, "MPIF90 = mpif90").unwrap();
+        writeln!(f, "MPIFLAGS = -O3").unwrap();
+        // LDFLAGS not used for object-only compilation, but Makefile requires it
+        writeln!(f, "LDFLAGS = {blas_ldflags}").unwrap();
+        writeln!(f, "FCINCLUDE =").unwrap();
+        writeln!(f, "DEPTYPE = {deptype}").unwrap();
+        drop(f);
+    }
+
+    // 6. Clean stale .o and .mod files from previous builds
+    //    (prevents duplicate symbols when switching compilers)
+    for f in find_files_recursive(&build_src, "o") {
+        let _ = fs::remove_file(f);
+    }
+    for f in find_files_recursive(&build_src, "mod") {
+        let _ = fs::remove_file(f);
+    }
+
+    // 7. Append `objects` target to Makefile (compiles all .o files without linking)
+    append_objects_target(&build_src);
+
+    // 8. Run `make objects`
+    run_make_objects(&build_src, &compiler, &flags);
+
+    // 9. Collect all .o files and create libfeff10_raw.a
+    let raw_archive = out_dir.join("libfeff10_raw.a");
+    create_archive_from_objects(&build_src, &raw_archive);
+
+    // 10. Create final archive — merge MKL/Intel runtime if applicable
+    let final_archive = out_dir.join("libfeff10.a");
+    let mut merge_libs = Vec::new();
+
+    if let BlasType::Mkl {
+        lib_dir,
+        interface,
+    } = &blas_type
+    {
+        merge_libs.push(lib_dir.join(format!("lib{interface}.a")));
+        merge_libs.push(lib_dir.join("libmkl_sequential.a"));
+        merge_libs.push(lib_dir.join("libmkl_core.a"));
+    }
+
+    // For Intel compiler, merge Intel Fortran runtime into the archive
+    // so the final binary doesn't need LD_LIBRARY_PATH pointing to oneAPI.
+    if compiler.contains("ifx") || compiler.contains("ifort") {
+        if let Some(compiler_dir) = Path::new(&compiler).parent().and_then(|p| p.parent()) {
+            let lib_dir = compiler_dir.join("lib");
+            for lib in &["libifcore.a", "libimf.a", "libsvml.a", "libirc.a"] {
+                let path = lib_dir.join(lib);
+                if path.exists() {
+                    merge_libs.push(path);
+                }
+            }
+        }
+    }
+
+    if !merge_libs.is_empty() && cfg!(target_os = "linux") {
+        eprintln!(
+            "feff10-sys: merging {} external archives into libfeff10.a",
+            merge_libs.len()
+        );
+        merge_archives(&raw_archive, &final_archive, &merge_libs);
+    } else {
+        // No merge needed — just rename
+        fs::rename(&raw_archive, &final_archive)
+            .or_else(|_| fs::copy(&raw_archive, &final_archive).map(|_| ()))
+            .expect("Failed to create final archive");
+    }
+
+    // 11. Emit cargo link directives
+    println!("cargo:rustc-link-search=native={}", out_dir.display());
+    println!("cargo:rustc-link-lib=static=feff10");
+
+    // Fortran runtime (dynamic linking — part of the system)
+    emit_fortran_runtime_links(&compiler);
+
+    // BLAS (only if NOT merged into the archive)
+    match &blas_type {
+        BlasType::Mkl { .. } if cfg!(target_os = "linux") => {
+            // Already merged into libfeff10.a via ld -r
+        }
+        BlasType::Mkl {
+            lib_dir,
+            interface,
+        } => {
+            // macOS or other: can't merge, link separately
+            println!("cargo:rustc-link-search=native={}", lib_dir.display());
+            println!("cargo:rustc-link-lib=static={interface}");
+            println!("cargo:rustc-link-lib=static=mkl_sequential");
+            println!("cargo:rustc-link-lib=static=mkl_core");
+        }
+        BlasType::OpenBlas => {
+            println!("cargo:rustc-link-lib=openblas");
+        }
+        BlasType::SystemBlas => {
+            println!("cargo:rustc-link-lib=lapack");
+            println!("cargo:rustc-link-lib=blas");
+        }
+        BlasType::Accelerate => {
+            println!("cargo:rustc-link-lib=framework=Accelerate");
+        }
+        BlasType::None => {}
+    }
+
+    // Common system libraries
+    println!("cargo:rustc-link-lib=pthread");
+    println!("cargo:rustc-link-lib=m");
+    if cfg!(target_os = "linux") {
+        println!("cargo:rustc-link-lib=dl");
+    }
+
+    // 12. Emit rerun-if-changed directives
+    println!("cargo:rerun-if-env-changed=FEFF_FC");
+    println!("cargo:rerun-if-env-changed=FC");
+    println!("cargo:rerun-if-env-changed=FEFF_FFLAGS");
+    println!("cargo:rerun-if-env-changed=FEFF_BLAS");
+    println!("cargo:rerun-if-env-changed=FEFF_NO_NATIVE");
+    println!("cargo:rerun-if-env-changed=FEFF_LTO");
+    println!("cargo:rerun-if-env-changed=MKLROOT");
+    println!("cargo:rerun-if-env-changed=LD_LIBRARY_PATH");
+
+    println!(
+        "cargo:rerun-if-changed={}",
+        feff_src.join("Makefile").display()
+    );
+    println!(
+        "cargo:rerun-if-changed={}",
+        feff_src.join("Compiler.mk.default").display()
+    );
+
+    let src_dirs = [
+        "ATOM", "BAND", "COMMON", "COMPTON", "CRPA", "DEBYE", "DMDW", "EELS", "EELSMDFF",
+        "ERRORMODS", "EXCH", "FF2X", "FMS", "FOVRG", "FULLSPECTRUM", "GENFMT", "IOMODS",
+        "KSPACE", "LDOS", "MATH", "MKGTR", "MODS", "PAR", "PATH", "POT", "RDINP", "RHORRP",
+        "RIXS", "SCREEN", "SELF", "SFCONV", "TDLDA", "XSPH", "INPGEN", "HEADERS", "DEP",
     ];
+    for dir in &src_dirs {
+        println!("cargo:rerun-if-changed={}", feff_src.join(dir).display());
+    }
+}
 
-    let exec_dir = format!("{}/", bin_dir.display());
+// ---------------------------------------------------------------------------
+// Fortran driver patching
+// ---------------------------------------------------------------------------
 
-    // Build executables one at a time - Fortran module dependencies
-    // prevent reliable parallel compilation across different targets.
-    // Each individual target's compilation is serial (make handles
-    // intra-target ordering via DEP/dependencies.mk).
-    let mut make_args = vec![
-        format!("F90={compiler}"),
-        format!("FLAGS={flags}"),
-        format!("EXECDIR={exec_dir}"),
-    ];
-    make_args.extend(executables.iter().map(|s| s.to_string()));
+/// Patch all 18 driver files in-place (in the OUT_DIR copy):
+/// - `program NAME` → `subroutine feff_STAGE() bind(C, name="feff_STAGE")`
+/// - `end program [NAME]` / bare `end` → `end subroutine feff_STAGE`
+/// - bare `stop` → `return`
+fn patch_drivers_for_library(build_src: &Path) {
+    for &(stage, src_rel, fortran_name) in DRIVERS {
+        let src_path = build_src.join(src_rel);
+        if !src_path.exists() {
+            panic!(
+                "feff10-sys: driver source not found: {}",
+                src_path.display()
+            );
+        }
 
-    eprintln!("feff10-sys: running make in {}", build_src.display());
+        let content = fs::read_to_string(&src_path)
+            .unwrap_or_else(|e| panic!("Failed to read {}: {e}", src_path.display()));
+
+        let patched = patch_driver_content(&content, stage, fortran_name);
+
+        fs::write(&src_path, patched)
+            .unwrap_or_else(|e| panic!("Failed to write {}: {e}", src_path.display()));
+
+        eprintln!("feff10-sys: patched {src_rel} → feff_{stage}()");
+    }
+}
+
+/// Apply patching rules to a single driver file's content.
+fn patch_driver_content(content: &str, stage: &str, fortran_name: &str) -> String {
+    let subroutine_decl = format!("      subroutine feff_{stage}() bind(C, name=\"feff_{stage}\")");
+    let end_subroutine = format!("      end subroutine feff_{stage}");
+
+    let mut result: Vec<String> = Vec::new();
+    let mut found_end_program = false;
+
+    for line in content.lines() {
+        let trimmed = line.trim();
+        let code_part = trimmed.split('!').next().unwrap_or("").trim();
+        let tokens: Vec<&str> = code_part.split_whitespace().collect();
+
+        // Rule 1: program NAME → subroutine feff_STAGE() bind(C)
+        if tokens.len() >= 2
+            && tokens[0].eq_ignore_ascii_case("program")
+            && tokens[1].eq_ignore_ascii_case(fortran_name)
+        {
+            result.push(subroutine_decl.clone());
+            continue;
+        }
+
+        // Rule 2: end program [NAME] → end subroutine feff_STAGE
+        if tokens.len() >= 2
+            && tokens[0].eq_ignore_ascii_case("end")
+            && tokens[1].eq_ignore_ascii_case("program")
+        {
+            result.push(end_subroutine.clone());
+            found_end_program = true;
+            continue;
+        }
+
+        // Rule 3: bare `stop` → `return`
+        if code_part.eq_ignore_ascii_case("stop") {
+            let indent = &line[..line.len() - line.trim_start().len()];
+            result.push(format!("{indent}return"));
+            continue;
+        }
+
+        result.push(line.to_string());
+    }
+
+    // Rule 4: If no `end program` was found, replace the last bare `end`
+    if !found_end_program {
+        let mut replaced = false;
+        for i in (0..result.len()).rev() {
+            let code_part = result[i].trim().split('!').next().unwrap_or("").trim();
+            if code_part.eq_ignore_ascii_case("end") {
+                result[i] = end_subroutine.clone();
+                replaced = true;
+                break;
+            }
+        }
+        if !replaced {
+            panic!("feff10-sys: could not find terminal `end` in driver for stage {stage}");
+        }
+    }
+
+    let mut output = result.join("\n");
+    if content.ends_with('\n') {
+        output.push('\n');
+    }
+    output
+}
+
+/// Patch PAR/parallel.f90: replace `stop ' '` in par_stop with `return`.
+/// This makes par_stop non-fatal so execution returns to the caller.
+fn patch_par_stop(parallel_f90: &Path) {
+    if !parallel_f90.exists() {
+        return;
+    }
+    let content = fs::read_to_string(parallel_f90)
+        .unwrap_or_else(|e| panic!("Failed to read {}: {e}", parallel_f90.display()));
+
+    // Replace `stop ' '` with `return` inside the par_stop subroutine
+    let patched = content.replace("stop ' '", "return");
+
+    fs::write(parallel_f90, patched)
+        .unwrap_or_else(|e| panic!("Failed to write {}: {e}", parallel_f90.display()));
+
+    eprintln!("feff10-sys: patched PAR/parallel.f90 (par_stop: stop → return)");
+}
+
+// ---------------------------------------------------------------------------
+// Build system (Makefile + make + ar)
+// ---------------------------------------------------------------------------
+
+/// Append an `objects` target to the copied Makefile.
+/// This target compiles all .o files needed by the 18 pipeline stages without linking.
+fn append_objects_target(build_src: &Path) {
+    let makefile = build_src.join("Makefile");
+    let mut f = fs::OpenOptions::new()
+        .append(true)
+        .open(&makefile)
+        .expect("Failed to open Makefile for appending");
+
+    let stage_names: Vec<&str> = DRIVERS.iter().map(|&(name, _, _)| name).collect();
+    let targets = stage_names.join(" ");
+
+    writeln!(f).unwrap();
+    writeln!(
+        f,
+        "# Library build target (added by build.rs for static library compilation)"
+    )
+    .unwrap();
+    writeln!(f, "LIBRARY_TARGETS = {targets}").unwrap();
+    writeln!(
+        f,
+        "ALL_LIB_OBJ = $(sort $(foreach exe,$(LIBRARY_TARGETS),$($(exe)_MODULES) $($(exe)_OBJ)))"
+    )
+    .unwrap();
+    writeln!(f, "objects: $(ALL_LIB_OBJ)").unwrap();
+
+    eprintln!("feff10-sys: appended `objects` target to Makefile");
+}
+
+/// Run `make objects` to compile all Fortran source files into .o files.
+fn run_make_objects(build_src: &Path, compiler: &str, flags: &str) {
+    eprintln!("feff10-sys: running make objects in {}", build_src.display());
 
     let mut cmd = Command::new("make");
-    cmd.args(&make_args)
-        .current_dir(&build_src)
-        .env("MAKEFLAGS", ""); // Clear inherited flags to avoid conflicts
+    cmd.args([
+        &format!("F90={compiler}"),
+        &format!("FLAGS={flags}"),
+        // Always pass -DFEFF so that #ifdef FEFF blocks are active.
+        // The Makefile only sets FPPTASK for non-gfortran compilers,
+        // but we need it for all compilers in library mode.
+        "FPPTASK=-DFEFF",
+        "objects",
+    ])
+    .current_dir(build_src)
+    .env("MAKEFLAGS", ""); // Clear inherited flags
 
-    // On macOS, flang-new from Nix/Homebrew may need SDKROOT to find -lSystem
+    // On macOS, flang-new may need SDKROOT
     if cfg!(target_os = "macos") && compiler.contains("flang") {
         if env::var("SDKROOT").is_err() {
             if let Ok(output) = Command::new("xcrun").arg("--show-sdk-path").output() {
                 if output.status.success() {
                     let sdk = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    eprintln!("feff10-sys: setting SDKROOT={sdk} for flang-new on macOS");
                     cmd.env("SDKROOT", sdk);
                 }
             }
         }
     }
 
-    // On Linux with Intel oneAPI, set up library paths for the linker.
-    // When ifx is invoked via full path (without setvars.sh), the compiler
-    // driver resolves MKL/runtime libs itself, but LD_LIBRARY_PATH may be
-    // needed for dynamic linking at build time.
+    // On Linux with Intel oneAPI, propagate library paths
     if cfg!(target_os = "linux") && compiler.contains("oneapi") {
         let mut ld_paths = Vec::new();
         if let Some(mkl_root) = find_mkl_root() {
             ld_paths.push(format!("{}/lib/intel64", mkl_root.display()));
         }
-        // Add compiler runtime lib path
-        if let Some(compiler_dir) = Path::new(&compiler).parent().and_then(|p| p.parent()) {
+        if let Some(compiler_dir) = Path::new(compiler).parent().and_then(|p| p.parent()) {
             let compiler_lib = compiler_dir.join("lib");
             if compiler_lib.is_dir() {
                 ld_paths.push(compiler_lib.display().to_string());
@@ -116,97 +408,168 @@ fn main() {
             } else {
                 format!("{}:{existing}", ld_paths.join(":"))
             };
-            eprintln!("feff10-sys: setting LD_LIBRARY_PATH for Intel oneAPI");
             cmd.env("LD_LIBRARY_PATH", &new_path);
             cmd.env("LIBRARY_PATH", &new_path);
         }
     }
 
     let status = cmd.status().expect("Failed to run make. Is `make` installed?");
-
     if !status.success() {
         panic!(
-            "feff10-sys: make failed with exit code {:?}",
+            "feff10-sys: make objects failed with exit code {:?}",
             status.code()
         );
     }
+}
 
-    // Verify executables were built
-    for exe in &executables {
-        let exe_path = bin_dir.join(exe);
-        if !exe_path.exists() {
-            panic!("feff10-sys: expected executable not found: {}", exe_path.display());
-        }
+/// Collect all .o files from the build tree and create a static archive.
+fn create_archive_from_objects(build_src: &Path, archive_path: &Path) {
+    let objects = find_files_recursive(build_src, "o");
+    if objects.is_empty() {
+        panic!("feff10-sys: no .o files found in {}", build_src.display());
     }
 
-    // 6. Generate paths.rs
-    let paths_rs = out_dir.join("paths.rs");
-    let mut f = fs::File::create(&paths_rs).unwrap();
-    writeln!(
-        f,
-        r#"const FEFF_BIN_DIR: &str = "{}";"#,
-        bin_dir.display().to_string().replace('\\', "\\\\")
-    )
-    .unwrap();
-    drop(f);
-
-    // 7. Emit cargo directives
-    println!("cargo:rerun-if-env-changed=FEFF_FC");
-    println!("cargo:rerun-if-env-changed=FC");
-    println!("cargo:rerun-if-env-changed=FEFF_FFLAGS");
-    println!("cargo:rerun-if-env-changed=FEFF_BLAS");
-    println!("cargo:rerun-if-env-changed=FEFF_NO_NATIVE");
-    println!("cargo:rerun-if-env-changed=FEFF_LTO");
-    println!("cargo:rerun-if-env-changed=MKLROOT");
-    println!("cargo:rerun-if-env-changed=LD_LIBRARY_PATH");
-
-    // Track the key build files
-    println!(
-        "cargo:rerun-if-changed={}",
-        feff_src.join("Makefile").display()
-    );
-    println!(
-        "cargo:rerun-if-changed={}",
-        feff_src.join("Compiler.mk.default").display()
+    eprintln!(
+        "feff10-sys: archiving {} object files into {}",
+        objects.len(),
+        archive_path.display()
     );
 
-    // Track source directories
-    let src_dirs = [
-        "ATOM", "BAND", "COMMON", "COMPTON", "CRPA", "DEBYE", "DMDW", "EELS", "EELSMDFF",
-        "ERRORMODS", "EXCH", "FF2X", "FMS", "FOVRG", "FULLSPECTRUM", "GENFMT", "IOMODS",
-        "KSPACE", "LDOS", "MATH", "MKGTR", "MODS", "PAR", "PATH", "POT", "RDINP", "RHORRP",
-        "RIXS", "SCREEN", "SELF", "SFCONV", "TDLDA", "XSPH", "INPGEN", "HEADERS", "DEP",
-    ];
-    for dir in &src_dirs {
-        println!("cargo:rerun-if-changed={}", feff_src.join(dir).display());
+    // Remove existing archive to avoid stale entries
+    let _ = fs::remove_file(archive_path);
+
+    let status = Command::new("ar")
+        .arg("rcs")
+        .arg(archive_path)
+        .args(&objects)
+        .status()
+        .expect("Failed to run ar. Is `ar` (binutils) installed?");
+
+    if !status.success() {
+        panic!("feff10-sys: ar rcs failed");
     }
 }
 
-/// Detect the Fortran compiler and appropriate flags.
+/// Merge the FEFF archive with external static libraries (MKL, Intel runtime)
+/// using `ld -r` (partial/incremental linking) to resolve circular dependencies.
+///
+/// This produces a single relocatable object that contains:
+/// - ALL FEFF code (via --whole-archive)
+/// - Only the needed symbols from external libs (via --start-group)
+fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
+    let combined_o = final_archive.with_extension("o");
+
+    // Verify all input archives exist
+    for lib in extra_libs {
+        if !lib.exists() {
+            panic!(
+                "feff10-sys: library not found for merge: {}",
+                lib.display()
+            );
+        }
+    }
+
+    let mut cmd = Command::new("ld");
+    cmd.arg("-r")
+        .arg("--whole-archive")
+        .arg(raw_archive)
+        .arg("--no-whole-archive")
+        .arg("--start-group");
+
+    for lib in extra_libs {
+        cmd.arg(lib);
+    }
+
+    cmd.arg("--end-group").arg("-o").arg(&combined_o);
+
+    eprintln!("feff10-sys: running ld -r to merge archives");
+    let status = cmd.status().expect("Failed to run ld for archive merge");
+    if !status.success() {
+        panic!("feff10-sys: ld -r failed. Cannot merge archives.");
+    }
+
+    // Wrap the combined object in an archive
+    let _ = fs::remove_file(final_archive);
+    let status = Command::new("ar")
+        .args(["rcs"])
+        .arg(final_archive)
+        .arg(&combined_o)
+        .status()
+        .expect("Failed to run ar");
+
+    if !status.success() {
+        panic!("feff10-sys: ar rcs failed for final archive");
+    }
+
+    // Clean up intermediate .o
+    let _ = fs::remove_file(&combined_o);
+
+    // Report size
+    if let Ok(meta) = fs::metadata(final_archive) {
+        let size_mb = meta.len() as f64 / (1024.0 * 1024.0);
+        eprintln!(
+            "feff10-sys: final archive size: {:.1} MB",
+            size_mb
+        );
+    }
+}
+
+/// Emit cargo link directives for the Fortran runtime.
+fn emit_fortran_runtime_links(compiler: &str) {
+    if compiler.contains("gfortran") {
+        println!("cargo:rustc-link-lib=gfortran");
+    } else if compiler.contains("ifx") || compiler.contains("ifort") {
+        // Intel runtime is merged into the archive on Linux.
+        // On other platforms, link dynamically.
+        if !cfg!(target_os = "linux") {
+            if let Some(compiler_dir) = Path::new(compiler).parent().and_then(|p| p.parent()) {
+                let lib_dir = compiler_dir.join("lib");
+                if lib_dir.is_dir() {
+                    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+                }
+            }
+            println!("cargo:rustc-link-lib=ifcore");
+            println!("cargo:rustc-link-lib=imf");
+            println!("cargo:rustc-link-lib=svml");
+            println!("cargo:rustc-link-lib=irc");
+        }
+    } else if compiler.contains("flang") {
+        // LLVM Flang runtime
+        println!("cargo:rustc-link-lib=flang_rt.runtime");
+        if let Ok(output) = Command::new("gcc").arg("-print-libgcc-file-name").output() {
+            if output.status.success() {
+                let libgcc_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if let Some(dir) = Path::new(&libgcc_path).parent() {
+                    println!("cargo:rustc-link-search=native={}", dir.display());
+                    println!("cargo:rustc-link-lib=gcc");
+                }
+            }
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Compiler and BLAS detection (mostly unchanged from previous version)
+// ---------------------------------------------------------------------------
+
 fn detect_compiler() -> (String, String) {
-    // Check for explicit override
     if let Ok(fc) = env::var("FEFF_FC") {
-        let flags = env::var("FEFF_FFLAGS")
-            .unwrap_or_else(|_| default_flags_for(&fc));
+        let flags = env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(&fc));
         return (fc, flags);
     }
     if let Ok(fc) = env::var("FC") {
-        let flags = env::var("FEFF_FFLAGS")
-            .unwrap_or_else(|_| default_flags_for(&fc));
+        let flags = env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(&fc));
         return (fc, flags);
     }
 
-    // Probe for compilers in order of preference
     for candidate in &["gfortran", "ifx", "flang-new", "ifort"] {
         if which::which(candidate).is_ok() {
-            let flags = env::var("FEFF_FFLAGS")
-                .unwrap_or_else(|_| default_flags_for(candidate));
+            let flags = env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(candidate));
             return (candidate.to_string(), flags);
         }
     }
 
-    // Probe standard Intel oneAPI installation paths (ifx may not be in PATH
-    // without sourcing setvars.sh)
+    // Probe standard Intel oneAPI paths
     if cfg!(target_os = "linux") {
         for path in &[
             "/opt/intel/oneapi/compiler/latest/bin/ifx",
@@ -214,8 +577,8 @@ fn detect_compiler() -> (String, String) {
         ] {
             if Path::new(path).exists() {
                 let basename = Path::new(path).file_name().unwrap().to_str().unwrap();
-                let flags = env::var("FEFF_FFLAGS")
-                    .unwrap_or_else(|_| default_flags_for(basename));
+                let flags =
+                    env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(basename));
                 eprintln!("feff10-sys: found Intel compiler at {path}");
                 return (path.to_string(), flags);
             }
@@ -228,41 +591,26 @@ fn detect_compiler() -> (String, String) {
     );
 }
 
-/// Return default flags for a given compiler.
 fn default_flags_for(compiler: &str) -> String {
     let march = if env::var("FEFF_NO_NATIVE").is_ok() {
-        "" // Allow disabling -march=native for cross-compilation
+        ""
     } else {
         " -march=native"
     };
 
-    // LTO: link-time optimization for cross-file inlining.
-    // Disabled by default — benchmarks show gfortran LTO is ~8% slower
-    // for FEFF10 due to increased code size and cache pressure in tight
-    // ODE loops. Enable with FEFF_LTO=1 if your workload benefits.
     let lto = env::var("FEFF_LTO").is_ok();
 
     if compiler.contains("gfortran") {
-        // -fallow-argument-mismatch needed for gfortran >= 10
         let lto_flag = if lto { " -flto=auto" } else { "" };
         format!("-ffree-line-length-none -cpp -O3 -fallow-argument-mismatch{march}{lto_flag}")
     } else if compiler.contains("ifx") {
         let lto_flag = if lto { " -ipo" } else { "" };
-        // -no-vec: workaround for ifx 2025.3 ICE in VPlan vectorizer on
-        // FF2X/ff2chijas.f90. Auto-vectorization has minimal impact on FEFF10
-        // (scalar ODE code; vectorized math is in MKL). Scalar -O3 + -xHost
-        // instruction selection is preserved.
+        // -no-vec: workaround for ifx 2025.3 ICE in VPlan vectorizer on ff2chijas.f90
         format!("-O3 -fpp -xHost -no-vec{lto_flag}")
     } else if compiler.contains("ifort") {
         let lto_flag = if lto { " -ipo" } else { "" };
         format!("-O3 -xHost{lto_flag}")
     } else if compiler.contains("flang") {
-        // LLVM flang-new: free-form is default, -cpp enables preprocessing.
-        // -fno-automatic: places local arrays in static storage instead of the stack.
-        // Without this, flang-new stack-allocates ALL local arrays (including huge ones
-        // like the 300MB arrays in paths.f90), causing stack overflow. gfortran avoids
-        // this via -fmax-stack-var-size which auto-promotes large arrays to the heap.
-        // FEFF10 is single-threaded and non-recursive, so static storage is safe.
         let lto_flag = if lto { " -flto" } else { "" };
         format!("-O3 -cpp -fno-automatic{march}{lto_flag}")
     } else {
@@ -270,171 +618,148 @@ fn default_flags_for(compiler: &str) -> String {
     }
 }
 
-/// Detect an optimized BLAS/LAPACK library.
-/// Returns (ldflags, deptype) where deptype="_MKL" excludes the naive MATH/lu.f90.
-/// Set FEFF_BLAS=none to disable.
-fn detect_blas(compiler: &str) -> (String, String) {
+/// Detect BLAS/LAPACK. Returns (makefile_ldflags, deptype, blas_type).
+fn detect_blas_full(compiler: &str) -> (String, String, BlasType) {
     if env::var("FEFF_BLAS").as_deref() == Ok("none") {
         eprintln!("feff10-sys: BLAS disabled (FEFF_BLAS=none), using naive MATH/lu.f90");
-        return (String::new(), String::new());
+        return (String::new(), String::new(), BlasType::None);
     }
 
-    // 1. Honor explicit FEFF_BLAS setting
     if let Ok(blas) = env::var("FEFF_BLAS") {
         eprintln!("feff10-sys: using FEFF_BLAS={blas}");
-        return (blas, "_MKL".to_string());
+        // Can't determine type from user string — treat as generic
+        return (blas, "_MKL".to_string(), BlasType::None);
     }
 
-    // 2. On macOS, use Accelerate framework (always available, optimized for Apple Silicon)
+    // macOS: Accelerate framework
     if cfg!(target_os = "macos") {
         let framework_dir = Path::new("/System/Library/Frameworks/Accelerate.framework");
         if framework_dir.is_dir() {
             eprintln!("feff10-sys: using Apple Accelerate for BLAS/LAPACK");
-            return ("-framework Accelerate".to_string(), "_MKL".to_string());
+            return (
+                "-framework Accelerate".to_string(),
+                "_MKL".to_string(),
+                BlasType::Accelerate,
+            );
         }
     }
 
-    // 3. Intel MKL — preferred on Linux for best LAPACK/BLAS performance.
-    //    Auto-detects from MKLROOT env or standard oneAPI install paths.
+    // Intel MKL — preferred on Linux
     if cfg!(target_os = "linux") {
-        if let Some(mkl_flags) = detect_mkl(compiler) {
-            return (mkl_flags, "_MKL".to_string());
+        if let Some((mkl_ldflags, lib_dir, interface)) = detect_mkl_full(compiler) {
+            return (
+                mkl_ldflags,
+                "_MKL".to_string(),
+                BlasType::Mkl { lib_dir, interface },
+            );
         }
     }
 
-    // 4. OpenBLAS (Linux fallback)
+    // OpenBLAS fallback
     if cfg!(target_os = "linux") {
-        // Try pkg-config first
         if let Ok(output) = Command::new("pkg-config").args(["--libs", "openblas"]).output() {
             if output.status.success() {
                 let libs = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 eprintln!("feff10-sys: using OpenBLAS via pkg-config: {libs}");
-                return (libs, "_MKL".to_string());
+                return (libs, "_MKL".to_string(), BlasType::OpenBlas);
             }
         }
-        // Try direct -lopenblas
         if Path::new("/usr/lib/x86_64-linux-gnu/libopenblas.so").exists()
             || Path::new("/usr/lib64/libopenblas.so").exists()
             || Path::new("/usr/lib/libopenblas.so").exists()
         {
             eprintln!("feff10-sys: using OpenBLAS (-lopenblas)");
-            return ("-lopenblas".to_string(), "_MKL".to_string());
+            return (
+                "-lopenblas".to_string(),
+                "_MKL".to_string(),
+                BlasType::OpenBlas,
+            );
         }
-        // Try system LAPACK/BLAS
+        // System LAPACK/BLAS
         if Path::new("/usr/lib/x86_64-linux-gnu/liblapack.so").exists()
             || Path::new("/usr/lib64/liblapack.so").exists()
         {
             eprintln!("feff10-sys: using system LAPACK/BLAS");
-            return ("-llapack -lblas".to_string(), "_MKL".to_string());
+            return (
+                "-llapack -lblas".to_string(),
+                "_MKL".to_string(),
+                BlasType::SystemBlas,
+            );
         }
     }
 
     eprintln!("feff10-sys: no optimized BLAS found, using naive MATH/lu.f90");
-    (String::new(), String::new())
+    (String::new(), String::new(), BlasType::None)
 }
 
-/// Auto-detect Intel MKL and return appropriate linker flags.
-/// For ifx/ifort: uses -qmkl=sequential (compiler handles everything).
-/// For gfortran/flang: uses explicit library linking.
-fn detect_mkl(compiler: &str) -> Option<String> {
+/// Detect MKL and return (ldflags_for_makefile, lib_dir, interface_lib_name).
+fn detect_mkl_full(compiler: &str) -> Option<(String, PathBuf, String)> {
     let mkl_root = find_mkl_root()?;
     let lib_dir = mkl_root.join("lib/intel64");
 
-    // Verify the key libraries exist
     if !lib_dir.join("libmkl_core.so").exists() && !lib_dir.join("libmkl_core.a").exists() {
-        eprintln!("feff10-sys: MKL root found at {} but libraries missing", mkl_root.display());
+        eprintln!(
+            "feff10-sys: MKL root found at {} but libraries missing",
+            mkl_root.display()
+        );
         return None;
     }
 
-    if compiler.contains("ifx") || compiler.contains("ifort") {
-        // Intel compilers: use explicit static MKL linking to avoid runtime
-        // LD_LIBRARY_PATH requirements. -qmkl only works reliably when setvars.sh
-        // has been sourced; explicit paths are more robust.
-        let flags = format!(
-            "-L{lib} -Wl,--start-group {lib}/libmkl_intel_lp64.a {lib}/libmkl_sequential.a {lib}/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl",
-            lib = lib_dir.display()
-        );
-        eprintln!("feff10-sys: using MKL with Intel static linkage ({})", mkl_root.display());
-        Some(flags)
+    let interface = if compiler.contains("ifx") || compiler.contains("ifort") {
+        "mkl_intel_lp64"
     } else {
-        // gfortran/flang: explicit static link flags.
-        // Static linking avoids runtime dependency on MKL shared libraries.
-        // Use --start-group/--end-group to resolve circular dependencies between MKL libs.
-        let flags = format!(
-            "-L{lib} -Wl,--start-group {lib}/libmkl_gf_lp64.a {lib}/libmkl_sequential.a {lib}/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl",
-            lib = lib_dir.display()
-        );
-        eprintln!("feff10-sys: using MKL with gfortran static linkage ({})", mkl_root.display());
-        Some(flags)
-    }
+        "mkl_gf_lp64"
+    };
+
+    let ldflags = format!(
+        "-L{lib} -Wl,--start-group {lib}/lib{interface}.a {lib}/libmkl_sequential.a {lib}/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl",
+        lib = lib_dir.display(),
+    );
+
+    eprintln!(
+        "feff10-sys: using MKL ({interface}) at {}",
+        mkl_root.display()
+    );
+    Some((ldflags, lib_dir, interface.to_string()))
 }
 
-/// Find the MKL installation root directory.
 fn find_mkl_root() -> Option<PathBuf> {
-    // 1. MKLROOT environment variable (set by setvars.sh)
     if let Ok(root) = env::var("MKLROOT") {
         let path = PathBuf::from(&root);
         if path.is_dir() {
             return Some(path);
         }
     }
-
-    // 2. Probe standard Intel oneAPI installation paths
-    let candidates = [
-        "/opt/intel/oneapi/mkl/latest",
-    ];
-    for path in &candidates {
+    for path in &["/opt/intel/oneapi/mkl/latest"] {
         let p = PathBuf::from(path);
         if p.is_dir() {
             return Some(p);
         }
     }
-
     None
 }
 
-/// Return extra linker flags needed for a given compiler.
-fn ldflags_for(compiler: &str) -> String {
-    let mut flags = Vec::new();
-    let lto = env::var("FEFF_LTO").is_ok();
+// ---------------------------------------------------------------------------
+// Utilities
+// ---------------------------------------------------------------------------
 
-    // LTO flags must also be passed to the linker
-    if lto {
-        if compiler.contains("gfortran") {
-            flags.push("-flto=auto".to_string());
-        } else if compiler.contains("flang") {
-            flags.push("-flto".to_string());
-        }
-        // ifx/ifort: -ipo is handled by the compiler driver automatically
-    }
-
-    if compiler.contains("ifx") || compiler.contains("ifort") {
-        // Statically link Intel runtime libs (libimf, libsvml, libirc, etc.)
-        // so executables don't need LD_LIBRARY_PATH pointing to oneAPI.
-        flags.push("-static-intel".to_string());
-    }
-
-    if compiler.contains("flang") {
-        // LLVM flang-new needs libgcc for compiler-rt builtins (__divdc3, etc.)
-        // on platforms where compiler-rt is not automatically linked.
-        if let Ok(output) = Command::new("gcc").arg("-print-libgcc-file-name").output() {
-            if output.status.success() {
-                let libgcc_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if let Some(dir) = Path::new(&libgcc_path).parent() {
-                    flags.push(format!("-L{} -lgcc", dir.display()));
+/// Find all files with a given extension recursively.
+fn find_files_recursive(dir: &Path, extension: &str) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    fn walk(dir: &Path, ext: &str, files: &mut Vec<PathBuf>) {
+        if let Ok(entries) = fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    walk(&path, ext, files);
+                } else if path.extension().map_or(false, |e| e == ext) {
+                    files.push(path);
                 }
             }
         }
-
-        // Safety net: increase default stack size on macOS (default 8MB).
-        // The -fno-automatic flag (in FLAGS) handles the main issue by placing
-        // local arrays in static storage, but this provides extra margin.
-        if cfg!(target_os = "macos") {
-            flags.push("-Wl,-stack_size,0x4000000".to_string());
-        }
     }
-
-    flags.join(" ")
+    walk(dir, extension, &mut files);
+    files
 }
 
 /// Recursively copy a directory tree.
@@ -448,13 +773,17 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
         let src_path = entry.path();
         let dst_path = dst.join(entry.file_name());
 
-        // Skip .git directories
-        if entry.file_name() == ".git" || entry.file_name() == ".github" {
-            continue;
-        }
-        // Skip doc, examples, Bugs directories (not needed for build)
         let name = entry.file_name();
-        if name == "doc" || name == "examples" || name == "Bugs" || name == "windows" || name == "windowsNoMkl" || name == "project" {
+        // Skip directories not needed for build
+        if name == ".git"
+            || name == ".github"
+            || name == "doc"
+            || name == "examples"
+            || name == "Bugs"
+            || name == "windows"
+            || name == "windowsNoMkl"
+            || name == "project"
+        {
             continue;
         }
 
@@ -462,7 +791,11 @@ fn copy_dir_recursive(src: &Path, dst: &Path) {
             copy_dir_recursive(&src_path, &dst_path);
         } else if ty.is_file() {
             fs::copy(&src_path, &dst_path).unwrap_or_else(|e| {
-                panic!("Failed to copy {} -> {}: {e}", src_path.display(), dst_path.display());
+                panic!(
+                    "Failed to copy {} -> {}: {e}",
+                    src_path.display(),
+                    dst_path.display()
+                );
             });
         }
     }

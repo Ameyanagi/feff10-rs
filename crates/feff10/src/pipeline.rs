@@ -1,6 +1,5 @@
 use std::fs;
 use std::path::PathBuf;
-use std::process::Command;
 use std::time::{Duration, Instant};
 
 use crate::config::FeffConfig;
@@ -11,9 +10,6 @@ use crate::stage::Stage;
 #[derive(Debug)]
 pub struct StageResult {
     pub stage: Stage,
-    pub exit_code: i32,
-    pub stdout: String,
-    pub stderr: String,
     pub duration: Duration,
 }
 
@@ -28,7 +24,7 @@ pub struct PipelineResult {
 #[derive(Debug)]
 pub enum StageProgress {
     Starting,
-    Finished { exit_code: i32, duration: Duration },
+    Finished { duration: Duration },
 }
 
 /// Orchestrates FEFF executable pipeline.
@@ -61,76 +57,122 @@ impl FeffPipeline {
 
         let mut stage_results = Vec::new();
 
+        // Clear any stale .feff.error from a previous run
+        let feff_error_path = self.config.work_dir.join(".feff.error");
+        let _ = fs::remove_file(&feff_error_path);
+
         for &stage in &self.config.stages {
             callback(stage, StageProgress::Starting);
 
-            let exe = feff10_sys::executable(stage.executable_name());
-            if !exe.exists() {
+            let start = Instant::now();
+            run_stage_forked(stage, &self.config.work_dir)?;
+            let duration = start.elapsed();
+
+            callback(stage, StageProgress::Finished { duration });
+
+            // Check for FEFF error (written to .feff.error by the Fortran error module)
+            let feff_error = fs::read_to_string(&feff_error_path).ok().and_then(|s| {
+                if s.trim().is_empty() {
+                    None
+                } else {
+                    Some(s)
+                }
+            });
+
+            if feff_error.is_some() {
                 return Err(Error::Pipeline(PipelineError {
                     stage: stage.executable_name().to_string(),
                     exit_code: None,
-                    stderr: format!("Executable not found: {}", exe.display()),
-                    feff_error: None,
-                }));
-            }
-
-            let start = Instant::now();
-            let output = Command::new(&exe)
-                .current_dir(&self.config.work_dir)
-                .output()
-                .map_err(|e| {
-                    Error::Pipeline(PipelineError {
-                        stage: stage.executable_name().to_string(),
-                        exit_code: None,
-                        stderr: format!("Failed to execute: {e}"),
-                        feff_error: None,
-                    })
-                })?;
-            let duration = start.elapsed();
-
-            let exit_code = output.status.code().unwrap_or(-1);
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-
-            callback(
-                stage,
-                StageProgress::Finished {
-                    exit_code,
-                    duration,
-                },
-            );
-
-            if exit_code != 0 {
-                // Check for .feff.error file
-                let feff_error_path = self.config.work_dir.join(".feff.error");
-                let feff_error = fs::read_to_string(&feff_error_path).ok().and_then(|s| {
-                    if s.trim().is_empty() {
-                        None
-                    } else {
-                        Some(s)
-                    }
-                });
-
-                return Err(Error::Pipeline(PipelineError {
-                    stage: stage.executable_name().to_string(),
-                    exit_code: Some(exit_code),
-                    stderr,
+                    stderr: String::new(),
                     feff_error,
                 }));
             }
 
-            stage_results.push(StageResult {
-                stage,
-                exit_code,
-                stdout,
-                stderr,
-                duration,
-            });
+            stage_results.push(StageResult { stage, duration });
         }
 
         Ok(PipelineResult {
             stages: stage_results,
             work_dir: self.config.work_dir.clone(),
         })
+    }
+}
+
+/// Run a single FEFF stage in a forked child process.
+///
+/// Each stage runs in its own process to isolate Fortran module state,
+/// I/O unit state, and memory allocations — matching the original FEFF
+/// behavior where each stage was a separate executable.
+///
+/// The child process:
+/// - Inherits the working directory (already set to work_dir)
+/// - Calls the Fortran subroutine via FFI
+/// - Exits with code 0 on success, or the process terminates via
+///   Fortran `stop` on error
+///
+/// The parent process waits for the child and checks the exit status.
+fn run_stage_forked(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
+    // Save current directory
+    let old_dir = std::env::current_dir()?;
+
+    // Change to work directory before forking so the child inherits it
+    std::env::set_current_dir(work_dir)?;
+
+    let pid = unsafe { libc::fork() };
+
+    match pid {
+        -1 => {
+            // Fork failed — restore cwd and return error
+            let _ = std::env::set_current_dir(&old_dir);
+            Err(Error::Io(std::io::Error::last_os_error()))
+        }
+        0 => {
+            // ── Child process ──
+            // Call the Fortran subroutine. If it returns normally, exit(0).
+            // If the Fortran code calls `stop`, the process terminates directly.
+            unsafe { stage.call_ffi() };
+            unsafe { libc::_exit(0) };
+        }
+        child_pid => {
+            // ── Parent process ──
+            // Restore working directory immediately
+            std::env::set_current_dir(&old_dir)?;
+
+            // Wait for child to finish
+            let mut status: libc::c_int = 0;
+            let ret = unsafe { libc::waitpid(child_pid, &mut status, 0) };
+            if ret == -1 {
+                return Err(Error::Io(std::io::Error::last_os_error()));
+            }
+
+            if libc::WIFEXITED(status) {
+                let exit_code = libc::WEXITSTATUS(status);
+                if exit_code == 0 {
+                    Ok(())
+                } else {
+                    Err(Error::Pipeline(PipelineError {
+                        stage: stage.executable_name().to_string(),
+                        exit_code: Some(exit_code),
+                        stderr: String::new(),
+                        feff_error: None,
+                    }))
+                }
+            } else if libc::WIFSIGNALED(status) {
+                let signal = libc::WTERMSIG(status);
+                Err(Error::Pipeline(PipelineError {
+                    stage: stage.executable_name().to_string(),
+                    exit_code: None,
+                    stderr: format!("killed by signal {signal}"),
+                    feff_error: None,
+                }))
+            } else {
+                Err(Error::Pipeline(PipelineError {
+                    stage: stage.executable_name().to_string(),
+                    exit_code: None,
+                    stderr: "unknown child status".to_string(),
+                    feff_error: None,
+                }))
+            }
+        }
     }
 }
