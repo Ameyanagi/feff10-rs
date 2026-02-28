@@ -117,13 +117,23 @@ fn main() {
 
     // For Intel compiler, merge Intel Fortran runtime into the archive
     // so the final binary doesn't need LD_LIBRARY_PATH pointing to oneAPI.
+    // Use _pic variants for PIC-compatible static linking (required for PIE executables).
     if compiler.contains("ifx") || compiler.contains("ifort") {
         if let Some(compiler_dir) = Path::new(&compiler).parent().and_then(|p| p.parent()) {
             let lib_dir = compiler_dir.join("lib");
-            for lib in &["libifcore.a", "libimf.a", "libsvml.a", "libirc.a"] {
-                let path = lib_dir.join(lib);
-                if path.exists() {
-                    merge_libs.push(path);
+            // Prefer _pic variants (PIC-compatible), fall back to regular
+            for (pic, regular) in &[
+                ("libifcore_pic.a", "libifcore.a"),
+                ("libimf.a", "libimf.a"),
+                ("libsvml.a", "libsvml.a"),
+                ("libirc.a", "libirc.a"),
+            ] {
+                let pic_path = lib_dir.join(pic);
+                let reg_path = lib_dir.join(regular);
+                if pic_path.exists() {
+                    merge_libs.push(pic_path);
+                } else if reg_path.exists() {
+                    merge_libs.push(reg_path);
                 }
             }
         }
@@ -534,18 +544,49 @@ fn emit_fortran_runtime_links(compiler: &str) {
             println!("cargo:rustc-link-lib=irc");
         }
     } else if compiler.contains("flang") {
-        // LLVM Flang runtime
-        println!("cargo:rustc-link-lib=flang_rt.runtime");
-        if let Ok(output) = Command::new("gcc").arg("-print-libgcc-file-name").output() {
+        // LLVM Flang runtime — find the clang resource directory
+        let flang_rt_found = find_flang_runtime();
+        if !flang_rt_found {
+            eprintln!("feff10-sys: warning: could not find flang_rt.runtime library path");
+        }
+        println!("cargo:rustc-link-lib=static=flang_rt.runtime");
+    }
+}
+
+/// Find and emit link search path for LLVM Flang runtime library.
+/// Searches clang resource directories for libflang_rt.runtime.a.
+fn find_flang_runtime() -> bool {
+    // Try: flang-new --print-resource-dir
+    for flang_cmd in &["flang-new", "flang"] {
+        if let Ok(output) = Command::new(flang_cmd).arg("--print-resource-dir").output() {
             if output.status.success() {
-                let libgcc_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                if let Some(dir) = Path::new(&libgcc_path).parent() {
-                    println!("cargo:rustc-link-search=native={}", dir.display());
-                    println!("cargo:rustc-link-lib=gcc");
+                let resource_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                let lib_dir = Path::new(&resource_dir).join("lib/linux");
+                if lib_dir.join("libflang_rt.runtime.a").exists() {
+                    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+                    return true;
+                }
+                let lib_dir = Path::new(&resource_dir).join("lib");
+                if lib_dir.join("libflang_rt.runtime.a").exists() {
+                    println!("cargo:rustc-link-search=native={}", lib_dir.display());
+                    return true;
                 }
             }
         }
     }
+    // Fallback: search common paths
+    for path in &[
+        "/usr/lib/clang/21/lib/linux",
+        "/usr/lib/clang/20/lib/linux",
+        "/usr/lib/clang/19/lib/linux",
+    ] {
+        let p = Path::new(path);
+        if p.join("libflang_rt.runtime.a").exists() {
+            println!("cargo:rustc-link-search=native={}", p.display());
+            return true;
+        }
+    }
+    false
 }
 
 // ---------------------------------------------------------------------------
@@ -600,21 +641,22 @@ fn default_flags_for(compiler: &str) -> String {
 
     let lto = env::var("FEFF_LTO").is_ok();
 
+    // -fPIC is needed because Rust links a PIE executable
     if compiler.contains("gfortran") {
         let lto_flag = if lto { " -flto=auto" } else { "" };
-        format!("-ffree-line-length-none -cpp -O3 -fallow-argument-mismatch{march}{lto_flag}")
+        format!("-ffree-line-length-none -cpp -O3 -fPIC -fallow-argument-mismatch{march}{lto_flag}")
     } else if compiler.contains("ifx") {
         let lto_flag = if lto { " -ipo" } else { "" };
         // -no-vec: workaround for ifx 2025.3 ICE in VPlan vectorizer on ff2chijas.f90
-        format!("-O3 -fpp -xHost -no-vec{lto_flag}")
+        format!("-O3 -fpp -fPIC -xHost -no-vec{lto_flag}")
     } else if compiler.contains("ifort") {
         let lto_flag = if lto { " -ipo" } else { "" };
-        format!("-O3 -xHost{lto_flag}")
+        format!("-O3 -fPIC -xHost{lto_flag}")
     } else if compiler.contains("flang") {
         let lto_flag = if lto { " -flto" } else { "" };
-        format!("-O3 -cpp -fno-automatic{march}{lto_flag}")
+        format!("-O3 -cpp -fPIC -fno-automatic{march}{lto_flag}")
     } else {
-        "-O3".to_string()
+        "-O3 -fPIC".to_string()
     }
 }
 
