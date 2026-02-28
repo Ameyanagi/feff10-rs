@@ -1,0 +1,226 @@
+name: Compiler Optimization Benchmark
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday at 6am UTC
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # gfortran optimization levels
+          - compiler: gfortran
+            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O0"
+            label: gfortran-O0
+          - compiler: gfortran
+            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O1"
+            label: gfortran-O1
+          - compiler: gfortran
+            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O2"
+            label: gfortran-O2
+          - compiler: gfortran
+            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O3"
+            label: gfortran-O3
+          - compiler: gfortran
+            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -Ofast"
+            label: gfortran-Ofast
+          - compiler: gfortran
+            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O3 -march=native"
+            label: gfortran-O3-native
+          # ifx optimization levels
+          - compiler: ifx
+            flags: "-fpp -O0"
+            label: ifx-O0
+          - compiler: ifx
+            flags: "-fpp -O1"
+            label: ifx-O1
+          - compiler: ifx
+            flags: "-fpp -O2"
+            label: ifx-O2
+          - compiler: ifx
+            flags: "-fpp -O3"
+            label: ifx-O3
+          - compiler: ifx
+            flags: "-fpp -Ofast"
+            label: ifx-Ofast
+          - compiler: ifx
+            flags: "-fpp -O3 -xHost"
+            label: ifx-O3-xHost
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install gfortran
+        if: matrix.compiler == 'gfortran'
+        run: sudo apt-get update && sudo apt-get install -y gfortran
+
+      - name: Install Intel Fortran (ifx)
+        if: matrix.compiler == 'ifx'
+        uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: intel
+          version: '2024.0'
+
+      - name: Build (${{ matrix.label }})
+        env:
+          FEFF_FC: ${{ matrix.compiler }}
+          FEFF_FFLAGS: ${{ matrix.flags }}
+        run: cargo build --workspace --release
+
+      # Correctness first — if optimization breaks results, fail early
+      - name: Verify correctness (${{ matrix.label }})
+        env:
+          FEFF_FC: ${{ matrix.compiler }}
+          FEFF_FFLAGS: ${{ matrix.flags }}
+        run: cargo test -p feff10 --release --test integration -- --test-threads=1
+
+      # Run benchmarks on multiple representative examples (3 iterations each)
+      - name: Benchmark (${{ matrix.label }})
+        run: |
+          cargo run --release -p feff10-cli -- bench \
+            feff10/examples/EXAFS/Cu \
+            feff10/examples/XANES/Cu \
+            feff10/examples/XANES/BN \
+            -n 3 \
+            --label "${{ matrix.label }}" \
+            --output results.json
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-${{ matrix.label }}
+          path: results.json
+
+  # Collect all results into a single comparison table
+  summary:
+    needs: benchmark
+    runs-on: ubuntu-latest
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all benchmark artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: bench-results
+          pattern: bench-*
+
+      - name: Generate comparison table
+        run: |
+          cat > generate_summary.py << 'SCRIPT'
+          import json, os, sys
+          from pathlib import Path
+
+          results_dir = Path("bench-results")
+          runs = []
+
+          for artifact_dir in sorted(results_dir.iterdir()):
+              json_file = artifact_dir / "results.json"
+              if json_file.exists():
+                  with open(json_file) as f:
+                      runs.append(json.load(f))
+
+          if not runs:
+              print("No benchmark results found.")
+              sys.exit(0)
+
+          # Collect all example names
+          all_examples = []
+          for run in runs:
+              for ex in run["examples"]:
+                  if ex["name"] not in all_examples:
+                      all_examples.append(ex["name"])
+
+          # Print markdown table
+          header = "| Configuration |"
+          sep = "|---|"
+          for ex_name in all_examples:
+              header += f" {ex_name} (mean) | {ex_name} (min) |"
+              sep += "---:|---:|"
+
+          print("# Compiler Optimization Benchmark Results\n")
+          print(header)
+          print(sep)
+
+          for run in runs:
+              row = f"| **{run['label']}** |"
+              ex_map = {ex["name"]: ex for ex in run["examples"]}
+              for ex_name in all_examples:
+                  if ex_name in ex_map:
+                      ex = ex_map[ex_name]
+                      row += f" {ex['mean_total_secs']:.3f}s | {ex['min_total_secs']:.3f}s |"
+                  else:
+                      row += " N/A | N/A |"
+              print(row)
+
+          print()
+
+          # Per-stage breakdown for the first example
+          if all_examples:
+              primary = all_examples[0]
+              print(f"\n## Per-stage breakdown: {primary}\n")
+              # Collect all stage names
+              all_stages = []
+              for run in runs:
+                  ex_map = {ex["name"]: ex for ex in run["examples"]}
+                  if primary in ex_map:
+                      for s in ex_map[primary]["stage_means"]:
+                          if s not in all_stages:
+                              all_stages.append(s)
+
+              header = "| Stage |"
+              sep = "|---|"
+              for run in runs:
+                  header += f" {run['label']} |"
+                  sep += "---:|"
+              print(header)
+              print(sep)
+
+              for stage in all_stages:
+                  row = f"| {stage} |"
+                  for run in runs:
+                      ex_map = {ex["name"]: ex for ex in run["examples"]}
+                      if primary in ex_map and stage in ex_map[primary]["stage_means"]:
+                          row += f" {ex_map[primary]['stage_means'][stage]:.3f}s |"
+                      else:
+                          row += " N/A |"
+                  print(row)
+
+          # Also print which configs failed correctness (not present in results)
+          expected_labels = [
+              "gfortran-O0", "gfortran-O1", "gfortran-O2", "gfortran-O3",
+              "gfortran-Ofast", "gfortran-O3-native",
+              "ifx-O0", "ifx-O1", "ifx-O2", "ifx-O3", "ifx-Ofast", "ifx-O3-xHost",
+          ]
+          present_labels = {r["label"] for r in runs}
+          missing = [l for l in expected_labels if l not in present_labels]
+          if missing:
+              print(f"\n## Failed / Missing configurations\n")
+              for l in missing:
+                  print(f"- **{l}**: correctness verification failed or build error")
+          SCRIPT
+          python3 generate_summary.py | tee benchmark-summary.md
+
+      - name: Upload summary
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-summary
+          path: benchmark-summary.md
+
+      - name: Post summary to job
+        run: cat benchmark-summary.md >> "$GITHUB_STEP_SUMMARY"

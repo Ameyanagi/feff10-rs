@@ -1,0 +1,8 @@
+[package]
+name = "feff10-sys"
+edition.workspace = true
+version.workspace = true
+description = "Build system for FEFF10 Fortran code"
+
+[build-dependencies]
+which = "7"

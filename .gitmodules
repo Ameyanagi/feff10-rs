@@ -1,0 +1,3 @@
+[submodule "feff10"]
+	path = feff10
+	url = https://github.com/times-software/feff10

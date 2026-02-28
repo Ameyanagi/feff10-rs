@@ -1,0 +1,6 @@
+/target
+*.o
+*.mod
+.feff.error
+fort.*
+log.dat

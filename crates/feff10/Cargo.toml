@@ -1,0 +1,10 @@
+[package]
+name = "feff10"
+edition.workspace = true
+version.workspace = true
+description = "Rust wrapper for FEFF10 X-ray absorption spectroscopy calculations"
+
+[dependencies]
+feff10-sys = { path = "../feff10-sys" }
+tempfile = "3"
+which = "7"

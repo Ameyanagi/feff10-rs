@@ -1,0 +1,132 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            compiler: gfortran
+            install: sudo apt-get update && sudo apt-get install -y gfortran
+          - os: ubuntu-latest
+            compiler: ifx
+            install: ""  # handled by setup-fortran action
+          - os: ubuntu-latest
+            compiler: flang-new
+            install: sudo apt-get update && sudo apt-get install -y flang-new
+          - os: macos-latest
+            compiler: gfortran
+            install: brew install gcc
+          - os: windows-latest
+            compiler: gfortran
+            install: ""  # handled by msys2 action
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry and build
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-${{ matrix.compiler }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.compiler }}-cargo-
+
+      - name: Cache Fortran build
+        uses: actions/cache@v4
+        with:
+          path: target/*/build/feff10-sys-*/out/bin/
+          key: feff-${{ runner.os }}-${{ matrix.compiler }}-${{ hashFiles('feff10/src/**/*.f90', 'feff10/src/Makefile', 'feff10/src/DEP/*.mk') }}
+
+      # --- Compiler installation ---
+
+      - name: Install gfortran (Linux/macOS)
+        if: matrix.compiler == 'gfortran' && runner.os != 'Windows'
+        run: ${{ matrix.install }}
+
+      - name: Install gfortran (Windows)
+        if: matrix.compiler == 'gfortran' && runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc-fortran make
+
+      - name: Install Intel Fortran (ifx)
+        if: matrix.compiler == 'ifx'
+        uses: fortran-lang/setup-fortran@v1
+        with:
+          compiler: intel
+          version: '2024.0'
+
+      - name: Install LLVM Flang
+        if: matrix.compiler == 'flang-new'
+        run: ${{ matrix.install }}
+
+      # --- Build ---
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
+        env:
+          FEFF_FC: ${{ matrix.compiler }}
+        run: cargo build --workspace
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
+        run: |
+          export PATH="/mingw64/bin:$PATH"
+          cargo build --workspace
+
+      # --- Tests ---
+
+      - name: Unit tests
+        if: runner.os != 'Windows'
+        run: cargo test --workspace --lib
+
+      - name: Integration tests (fast)
+        if: runner.os != 'Windows'
+        env:
+          FEFF_FC: ${{ matrix.compiler }}
+        run: cargo test -p feff10 --test integration -- --test-threads=1
+        timeout-minutes: 30
+
+      - name: Unit tests (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export PATH="/mingw64/bin:$PATH"
+          cargo test --workspace --lib
+
+      - name: Integration tests (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
+        run: |
+          export PATH="/mingw64/bin:$PATH"
+          cargo test -p feff10 --test integration -- --test-threads=1
+        timeout-minutes: 30
