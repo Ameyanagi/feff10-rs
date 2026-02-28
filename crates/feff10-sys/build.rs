@@ -93,6 +93,35 @@ fn main() {
         }
     }
 
+    // On Linux with Intel oneAPI, set up library paths for the linker.
+    // When ifx is invoked via full path (without setvars.sh), the compiler
+    // driver resolves MKL/runtime libs itself, but LD_LIBRARY_PATH may be
+    // needed for dynamic linking at build time.
+    if cfg!(target_os = "linux") && compiler.contains("oneapi") {
+        let mut ld_paths = Vec::new();
+        if let Some(mkl_root) = find_mkl_root() {
+            ld_paths.push(format!("{}/lib/intel64", mkl_root.display()));
+        }
+        // Add compiler runtime lib path
+        if let Some(compiler_dir) = Path::new(&compiler).parent().and_then(|p| p.parent()) {
+            let compiler_lib = compiler_dir.join("lib");
+            if compiler_lib.is_dir() {
+                ld_paths.push(compiler_lib.display().to_string());
+            }
+        }
+        if !ld_paths.is_empty() {
+            let existing = env::var("LD_LIBRARY_PATH").unwrap_or_default();
+            let new_path = if existing.is_empty() {
+                ld_paths.join(":")
+            } else {
+                format!("{}:{existing}", ld_paths.join(":"))
+            };
+            eprintln!("feff10-sys: setting LD_LIBRARY_PATH for Intel oneAPI");
+            cmd.env("LD_LIBRARY_PATH", &new_path);
+            cmd.env("LIBRARY_PATH", &new_path);
+        }
+    }
+
     let status = cmd.status().expect("Failed to run make. Is `make` installed?");
 
     if !status.success() {
@@ -129,6 +158,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=FEFF_NO_NATIVE");
     println!("cargo:rerun-if-env-changed=FEFF_LTO");
     println!("cargo:rerun-if-env-changed=MKLROOT");
+    println!("cargo:rerun-if-env-changed=LD_LIBRARY_PATH");
 
     // Track the key build files
     println!(
@@ -175,6 +205,23 @@ fn detect_compiler() -> (String, String) {
         }
     }
 
+    // Probe standard Intel oneAPI installation paths (ifx may not be in PATH
+    // without sourcing setvars.sh)
+    if cfg!(target_os = "linux") {
+        for path in &[
+            "/opt/intel/oneapi/compiler/latest/bin/ifx",
+            "/opt/intel/oneapi/compiler/latest/bin/ifort",
+        ] {
+            if Path::new(path).exists() {
+                let basename = Path::new(path).file_name().unwrap().to_str().unwrap();
+                let flags = env::var("FEFF_FFLAGS")
+                    .unwrap_or_else(|_| default_flags_for(basename));
+                eprintln!("feff10-sys: found Intel compiler at {path}");
+                return (path.to_string(), flags);
+            }
+        }
+    }
+
     panic!(
         "feff10-sys: No Fortran compiler found. \
          Install gfortran, ifx, or flang-new, or set FEFF_FC env var."
@@ -201,7 +248,11 @@ fn default_flags_for(compiler: &str) -> String {
         format!("-ffree-line-length-none -cpp -O3 -fallow-argument-mismatch{march}{lto_flag}")
     } else if compiler.contains("ifx") {
         let lto_flag = if lto { " -ipo" } else { "" };
-        format!("-O3 -fpp -xHost{lto_flag}")
+        // -no-vec: workaround for ifx 2025.3 ICE in VPlan vectorizer on
+        // FF2X/ff2chijas.f90. Auto-vectorization has minimal impact on FEFF10
+        // (scalar ODE code; vectorized math is in MKL). Scalar -O3 + -xHost
+        // instruction selection is preserved.
+        format!("-O3 -fpp -xHost -no-vec{lto_flag}")
     } else if compiler.contains("ifort") {
         let lto_flag = if lto { " -ipo" } else { "" };
         format!("-O3 -xHost{lto_flag}")
@@ -236,8 +287,6 @@ fn detect_blas(compiler: &str) -> (String, String) {
 
     // 2. On macOS, use Accelerate framework (always available, optimized for Apple Silicon)
     if cfg!(target_os = "macos") {
-        // Check the framework directory (not the binary — on modern macOS, framework
-        // binaries live in the shared dyld cache and appear as unresolvable symlinks)
         let framework_dir = Path::new("/System/Library/Frameworks/Accelerate.framework");
         if framework_dir.is_dir() {
             eprintln!("feff10-sys: using Apple Accelerate for BLAS/LAPACK");
@@ -245,7 +294,15 @@ fn detect_blas(compiler: &str) -> (String, String) {
         }
     }
 
-    // 3. Try OpenBLAS (Linux)
+    // 3. Intel MKL — preferred on Linux for best LAPACK/BLAS performance.
+    //    Auto-detects from MKLROOT env or standard oneAPI install paths.
+    if cfg!(target_os = "linux") {
+        if let Some(mkl_flags) = detect_mkl(compiler) {
+            return (mkl_flags, "_MKL".to_string());
+        }
+    }
+
+    // 4. OpenBLAS (Linux fallback)
     if cfg!(target_os = "linux") {
         // Try pkg-config first
         if let Ok(output) = Command::new("pkg-config").args(["--libs", "openblas"]).output() {
@@ -272,16 +329,68 @@ fn detect_blas(compiler: &str) -> (String, String) {
         }
     }
 
-    // 4. Intel MKL (via MKLROOT env)
-    if let Ok(mkl_root) = env::var("MKLROOT") {
-        if compiler.contains("ifx") || compiler.contains("ifort") {
-            eprintln!("feff10-sys: using MKL from {mkl_root}");
-            return ("-qmkl=sequential".to_string(), "_MKL".to_string());
+    eprintln!("feff10-sys: no optimized BLAS found, using naive MATH/lu.f90");
+    (String::new(), String::new())
+}
+
+/// Auto-detect Intel MKL and return appropriate linker flags.
+/// For ifx/ifort: uses -qmkl=sequential (compiler handles everything).
+/// For gfortran/flang: uses explicit library linking.
+fn detect_mkl(compiler: &str) -> Option<String> {
+    let mkl_root = find_mkl_root()?;
+    let lib_dir = mkl_root.join("lib/intel64");
+
+    // Verify the key libraries exist
+    if !lib_dir.join("libmkl_core.so").exists() && !lib_dir.join("libmkl_core.a").exists() {
+        eprintln!("feff10-sys: MKL root found at {} but libraries missing", mkl_root.display());
+        return None;
+    }
+
+    if compiler.contains("ifx") || compiler.contains("ifort") {
+        // Intel compilers: use explicit static MKL linking to avoid runtime
+        // LD_LIBRARY_PATH requirements. -qmkl only works reliably when setvars.sh
+        // has been sourced; explicit paths are more robust.
+        let flags = format!(
+            "-L{lib} -Wl,--start-group {lib}/libmkl_intel_lp64.a {lib}/libmkl_sequential.a {lib}/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl",
+            lib = lib_dir.display()
+        );
+        eprintln!("feff10-sys: using MKL with Intel static linkage ({})", mkl_root.display());
+        Some(flags)
+    } else {
+        // gfortran/flang: explicit static link flags.
+        // Static linking avoids runtime dependency on MKL shared libraries.
+        // Use --start-group/--end-group to resolve circular dependencies between MKL libs.
+        let flags = format!(
+            "-L{lib} -Wl,--start-group {lib}/libmkl_gf_lp64.a {lib}/libmkl_sequential.a {lib}/libmkl_core.a -Wl,--end-group -lpthread -lm -ldl",
+            lib = lib_dir.display()
+        );
+        eprintln!("feff10-sys: using MKL with gfortran static linkage ({})", mkl_root.display());
+        Some(flags)
+    }
+}
+
+/// Find the MKL installation root directory.
+fn find_mkl_root() -> Option<PathBuf> {
+    // 1. MKLROOT environment variable (set by setvars.sh)
+    if let Ok(root) = env::var("MKLROOT") {
+        let path = PathBuf::from(&root);
+        if path.is_dir() {
+            return Some(path);
         }
     }
 
-    eprintln!("feff10-sys: no optimized BLAS found, using naive MATH/lu.f90");
-    (String::new(), String::new())
+    // 2. Probe standard Intel oneAPI installation paths
+    let candidates = [
+        "/opt/intel/oneapi/mkl/latest",
+    ];
+    for path in &candidates {
+        let p = PathBuf::from(path);
+        if p.is_dir() {
+            return Some(p);
+        }
+    }
+
+    None
 }
 
 /// Return extra linker flags needed for a given compiler.
@@ -297,6 +406,12 @@ fn ldflags_for(compiler: &str) -> String {
             flags.push("-flto".to_string());
         }
         // ifx/ifort: -ipo is handled by the compiler driver automatically
+    }
+
+    if compiler.contains("ifx") || compiler.contains("ifort") {
+        // Statically link Intel runtime libs (libimf, libsvml, libirc, etc.)
+        // so executables don't need LD_LIBRARY_PATH pointing to oneAPI.
+        flags.push("-static-intel".to_string());
     }
 
     if compiler.contains("flang") {
