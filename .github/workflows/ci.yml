@@ -121,10 +121,16 @@ jobs:
           sudo apt-get install -y flang-20 libclang-rt-20-dev
           # flang-20 installs the binary as flang-new-20
           FC=$(which flang-new-20)
-          # Debug: show where flang_rt.runtime might be
+          # Debug: show all flang/Fortran runtime libraries
           echo "Resource dir: $($FC --print-resource-dir 2>/dev/null || true)"
-          find /usr/lib/llvm-20 -name "libflang_rt*" 2>/dev/null || true
-          find /usr/lib/clang/20 -name "libflang_rt*" 2>/dev/null || true
+          echo "--- flang_rt files ---"
+          find /usr/lib -name "*flang_rt*" 2>/dev/null || true
+          echo "--- FortranRuntime files ---"
+          find /usr/lib -name "*FortranRuntime*" -o -name "*fortran*runtime*" 2>/dev/null || true
+          echo "--- dpkg flang-20 files ---"
+          dpkg -L flang-20 2>/dev/null | grep -i "lib" | head -30 || true
+          echo "--- dpkg libclang-rt-20-dev files ---"
+          dpkg -L libclang-rt-20-dev 2>/dev/null | grep -i "flang\|fortran" | head -20 || true
           echo "fc=$FC" >> "$GITHUB_OUTPUT"
           echo "Found flang at: $FC"
 
