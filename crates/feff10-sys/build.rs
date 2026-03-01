@@ -603,14 +603,7 @@ fn detect_compiler() -> (String, String) {
         return (fc, flags);
     }
 
-    for candidate in &["ifx", "ifort", "gfortran", "flang-new"] {
-        if which::which(candidate).is_ok() {
-            let flags = env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(candidate));
-            return (candidate.to_string(), flags);
-        }
-    }
-
-    // Probe standard Intel oneAPI paths
+    // Probe Intel oneAPI paths first (ifx/ifort are often not on PATH)
     if cfg!(target_os = "linux") {
         for path in &[
             "/opt/intel/oneapi/compiler/latest/bin/ifx",
@@ -623,6 +616,13 @@ fn detect_compiler() -> (String, String) {
                 eprintln!("feff10-sys: found Intel compiler at {path}");
                 return (path.to_string(), flags);
             }
+        }
+    }
+
+    for candidate in &["ifx", "ifort", "gfortran", "flang-new"] {
+        if which::which(candidate).is_ok() {
+            let flags = env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(candidate));
+            return (candidate.to_string(), flags);
         }
     }
 
