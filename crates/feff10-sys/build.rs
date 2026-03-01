@@ -603,7 +603,7 @@ fn detect_compiler() -> (String, String) {
         return (fc, flags);
     }
 
-    for candidate in &["gfortran", "ifx", "flang-new", "ifort"] {
+    for candidate in &["ifx", "ifort", "gfortran", "flang-new"] {
         if which::which(candidate).is_ok() {
             let flags = env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(candidate));
             return (candidate.to_string(), flags);
