@@ -118,19 +118,9 @@ jobs:
           CODENAME=$(lsb_release -cs)
           echo "deb http://apt.llvm.org/$CODENAME/ llvm-toolchain-$CODENAME-20 main" | sudo tee /etc/apt/sources.list.d/llvm-20.list
           sudo apt-get update
-          sudo apt-get install -y flang-20 libclang-rt-20-dev
+          sudo apt-get install -y flang-20
           # flang-20 installs the binary as flang-new-20
           FC=$(which flang-new-20)
-          # Debug: show all flang/Fortran runtime libraries
-          echo "Resource dir: $($FC --print-resource-dir 2>/dev/null || true)"
-          echo "--- flang_rt files ---"
-          find /usr/lib -name "*flang_rt*" 2>/dev/null || true
-          echo "--- FortranRuntime files ---"
-          find /usr/lib -name "*FortranRuntime*" -o -name "*fortran*runtime*" 2>/dev/null || true
-          echo "--- dpkg flang-20 files ---"
-          dpkg -L flang-20 2>/dev/null | grep -i "lib" | head -30 || true
-          echo "--- dpkg libclang-rt-20-dev files ---"
-          dpkg -L libclang-rt-20-dev 2>/dev/null | grep -i "flang\|fortran" | head -20 || true
           echo "fc=$FC" >> "$GITHUB_OUTPUT"
           echo "Found flang at: $FC"
 
