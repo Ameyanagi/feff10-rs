@@ -592,24 +592,57 @@ fn emit_fortran_runtime_links(compiler: &str) {
     } else if compiler.contains("flang") {
         // LLVM Flang runtime — name changed from FortranRuntime (LLVM ≤20)
         // to flang_rt.runtime (LLVM ≥21)
-        match find_flang_runtime(compiler) {
-            Some(lib_name) => {
-                println!("cargo:rustc-link-lib=static={lib_name}");
-            }
-            None => {
-                eprintln!("feff10-sys: warning: could not find flang runtime library");
-                // Best-effort fallback
-                println!("cargo:rustc-link-lib=FortranRuntime");
+        let libs = find_flang_runtime(compiler);
+        if libs.is_empty() {
+            eprintln!("feff10-sys: warning: could not find flang runtime library");
+            println!("cargo:rustc-link-lib=FortranRuntime");
+        } else {
+            for lib in &libs {
+                println!("cargo:rustc-link-lib=static={lib}");
             }
         }
+        // Flang runtime is C++, needs libstdc++ or libc++
+        println!("cargo:rustc-link-lib=stdc++");
     }
 }
 
-/// Find and emit link search path for LLVM Flang runtime library.
-/// Returns the library name (without lib prefix / .a suffix) if found.
-/// LLVM ≤20 uses "FortranRuntime", LLVM ≥21 uses "flang_rt.runtime".
-fn find_flang_runtime(compiler: &str) -> Option<String> {
-    let lib_names = ["libflang_rt.runtime.a", "libFortranRuntime.a"];
+/// Find and emit link search path for LLVM Flang runtime libraries.
+/// Returns list of library names (without lib prefix / .a suffix).
+/// LLVM ≤20 uses "FortranRuntime" + "FortranDecimal", LLVM ≥21 uses "flang_rt.runtime".
+fn find_flang_runtime(compiler: &str) -> Vec<String> {
+    // Primary runtime library names (try new name first, then old)
+    let primary_libs = ["libflang_rt.runtime.a", "libFortranRuntime.a"];
+    // Additional libraries needed by the old naming scheme
+    let extra_libs = ["libFortranDecimal.a"];
+
+    let search_dirs = collect_flang_search_dirs(compiler);
+
+    for dir in &search_dirs {
+        for lib_file in &primary_libs {
+            if dir.join(lib_file).exists() {
+                println!("cargo:rustc-link-search=native={}", dir.display());
+                let name = lib_file.strip_prefix("lib").unwrap().strip_suffix(".a").unwrap();
+                eprintln!("feff10-sys: found flang runtime: {}", dir.join(lib_file).display());
+
+                let mut libs = vec![name.to_string()];
+                // For old-style FortranRuntime, also link FortranDecimal
+                for extra in &extra_libs {
+                    if dir.join(extra).exists() {
+                        let extra_name = extra.strip_prefix("lib").unwrap().strip_suffix(".a").unwrap();
+                        libs.push(extra_name.to_string());
+                        eprintln!("feff10-sys: found flang extra: {}", dir.join(extra).display());
+                    }
+                }
+                return libs;
+            }
+        }
+    }
+    Vec::new()
+}
+
+/// Collect directories to search for flang runtime libraries.
+fn collect_flang_search_dirs(compiler: &str) -> Vec<PathBuf> {
+    let mut dirs = Vec::new();
 
     // Try the actual compiler first (e.g. flang-new-20), then common names
     let mut candidates: Vec<&str> = vec![compiler];
@@ -624,22 +657,24 @@ fn find_flang_runtime(compiler: &str) -> Option<String> {
             if output.status.success() {
                 let resource_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 for subdir in &["lib/linux", "lib/x86_64-pc-linux-gnu", "lib"] {
-                    let lib_dir = Path::new(&resource_dir).join(subdir);
-                    for lib_file in &lib_names {
-                        if lib_dir.join(lib_file).exists() {
-                            println!("cargo:rustc-link-search=native={}", lib_dir.display());
-                            let name = lib_file.strip_prefix("lib").unwrap().strip_suffix(".a").unwrap();
-                            eprintln!("feff10-sys: found flang runtime: {}", lib_dir.join(lib_file).display());
-                            return Some(name.to_string());
-                        }
-                    }
+                    dirs.push(Path::new(&resource_dir).join(subdir));
                 }
             }
         }
     }
 
-    // Fallback: search common install paths
-    let search_paths = [
+    // Also check the compiler's own lib directory (e.g. /usr/lib/llvm-20/lib)
+    if let Some(bin_dir) = Path::new(compiler).parent() {
+        let lib_dir = bin_dir.parent().map(|p| p.join("lib"));
+        if let Some(ld) = lib_dir {
+            if ld.is_dir() {
+                dirs.push(ld);
+            }
+        }
+    }
+
+    // Fallback: common install paths
+    let fallback_paths = [
         "/usr/lib/clang/22/lib/linux",
         "/usr/lib/clang/21/lib/linux",
         "/usr/lib/clang/20/lib/linux",
@@ -650,18 +685,10 @@ fn find_flang_runtime(compiler: &str) -> Option<String> {
         "/usr/lib/llvm-21/lib",
         "/usr/lib/llvm-20/lib",
     ];
-    for path in &search_paths {
-        let p = Path::new(path);
-        for lib_file in &lib_names {
-            if p.join(lib_file).exists() {
-                println!("cargo:rustc-link-search=native={}", p.display());
-                let name = lib_file.strip_prefix("lib").unwrap().strip_suffix(".a").unwrap();
-                eprintln!("feff10-sys: found flang runtime: {}", p.join(lib_file).display());
-                return Some(name.to_string());
-            }
-        }
+    for path in &fallback_paths {
+        dirs.push(PathBuf::from(path));
     }
-    None
+    dirs
 }
 
 // ---------------------------------------------------------------------------
