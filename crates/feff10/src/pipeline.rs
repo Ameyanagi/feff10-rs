@@ -65,7 +65,7 @@ impl FeffPipeline {
             callback(stage, StageProgress::Starting);
 
             let start = Instant::now();
-            run_stage_forked(stage, &self.config.work_dir)?;
+            run_stage_isolated(stage, &self.config.work_dir)?;
             let duration = start.elapsed();
 
             callback(stage, StageProgress::Finished { duration });
@@ -98,20 +98,18 @@ impl FeffPipeline {
     }
 }
 
-/// Run a single FEFF stage in a forked child process.
+/// Run a single FEFF stage in a forked child process (Unix) or in-process (Windows).
 ///
-/// Each stage runs in its own process to isolate Fortran module state,
-/// I/O unit state, and memory allocations — matching the original FEFF
-/// behavior where each stage was a separate executable.
+/// On Unix, each stage runs in its own process via `fork()` to isolate Fortran
+/// module state, I/O unit state, and memory allocations — matching the original
+/// FEFF behavior where each stage was a separate executable.
 ///
-/// The child process:
-/// - Inherits the working directory (already set to work_dir)
-/// - Calls the Fortran subroutine via FFI
-/// - Exits with code 0 on success, or the process terminates via
-///   Fortran `stop` on error
-///
-/// The parent process waits for the child and checks the exit status.
-fn run_stage_forked(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
+/// On Windows, the stage runs directly in-process since `fork()` is unavailable.
+/// This means Fortran `stop` on error will terminate the host process, and global
+/// state is not fully isolated between stages. In practice this is fine because
+/// stages communicate via files and `stop` is only called on error paths.
+#[cfg(unix)]
+fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
     // Save current directory
     let old_dir = std::env::current_dir()?;
 
@@ -175,4 +173,13 @@ fn run_stage_forked(stage: Stage, work_dir: &std::path::Path) -> Result<(), Erro
             }
         }
     }
+}
+
+#[cfg(not(unix))]
+fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
+    let old_dir = std::env::current_dir()?;
+    std::env::set_current_dir(work_dir)?;
+    unsafe { stage.call_ffi() };
+    std::env::set_current_dir(&old_dir)?;
+    Ok(())
 }

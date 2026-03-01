@@ -6,6 +6,8 @@ description = "Rust wrapper for FEFF10 X-ray absorption spectroscopy calculation
 
 [dependencies]
 feff10-sys = { path = "../feff10-sys" }
-libc = "0.2"
 tempfile = "3"
 which = "7"
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
