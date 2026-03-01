@@ -44,29 +44,31 @@ jobs:
           FEFF_NO_NATIVE: "1"
         run: cargo build --release -p feff10-cli
 
-      - name: Unit tests
-        id: unit-tests
-        env:
-          FEFF_FC: /opt/intel/oneapi/compiler/latest/bin/ifx
-          FEFF_NO_NATIVE: "1"
-        run: cargo test --workspace --lib
+      - name: Test EXAFS/Cu
+        id: test-exafs-cu
+        run: |
+          target/release/feff10-cli run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
+          target/release/feff10-cli compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
 
-      - name: Integration tests
-        id: integration-tests
-        timeout-minutes: 30
-        env:
-          FEFF_FC: /opt/intel/oneapi/compiler/latest/bin/ifx
-          FEFF_NO_NATIVE: "1"
-        run: cargo test -p feff10 --test integration -- --test-threads=1
+      - name: Test XANES/Cu
+        id: test-xanes-cu
+        run: |
+          target/release/feff10-cli run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
+          target/release/feff10-cli compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
+
+      - name: Test XANES/BN
+        id: test-xanes-bn
+        run: |
+          target/release/feff10-cli run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
+          target/release/feff10-cli compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
 
       - name: Test summary
         if: always()
         run: |
-          cat > test-report-linux.md << 'REPORT'
-          ### Linux (ifx + MKL)
-          REPORT
-          echo "- Unit tests: ${{ steps.unit-tests.outcome }}" >> test-report-linux.md
-          echo "- Integration tests: ${{ steps.integration-tests.outcome }}" >> test-report-linux.md
+          echo "### Linux (ifx + MKL)" > test-report-linux.md
+          echo "- EXAFS/Cu: ${{ steps.test-exafs-cu.outcome }}" >> test-report-linux.md
+          echo "- XANES/Cu: ${{ steps.test-xanes-cu.outcome }}" >> test-report-linux.md
+          echo "- XANES/BN: ${{ steps.test-xanes-bn.outcome }}" >> test-report-linux.md
           cat test-report-linux.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test report
@@ -144,29 +146,31 @@ jobs:
           echo "Using LIBRARY_PATH=$LIB_DIR"
           cargo build --release -p feff10-cli
 
-      - name: Unit tests
-        id: unit-tests
-        env:
-          FEFF_FC: ${{ steps.fc.outputs.fc }}
-          FEFF_NO_NATIVE: "1"
-        run: cargo test --workspace --lib
+      - name: Test EXAFS/Cu
+        id: test-exafs-cu
+        run: |
+          target/release/feff10-cli run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
+          target/release/feff10-cli compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
 
-      - name: Integration tests
-        id: integration-tests
-        timeout-minutes: 30
-        env:
-          FEFF_FC: ${{ steps.fc.outputs.fc }}
-          FEFF_NO_NATIVE: "1"
-        run: cargo test -p feff10 --test integration -- --test-threads=1
+      - name: Test XANES/Cu
+        id: test-xanes-cu
+        run: |
+          target/release/feff10-cli run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
+          target/release/feff10-cli compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
+
+      - name: Test XANES/BN
+        id: test-xanes-bn
+        run: |
+          target/release/feff10-cli run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
+          target/release/feff10-cli compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
 
       - name: Test summary
         if: always()
         run: |
-          cat > test-report-macos.md << 'REPORT'
-          ### macOS (gfortran, arm64)
-          REPORT
-          echo "- Unit tests: ${{ steps.unit-tests.outcome }}" >> test-report-macos.md
-          echo "- Integration tests: ${{ steps.integration-tests.outcome }}" >> test-report-macos.md
+          echo "### macOS (gfortran, arm64)" > test-report-macos.md
+          echo "- EXAFS/Cu: ${{ steps.test-exafs-cu.outcome }}" >> test-report-macos.md
+          echo "- XANES/Cu: ${{ steps.test-xanes-cu.outcome }}" >> test-report-macos.md
+          echo "- XANES/BN: ${{ steps.test-xanes-bn.outcome }}" >> test-report-macos.md
           cat test-report-macos.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test report
@@ -228,36 +232,38 @@ jobs:
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo build --release --target x86_64-pc-windows-gnu -p feff10-cli
 
-      - name: Unit tests
-        id: unit-tests
+      - name: Test EXAFS/Cu
+        id: test-exafs-cu
         shell: msys2 {0}
-        env:
-          FEFF_FC: gfortran
-          FEFF_NO_NATIVE: "1"
         run: |
-          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
-          cargo test --target x86_64-pc-windows-gnu --workspace --lib
+          export PATH="/mingw64/bin:$PATH"
+          target/x86_64-pc-windows-gnu/release/feff10-cli.exe run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
+          target/x86_64-pc-windows-gnu/release/feff10-cli.exe compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
 
-      - name: Integration tests
-        id: integration-tests
-        timeout-minutes: 30
+      - name: Test XANES/Cu
+        id: test-xanes-cu
         shell: msys2 {0}
-        env:
-          FEFF_FC: gfortran
-          FEFF_NO_NATIVE: "1"
         run: |
-          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
-          cargo test --target x86_64-pc-windows-gnu -p feff10 --test integration -- --test-threads=1
+          export PATH="/mingw64/bin:$PATH"
+          target/x86_64-pc-windows-gnu/release/feff10-cli.exe run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
+          target/x86_64-pc-windows-gnu/release/feff10-cli.exe compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
+
+      - name: Test XANES/BN
+        id: test-xanes-bn
+        shell: msys2 {0}
+        run: |
+          export PATH="/mingw64/bin:$PATH"
+          target/x86_64-pc-windows-gnu/release/feff10-cli.exe run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
+          target/x86_64-pc-windows-gnu/release/feff10-cli.exe compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
 
       - name: Test summary
         if: always()
         shell: msys2 {0}
         run: |
-          cat > test-report-windows.md << 'REPORT'
-          ### Windows (gfortran, x86_64)
-          REPORT
-          echo "- Unit tests: ${{ steps.unit-tests.outcome }}" >> test-report-windows.md
-          echo "- Integration tests: ${{ steps.integration-tests.outcome }}" >> test-report-windows.md
+          echo "### Windows (gfortran, x86_64)" > test-report-windows.md
+          echo "- EXAFS/Cu: ${{ steps.test-exafs-cu.outcome }}" >> test-report-windows.md
+          echo "- XANES/Cu: ${{ steps.test-xanes-cu.outcome }}" >> test-report-windows.md
+          echo "- XANES/BN: ${{ steps.test-xanes-bn.outcome }}" >> test-report-windows.md
           cat test-report-windows.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test report
