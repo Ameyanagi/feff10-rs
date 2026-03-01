@@ -28,10 +28,7 @@ const DRIVERS: &[(&str, &str, &str)] = &[
 
 /// Which BLAS/LAPACK implementation was detected.
 enum BlasType {
-    Mkl {
-        lib_dir: PathBuf,
-        interface: String,
-    },
+    Mkl { lib_dir: PathBuf, interface: String },
     OpenBlas,
     SystemBlas,
     Accelerate,
@@ -105,11 +102,7 @@ fn main() {
     let final_archive = out_dir.join("libfeff10.a");
     let mut merge_libs = Vec::new();
 
-    if let BlasType::Mkl {
-        lib_dir,
-        interface,
-    } = &blas_type
-    {
+    if let BlasType::Mkl { lib_dir, interface } = &blas_type {
         merge_libs.push(lib_dir.join(format!("lib{interface}.a")));
         merge_libs.push(lib_dir.join("libmkl_sequential.a"));
         merge_libs.push(lib_dir.join("libmkl_core.a"));
@@ -118,23 +111,23 @@ fn main() {
     // For Intel compiler, merge Intel Fortran runtime into the archive
     // so the final binary doesn't need LD_LIBRARY_PATH pointing to oneAPI.
     // Use _pic variants for PIC-compatible static linking (required for PIE executables).
-    if compiler.contains("ifx") || compiler.contains("ifort") {
-        if let Some(compiler_dir) = Path::new(&compiler).parent().and_then(|p| p.parent()) {
-            let lib_dir = compiler_dir.join("lib");
-            // Prefer _pic variants (PIC-compatible), fall back to regular
-            for (pic, regular) in &[
-                ("libifcore_pic.a", "libifcore.a"),
-                ("libimf.a", "libimf.a"),
-                ("libsvml.a", "libsvml.a"),
-                ("libirc.a", "libirc.a"),
-            ] {
-                let pic_path = lib_dir.join(pic);
-                let reg_path = lib_dir.join(regular);
-                if pic_path.exists() {
-                    merge_libs.push(pic_path);
-                } else if reg_path.exists() {
-                    merge_libs.push(reg_path);
-                }
+    if (compiler.contains("ifx") || compiler.contains("ifort"))
+        && let Some(compiler_dir) = Path::new(&compiler).parent().and_then(|p| p.parent())
+    {
+        let lib_dir = compiler_dir.join("lib");
+        // Prefer _pic variants (PIC-compatible), fall back to regular
+        for (pic, regular) in &[
+            ("libifcore_pic.a", "libifcore.a"),
+            ("libimf.a", "libimf.a"),
+            ("libsvml.a", "libsvml.a"),
+            ("libirc.a", "libirc.a"),
+        ] {
+            let pic_path = lib_dir.join(pic);
+            let reg_path = lib_dir.join(regular);
+            if pic_path.exists() {
+                merge_libs.push(pic_path);
+            } else if reg_path.exists() {
+                merge_libs.push(reg_path);
             }
         }
     }
@@ -164,10 +157,7 @@ fn main() {
         BlasType::Mkl { .. } if cfg!(target_os = "linux") => {
             // Already merged into libfeff10.a via ld -r
         }
-        BlasType::Mkl {
-            lib_dir,
-            interface,
-        } => {
+        BlasType::Mkl { lib_dir, interface } => {
             // macOS or other: can't merge, link separately
             println!("cargo:rustc-link-search=native={}", lib_dir.display());
             println!("cargo:rustc-link-lib=static={interface}");
@@ -243,10 +233,42 @@ fn main() {
     );
 
     let src_dirs = [
-        "ATOM", "BAND", "COMMON", "COMPTON", "CRPA", "DEBYE", "DMDW", "EELS", "EELSMDFF",
-        "ERRORMODS", "EXCH", "FF2X", "FMS", "FOVRG", "FULLSPECTRUM", "GENFMT", "IOMODS",
-        "KSPACE", "LDOS", "MATH", "MKGTR", "MODS", "PAR", "PATH", "POT", "RDINP", "RHORRP",
-        "RIXS", "SCREEN", "SELF", "SFCONV", "TDLDA", "XSPH", "INPGEN", "HEADERS", "DEP",
+        "ATOM",
+        "BAND",
+        "COMMON",
+        "COMPTON",
+        "CRPA",
+        "DEBYE",
+        "DMDW",
+        "EELS",
+        "EELSMDFF",
+        "ERRORMODS",
+        "EXCH",
+        "FF2X",
+        "FMS",
+        "FOVRG",
+        "FULLSPECTRUM",
+        "GENFMT",
+        "IOMODS",
+        "KSPACE",
+        "LDOS",
+        "MATH",
+        "MKGTR",
+        "MODS",
+        "PAR",
+        "PATH",
+        "POT",
+        "RDINP",
+        "RHORRP",
+        "RIXS",
+        "SCREEN",
+        "SELF",
+        "SFCONV",
+        "TDLDA",
+        "XSPH",
+        "INPGEN",
+        "HEADERS",
+        "DEP",
     ];
     for dir in &src_dirs {
         println!("cargo:rerun-if-changed={}", feff_src.join(dir).display());
@@ -401,7 +423,10 @@ fn append_objects_target(build_src: &Path) {
 
 /// Run `make objects` to compile all Fortran source files into .o files.
 fn run_make_objects(build_src: &Path, compiler: &str, flags: &str) {
-    eprintln!("feff10-sys: running make objects in {}", build_src.display());
+    eprintln!(
+        "feff10-sys: running make objects in {}",
+        build_src.display()
+    );
 
     let mut cmd = Command::new("make");
     cmd.args([
@@ -417,15 +442,14 @@ fn run_make_objects(build_src: &Path, compiler: &str, flags: &str) {
     .env("MAKEFLAGS", ""); // Clear inherited flags
 
     // On macOS, flang-new may need SDKROOT
-    if cfg!(target_os = "macos") && compiler.contains("flang") {
-        if env::var("SDKROOT").is_err() {
-            if let Ok(output) = Command::new("xcrun").arg("--show-sdk-path").output() {
-                if output.status.success() {
-                    let sdk = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                    cmd.env("SDKROOT", sdk);
-                }
-            }
-        }
+    if cfg!(target_os = "macos")
+        && compiler.contains("flang")
+        && env::var("SDKROOT").is_err()
+        && let Ok(output) = Command::new("xcrun").arg("--show-sdk-path").output()
+        && output.status.success()
+    {
+        let sdk = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        cmd.env("SDKROOT", sdk);
     }
 
     // On Linux with Intel oneAPI, propagate library paths
@@ -452,7 +476,9 @@ fn run_make_objects(build_src: &Path, compiler: &str, flags: &str) {
         }
     }
 
-    let status = cmd.status().expect("Failed to run make. Is `make` installed?");
+    let status = cmd
+        .status()
+        .expect("Failed to run make. Is `make` installed?");
     if !status.success() {
         panic!(
             "feff10-sys: make objects failed with exit code {:?}",
@@ -518,10 +544,7 @@ fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBu
     // Verify all input archives exist
     for lib in extra_libs {
         if !lib.exists() {
-            panic!(
-                "feff10-sys: library not found for merge: {}",
-                lib.display()
-            );
+            panic!("feff10-sys: library not found for merge: {}", lib.display());
         }
     }
 
@@ -563,16 +586,22 @@ fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBu
     // Report size
     if let Ok(meta) = fs::metadata(final_archive) {
         let size_mb = meta.len() as f64 / (1024.0 * 1024.0);
-        eprintln!(
-            "feff10-sys: final archive size: {:.1} MB",
-            size_mb
-        );
+        eprintln!("feff10-sys: final archive size: {:.1} MB", size_mb);
     }
 }
 
 /// Emit cargo link directives for the Fortran runtime.
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
+        if let Some(lib_dir) = find_gfortran_runtime_dir(compiler) {
+            println!("cargo:rustc-link-search=native={}", lib_dir.display());
+            eprintln!(
+                "feff10-sys: found gfortran runtime dir: {}",
+                lib_dir.display()
+            );
+        } else {
+            eprintln!("feff10-sys: warning: could not auto-detect gfortran runtime search path");
+        }
         println!("cargo:rustc-link-lib=gfortran");
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
         // Intel runtime is merged into the archive on Linux.
@@ -606,6 +635,34 @@ fn emit_fortran_runtime_links(compiler: &str) {
     }
 }
 
+fn find_gfortran_runtime_dir(compiler: &str) -> Option<PathBuf> {
+    for lib_name in ["libgfortran.dylib", "libgfortran.so", "libgfortran.a"] {
+        let Ok(output) = Command::new(compiler)
+            .arg(format!("-print-file-name={lib_name}"))
+            .output()
+        else {
+            continue;
+        };
+        if !output.status.success() {
+            continue;
+        }
+
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if path.is_empty() || path == lib_name {
+            continue;
+        }
+
+        let candidate = PathBuf::from(path);
+        if candidate.exists()
+            && let Some(parent) = candidate.parent()
+        {
+            return Some(parent.to_path_buf());
+        }
+    }
+
+    None
+}
+
 /// Find and emit link search path for LLVM Flang runtime libraries.
 /// Returns list of library names (without lib prefix / .a suffix).
 /// LLVM ≤20 uses "FortranRuntime" + "FortranDecimal", LLVM ≥21 uses "flang_rt.runtime".
@@ -621,16 +678,30 @@ fn find_flang_runtime(compiler: &str) -> Vec<String> {
         for lib_file in &primary_libs {
             if dir.join(lib_file).exists() {
                 println!("cargo:rustc-link-search=native={}", dir.display());
-                let name = lib_file.strip_prefix("lib").unwrap().strip_suffix(".a").unwrap();
-                eprintln!("feff10-sys: found flang runtime: {}", dir.join(lib_file).display());
+                let name = lib_file
+                    .strip_prefix("lib")
+                    .unwrap()
+                    .strip_suffix(".a")
+                    .unwrap();
+                eprintln!(
+                    "feff10-sys: found flang runtime: {}",
+                    dir.join(lib_file).display()
+                );
 
                 let mut libs = vec![name.to_string()];
                 // For old-style FortranRuntime, also link FortranDecimal
                 for extra in &extra_libs {
                     if dir.join(extra).exists() {
-                        let extra_name = extra.strip_prefix("lib").unwrap().strip_suffix(".a").unwrap();
+                        let extra_name = extra
+                            .strip_prefix("lib")
+                            .unwrap()
+                            .strip_suffix(".a")
+                            .unwrap();
                         libs.push(extra_name.to_string());
-                        eprintln!("feff10-sys: found flang extra: {}", dir.join(extra).display());
+                        eprintln!(
+                            "feff10-sys: found flang extra: {}",
+                            dir.join(extra).display()
+                        );
                     }
                 }
                 return libs;
@@ -653,12 +724,12 @@ fn collect_flang_search_dirs(compiler: &str) -> Vec<PathBuf> {
         }
     }
     for flang_cmd in &candidates {
-        if let Ok(output) = Command::new(flang_cmd).arg("--print-resource-dir").output() {
-            if output.status.success() {
-                let resource_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                for subdir in &["lib/linux", "lib/x86_64-pc-linux-gnu", "lib"] {
-                    dirs.push(Path::new(&resource_dir).join(subdir));
-                }
+        if let Ok(output) = Command::new(flang_cmd).arg("--print-resource-dir").output()
+            && output.status.success()
+        {
+            let resource_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            for subdir in &["lib/linux", "lib/x86_64-pc-linux-gnu", "lib"] {
+                dirs.push(Path::new(&resource_dir).join(subdir));
             }
         }
     }
@@ -666,10 +737,10 @@ fn collect_flang_search_dirs(compiler: &str) -> Vec<PathBuf> {
     // Also check the compiler's own lib directory (e.g. /usr/lib/llvm-20/lib)
     if let Some(bin_dir) = Path::new(compiler).parent() {
         let lib_dir = bin_dir.parent().map(|p| p.join("lib"));
-        if let Some(ld) = lib_dir {
-            if ld.is_dir() {
-                dirs.push(ld);
-            }
+        if let Some(ld) = lib_dir
+            && ld.is_dir()
+        {
+            dirs.push(ld);
         }
     }
 
@@ -713,8 +784,7 @@ fn detect_compiler() -> (String, String) {
         ] {
             if Path::new(path).exists() {
                 let basename = Path::new(path).file_name().unwrap().to_str().unwrap();
-                let flags =
-                    env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(basename));
+                let flags = env::var("FEFF_FFLAGS").unwrap_or_else(|_| default_flags_for(basename));
                 eprintln!("feff10-sys: found Intel compiler at {path}");
                 return (path.to_string(), flags);
             }
@@ -808,24 +878,26 @@ fn detect_blas_full(compiler: &str) -> (String, String, BlasType) {
     }
 
     // Intel MKL — preferred on Linux
-    if cfg!(target_os = "linux") {
-        if let Some((mkl_ldflags, lib_dir, interface)) = detect_mkl_full(compiler) {
-            return (
-                mkl_ldflags,
-                "_MKL".to_string(),
-                BlasType::Mkl { lib_dir, interface },
-            );
-        }
+    if cfg!(target_os = "linux")
+        && let Some((mkl_ldflags, lib_dir, interface)) = detect_mkl_full(compiler)
+    {
+        return (
+            mkl_ldflags,
+            "_MKL".to_string(),
+            BlasType::Mkl { lib_dir, interface },
+        );
     }
 
     // OpenBLAS fallback
     if cfg!(target_os = "linux") {
-        if let Ok(output) = Command::new("pkg-config").args(["--libs", "openblas"]).output() {
-            if output.status.success() {
-                let libs = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                eprintln!("feff10-sys: using OpenBLAS via pkg-config: {libs}");
-                return (libs, "_MKL".to_string(), BlasType::OpenBlas);
-            }
+        if let Ok(output) = Command::new("pkg-config")
+            .args(["--libs", "openblas"])
+            .output()
+            && output.status.success()
+        {
+            let libs = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            eprintln!("feff10-sys: using OpenBLAS via pkg-config: {libs}");
+            return (libs, "_MKL".to_string(), BlasType::OpenBlas);
         }
         if Path::new("/usr/lib/x86_64-linux-gnu/libopenblas.so").exists()
             || Path::new("/usr/lib64/libopenblas.so").exists()
@@ -893,11 +965,10 @@ fn find_mkl_root() -> Option<PathBuf> {
             return Some(path);
         }
     }
-    for path in &["/opt/intel/oneapi/mkl/latest"] {
-        let p = PathBuf::from(path);
-        if p.is_dir() {
-            return Some(p);
-        }
+    let path = "/opt/intel/oneapi/mkl/latest";
+    let p = PathBuf::from(path);
+    if p.is_dir() {
+        return Some(p);
     }
     None
 }
@@ -915,7 +986,7 @@ fn find_files_recursive(dir: &Path, extension: &str) -> Vec<PathBuf> {
                 let path = entry.path();
                 if path.is_dir() {
                     walk(&path, ext, files);
-                } else if path.extension().map_or(false, |e| e == ext) {
+                } else if path.extension().is_some_and(|e| e == ext) {
                     files.push(path);
                 }
             }

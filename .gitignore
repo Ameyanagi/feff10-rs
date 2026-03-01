@@ -4,3 +4,4 @@
 .feff.error
 fort.*
 log.dat
+bench-results.json

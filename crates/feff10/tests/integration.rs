@@ -44,7 +44,9 @@ fn run_and_compare(example_subdir: &str, reference_file: &str, col_x: usize, col
     }
 
     // Compare output with reference
-    let output_file = work_dir.path().join(reference_file.replace("reference", ""));
+    let output_file = work_dir
+        .path()
+        .join(reference_file.replace("reference", ""));
     let ref_file = example_dir.join(reference_file);
 
     if !output_file.exists() {

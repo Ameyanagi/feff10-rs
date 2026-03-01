@@ -5,6 +5,13 @@ on:
   schedule:
     - cron: '0 6 * * 1'  # Weekly Monday at 6am UTC
 
+permissions:
+  contents: read
+
+concurrency:
+  group: benchmark-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
@@ -16,41 +23,41 @@ jobs:
         include:
           # gfortran optimization levels
           - compiler: gfortran
-            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O0"
+            flags: "-ffree-line-length-none -cpp -fPIC -fallow-argument-mismatch -O0"
             label: gfortran-O0
           - compiler: gfortran
-            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O1"
+            flags: "-ffree-line-length-none -cpp -fPIC -fallow-argument-mismatch -O1"
             label: gfortran-O1
           - compiler: gfortran
-            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O2"
+            flags: "-ffree-line-length-none -cpp -fPIC -fallow-argument-mismatch -O2"
             label: gfortran-O2
           - compiler: gfortran
-            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O3"
+            flags: "-ffree-line-length-none -cpp -fPIC -fallow-argument-mismatch -O3"
             label: gfortran-O3
           - compiler: gfortran
-            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -Ofast"
+            flags: "-ffree-line-length-none -cpp -fPIC -fallow-argument-mismatch -Ofast"
             label: gfortran-Ofast
           - compiler: gfortran
-            flags: "-ffree-line-length-none -cpp -fallow-argument-mismatch -O3 -march=native"
+            flags: "-ffree-line-length-none -cpp -fPIC -fallow-argument-mismatch -O3 -march=native"
             label: gfortran-O3-native
           # ifx optimization levels
           - compiler: ifx
-            flags: "-fpp -O0"
+            flags: "-fpp -fPIC -O0"
             label: ifx-O0
           - compiler: ifx
-            flags: "-fpp -O1"
+            flags: "-fpp -fPIC -O1"
             label: ifx-O1
           - compiler: ifx
-            flags: "-fpp -O2"
+            flags: "-fpp -fPIC -O2"
             label: ifx-O2
           - compiler: ifx
-            flags: "-fpp -O3"
+            flags: "-fpp -fPIC -O3"
             label: ifx-O3
           - compiler: ifx
-            flags: "-fpp -Ofast"
+            flags: "-fpp -fPIC -Ofast"
             label: ifx-Ofast
           - compiler: ifx
-            flags: "-fpp -O3 -xHost"
+            flags: "-fpp -fPIC -O3 -xHost"
             label: ifx-O3-xHost
 
     runs-on: ubuntu-latest
@@ -75,16 +82,37 @@ jobs:
           compiler: intel
           version: '2024.0'
 
+      - name: Resolve ifx compiler path
+        if: matrix.compiler == 'ifx'
+        id: ifx-path
+        run: |
+          FC=$(which ifx)
+          if [ -z "$FC" ]; then
+            echo "ERROR: ifx not found"
+            exit 1
+          fi
+          echo "fc=$FC" >> "$GITHUB_OUTPUT"
+          echo "Found ifx at: $FC"
+
+      - name: Resolve compiler executable
+        id: fc
+        run: |
+          if [ "${{ matrix.compiler }}" = "ifx" ]; then
+            echo "fc=${{ steps.ifx-path.outputs.fc }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "fc=gfortran" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Build (${{ matrix.label }})
         env:
-          FEFF_FC: ${{ matrix.compiler }}
+          FEFF_FC: ${{ steps.fc.outputs.fc }}
           FEFF_FFLAGS: ${{ matrix.flags }}
         run: cargo build --workspace --release
 
       # Correctness first — if optimization breaks results, fail early
       - name: Verify correctness (${{ matrix.label }})
         env:
-          FEFF_FC: ${{ matrix.compiler }}
+          FEFF_FC: ${{ steps.fc.outputs.fc }}
           FEFF_FFLAGS: ${{ matrix.flags }}
         run: cargo test -p feff10 --release --test integration -- --test-threads=1
 

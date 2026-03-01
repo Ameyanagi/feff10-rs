@@ -10,7 +10,11 @@ on:
         required: false
 
 permissions:
-  contents: write
+  contents: read
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
@@ -219,7 +223,6 @@ jobs:
         env:
           FEFF_FC: gfortran
           FEFF_NO_NATIVE: "1"
-          RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo build --release --target x86_64-pc-windows-gnu -p feff10-cli
@@ -258,6 +261,8 @@ jobs:
     needs: [build-linux, build-macos, build-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    permissions:
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -274,7 +279,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum feff10-* > sha256sums.txt
+          sha256sum feff10-* libfeff10-* feff10.h > sha256sums.txt
           echo "=== SHA256 Checksums ==="
           cat sha256sums.txt
 
@@ -309,6 +314,17 @@ jobs:
           else
             echo "tag=draft-$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
             echo "draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Validate tag matches Cargo version
+        if: startsWith(steps.tag.outputs.tag, 'v')
+        run: |
+          CARGO_VERSION=$(awk -F '"' '/^version = / {print $2; exit}' Cargo.toml)
+          TAG_VERSION="${{ steps.tag.outputs.tag }}"
+          TAG_VERSION="${TAG_VERSION#v}"
+          if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
+            echo "ERROR: tag version '$TAG_VERSION' does not match Cargo.toml version '$CARGO_VERSION'"
+            exit 1
           fi
 
       - name: Create GitHub Release

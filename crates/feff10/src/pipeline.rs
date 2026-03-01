@@ -1,10 +1,13 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use crate::config::FeffConfig;
 use crate::error::{Error, PipelineError};
 use crate::stage::Stage;
+
+static FEFF_EXEC_LOCK: Mutex<()> = Mutex::new(());
 
 /// Result from running a single stage.
 #[derive(Debug)]
@@ -61,6 +64,10 @@ impl FeffPipeline {
         let feff_error_path = self.config.work_dir.join(".feff.error");
         let _ = fs::remove_file(&feff_error_path);
 
+        let _exec_lock = FEFF_EXEC_LOCK
+            .lock()
+            .map_err(|_| Error::Config("global FEFF execution lock is poisoned".to_string()))?;
+
         for &stage in &self.config.stages {
             callback(stage, StageProgress::Starting);
 
@@ -71,13 +78,9 @@ impl FeffPipeline {
             callback(stage, StageProgress::Finished { duration });
 
             // Check for FEFF error (written to .feff.error by the Fortran error module)
-            let feff_error = fs::read_to_string(&feff_error_path).ok().and_then(|s| {
-                if s.trim().is_empty() {
-                    None
-                } else {
-                    Some(s)
-                }
-            });
+            let feff_error = fs::read_to_string(&feff_error_path)
+                .ok()
+                .and_then(|s| if s.trim().is_empty() { None } else { Some(s) });
 
             if feff_error.is_some() {
                 return Err(Error::Pipeline(PipelineError {
@@ -110,20 +113,12 @@ impl FeffPipeline {
 /// stages communicate via files and `stop` is only called on error paths.
 #[cfg(unix)]
 fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
-    // Save current directory
-    let old_dir = std::env::current_dir()?;
-
-    // Change to work directory before forking so the child inherits it
-    std::env::set_current_dir(work_dir)?;
+    let _cwd_guard = CwdGuard::enter(work_dir)?;
 
     let pid = unsafe { libc::fork() };
 
     match pid {
-        -1 => {
-            // Fork failed — restore cwd and return error
-            let _ = std::env::set_current_dir(&old_dir);
-            Err(Error::Io(std::io::Error::last_os_error()))
-        }
+        -1 => Err(Error::Io(std::io::Error::last_os_error())),
         0 => {
             // ── Child process ──
             // Call the Fortran subroutine. If it returns normally, exit(0).
@@ -132,15 +127,18 @@ fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Er
             unsafe { libc::_exit(0) };
         }
         child_pid => {
-            // ── Parent process ──
-            // Restore working directory immediately
-            std::env::set_current_dir(&old_dir)?;
-
             // Wait for child to finish
             let mut status: libc::c_int = 0;
-            let ret = unsafe { libc::waitpid(child_pid, &mut status, 0) };
-            if ret == -1 {
-                return Err(Error::Io(std::io::Error::last_os_error()));
+            loop {
+                let ret = unsafe { libc::waitpid(child_pid, &mut status, 0) };
+                if ret == -1 {
+                    let err = std::io::Error::last_os_error();
+                    if err.raw_os_error() == Some(libc::EINTR) {
+                        continue;
+                    }
+                    return Err(Error::Io(err));
+                }
+                break;
             }
 
             if libc::WIFEXITED(status) {
@@ -177,9 +175,46 @@ fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Er
 
 #[cfg(not(unix))]
 fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
-    let old_dir = std::env::current_dir()?;
-    std::env::set_current_dir(work_dir)?;
+    let _cwd_guard = CwdGuard::enter(work_dir)?;
     unsafe { stage.call_ffi() };
-    std::env::set_current_dir(&old_dir)?;
     Ok(())
+}
+
+struct CwdGuard {
+    old_dir: PathBuf,
+}
+
+impl CwdGuard {
+    fn enter(dir: &Path) -> Result<Self, Error> {
+        let old_dir = std::env::current_dir()?;
+        std::env::set_current_dir(dir)?;
+        Ok(Self { old_dir })
+    }
+}
+
+impl Drop for CwdGuard {
+    fn drop(&mut self) {
+        let _ = std::env::set_current_dir(&self.old_dir);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::CwdGuard;
+
+    #[test]
+    fn cwd_guard_restores_previous_directory() {
+        let original = std::env::current_dir().unwrap().canonicalize().unwrap();
+        let tmp = tempfile::tempdir().unwrap();
+        let tmp_canon = tmp.path().canonicalize().unwrap();
+
+        {
+            let _guard = CwdGuard::enter(tmp.path()).unwrap();
+            let now = std::env::current_dir().unwrap().canonicalize().unwrap();
+            assert_eq!(now, tmp_canon);
+        }
+
+        let restored = std::env::current_dir().unwrap().canonicalize().unwrap();
+        assert_eq!(restored, original);
+    }
 }

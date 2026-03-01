@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -12,10 +12,17 @@ fn long_version() -> &'static str {
     concat!(
         env!("CARGO_PKG_VERSION"),
         "\n",
-        "FEFF10 commit:    ", env!("FEFF10_COMMIT"), "\n",
-        "Fortran compiler: ", env!("FEFF10_FC"), "\n",
-        "Fortran flags:    ", env!("FEFF10_FFLAGS"), "\n",
-        "BLAS/LAPACK:      ", env!("FEFF10_BLAS"),
+        "FEFF10 commit:    ",
+        env!("FEFF10_COMMIT"),
+        "\n",
+        "Fortran compiler: ",
+        env!("FEFF10_FC"),
+        "\n",
+        "Fortran flags:    ",
+        env!("FEFF10_FFLAGS"),
+        "\n",
+        "BLAS/LAPACK:      ",
+        env!("FEFF10_BLAS"),
     )
 }
 use feff10::input::FeffInput;
@@ -103,6 +110,44 @@ fn main() {
     }
 }
 
+fn parse_requested_stages(stage_names: &[String]) -> Result<Vec<Stage>, String> {
+    let mut stages = Vec::new();
+    let mut seen = HashSet::new();
+    let mut unknown = Vec::new();
+
+    for name in stage_names {
+        match name.parse::<Stage>() {
+            Ok(stage) => {
+                if seen.insert(stage) {
+                    stages.push(stage);
+                }
+            }
+            Err(_) => unknown.push(name.clone()),
+        }
+    }
+
+    if !unknown.is_empty() {
+        let allowed = Stage::all()
+            .iter()
+            .map(|s| s.executable_name())
+            .collect::<Vec<_>>()
+            .join(", ");
+        return Err(format!(
+            "Unknown stage(s): {}. Allowed values: {allowed}",
+            unknown.join(", ")
+        ));
+    }
+
+    Ok(stages)
+}
+
+fn normalize_compare_columns(col_x: usize, col_y: usize) -> Result<(usize, usize), String> {
+    if col_x == 0 || col_y == 0 {
+        return Err("--col-x and --col-y must be >= 1".to_string());
+    }
+    Ok((col_x - 1, col_y - 1))
+}
+
 fn cmd_run(input: PathBuf, work_dir: Option<PathBuf>, stage_names: Option<Vec<String>>) {
     // Resolve input path
     let inp_path = if input.is_dir() {
@@ -135,14 +180,13 @@ fn cmd_run(input: PathBuf, work_dir: Option<PathBuf>, stage_names: Option<Vec<St
     let mut builder = FeffConfigBuilder::new().work_dir(&work).input(feff_input);
 
     if let Some(names) = stage_names {
-        let stages: Vec<Stage> = names
-            .iter()
-            .filter_map(|name| {
-                Stage::default_pipeline()
-                    .into_iter()
-                    .find(|s| s.executable_name() == name.as_str())
-            })
-            .collect();
+        let stages = match parse_requested_stages(&names) {
+            Ok(stages) => stages,
+            Err(msg) => {
+                eprintln!("Error: {msg}");
+                std::process::exit(2);
+            }
+        };
         builder = builder.stages(stages);
     }
 
@@ -177,7 +221,10 @@ fn cmd_run(input: PathBuf, work_dir: Option<PathBuf>, stage_names: Option<Vec<St
 
     match result {
         Ok(res) => {
-            println!("FEFF calculation completed successfully in {}", res.work_dir.display());
+            println!(
+                "FEFF calculation completed successfully in {}",
+                res.work_dir.display()
+            );
             let total_time: Duration = res.stages.iter().map(|s| s.duration).sum();
             println!("Total time: {:.1}s", total_time.as_secs_f64());
             for sr in &res.stages {
@@ -196,7 +243,7 @@ fn cmd_run(input: PathBuf, work_dir: Option<PathBuf>, stage_names: Option<Vec<St
 }
 
 fn cmd_validate(input: PathBuf) {
-    match FeffInput::from_file(&input) {
+    match FeffInput::from_file_strict(&input) {
         Ok(inp) => {
             println!("Valid feff.inp: {}", input.display());
             if let Some(ref edge) = inp.edge {
@@ -228,6 +275,14 @@ fn cmd_validate(input: PathBuf) {
 }
 
 fn cmd_compare(file1: PathBuf, file2: PathBuf, col_x: usize, col_y: usize) {
+    let (col_x_zero, col_y_zero) = match normalize_compare_columns(col_x, col_y) {
+        Ok(cols) => cols,
+        Err(msg) => {
+            eprintln!("Error: {msg}");
+            std::process::exit(2);
+        }
+    };
+
     let xmu1 = match XmuDat::from_file(&file1) {
         Ok(x) => x,
         Err(e) => {
@@ -243,12 +298,9 @@ fn cmd_compare(file1: PathBuf, file2: PathBuf, col_x: usize, col_y: usize) {
         }
     };
 
-    // Convert from 1-based to 0-based
-    let rsq = xmu1.r_squared(&xmu2, col_x - 1, col_y - 1);
+    let rsq = xmu1.r_squared(&xmu2, col_x_zero, col_y_zero);
     let pct = rsq * 100.0;
-    println!(
-        "R-squared comparison (columns {col_x} vs {col_y}):"
-    );
+    println!("R-squared comparison (columns {col_x} vs {col_y}):");
     println!("  {} vs {}", file1.display(), file2.display());
     println!("  Average deviation: {pct:.6}%");
     if pct < 0.1 {
@@ -347,12 +399,7 @@ fn cmd_bench(inputs: Vec<PathBuf>, iterations: usize, output: Option<PathBuf>, l
                         total += secs;
                     }
                     total_times.push(total);
-                    eprintln!(
-                        "  iteration {}/{}: {:.2}s",
-                        iter + 1,
-                        iterations,
-                        total
-                    );
+                    eprintln!("  iteration {}/{}: {:.2}s", iter + 1, iterations, total);
                 }
                 Err(e) => {
                     eprintln!("  iteration {}/{}: FAILED - {e}", iter + 1, iterations);
@@ -362,14 +409,21 @@ fn cmd_bench(inputs: Vec<PathBuf>, iterations: usize, output: Option<PathBuf>, l
             }
         }
 
-        let valid_totals: Vec<f64> = total_times.iter().copied().filter(|t| t.is_finite()).collect();
+        let valid_totals: Vec<f64> = total_times
+            .iter()
+            .copied()
+            .filter(|t| t.is_finite())
+            .collect();
         let mean = if valid_totals.is_empty() {
             f64::NAN
         } else {
             valid_totals.iter().sum::<f64>() / valid_totals.len() as f64
         };
         let min = valid_totals.iter().copied().fold(f64::INFINITY, f64::min);
-        let max = valid_totals.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+        let max = valid_totals
+            .iter()
+            .copied()
+            .fold(f64::NEG_INFINITY, f64::max);
 
         let stage_means: BTreeMap<String, f64> = stage_timings
             .iter()
@@ -427,5 +481,38 @@ fn cmd_bench(inputs: Vec<PathBuf>, iterations: usize, output: Option<PathBuf>, l
         let json = serde_json::to_string_pretty(&report).unwrap();
         std::fs::write(&out_path, &json).unwrap();
         eprintln!("JSON results written to {}", out_path.display());
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{normalize_compare_columns, parse_requested_stages};
+    use feff10::stage::Stage;
+
+    #[test]
+    fn parse_requested_stages_rejects_unknown() {
+        let stages = vec!["rdinp".to_string(), "bad".to_string()];
+        let err = parse_requested_stages(&stages).unwrap_err();
+        assert!(err.contains("Unknown stage(s)"));
+        assert!(err.contains("bad"));
+    }
+
+    #[test]
+    fn parse_requested_stages_deduplicates() {
+        let stages = vec!["pot".to_string(), "pot".to_string(), "fms".to_string()];
+        let parsed = parse_requested_stages(&stages).unwrap();
+        assert_eq!(parsed, vec![Stage::Pot, Stage::Fms]);
+    }
+
+    #[test]
+    fn normalize_compare_columns_rejects_zero() {
+        let err = normalize_compare_columns(0, 4).unwrap_err();
+        assert!(err.contains(">= 1"));
+    }
+
+    #[test]
+    fn normalize_compare_columns_converts_to_zero_based() {
+        let cols = normalize_compare_columns(1, 4).unwrap();
+        assert_eq!(cols, (0, 3));
     }
 }

@@ -6,11 +6,42 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install gfortran
+        run: sudo apt-get update && sudo apt-get install -y gfortran make
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        env:
+          FEFF_FC: gfortran
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
   build-and-test:
+    needs: lint
     strategy:
       fail-fast: false
       matrix:
@@ -21,20 +52,22 @@ jobs:
           - os: ubuntu-latest
             compiler: ifx
             install: ""  # handled by setup-fortran action
+            experimental: true
           - os: ubuntu-latest
             compiler: flang
             install: ""  # handled by LLVM apt repo setup below
-            allow-failure: true
+            experimental: true
           - os: macos-latest
             compiler: gfortran
             install: brew install gcc
+            experimental: true
           - os: windows-latest
             compiler: gfortran
             install: ""  # handled by msys2 action
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 60
-    continue-on-error: ${{ matrix.allow-failure || false }}
+    continue-on-error: ${{ matrix.experimental || false }}
 
     steps:
       - uses: actions/checkout@v4
@@ -56,12 +89,6 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.compiler }}-cargo-${{ hashFiles('**/Cargo.lock') }}
           restore-keys: |
             ${{ runner.os }}-${{ matrix.compiler }}-cargo-
-
-      - name: Cache Fortran build
-        uses: actions/cache@v4
-        with:
-          path: target/*/build/feff10-sys-*/out/bin/
-          key: feff-${{ runner.os }}-${{ matrix.compiler }}-${{ hashFiles('feff10/src/**/*.f90', 'feff10/src/Makefile', 'feff10/src/DEP/*.mk') }}
 
       # --- Compiler installation ---
 
@@ -171,6 +198,8 @@ jobs:
 
       - name: Unit tests (Linux - gfortran)
         if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
+        env:
+          FEFF_FC: gfortran
         run: cargo test --workspace --lib
 
       - name: Unit tests (Linux - ifx)
@@ -181,6 +210,8 @@ jobs:
 
       - name: Unit tests (Linux - flang)
         if: matrix.compiler == 'flang' && runner.os == 'Linux'
+        env:
+          FEFF_FC: ${{ steps.flang-path.outputs.fc }}
         run: cargo test --workspace --lib
 
       - name: Unit tests (macOS)
@@ -205,7 +236,6 @@ jobs:
 
       - name: Integration tests (Linux - ifx)
         if: matrix.compiler == 'ifx' && runner.os == 'Linux'
-        continue-on-error: true
         env:
           FEFF_FC: ${{ steps.ifx-path.outputs.fc }}
         run: cargo test -p feff10 --test integration -- --test-threads=1
@@ -213,7 +243,6 @@ jobs:
 
       - name: Integration tests (Linux - flang)
         if: matrix.compiler == 'flang' && runner.os == 'Linux'
-        continue-on-error: true
         env:
           FEFF_FC: ${{ steps.flang-path.outputs.fc }}
         run: cargo test -p feff10 --test integration -- --test-threads=1
@@ -221,7 +250,6 @@ jobs:
 
       - name: Integration tests (macOS)
         if: runner.os == 'macOS'
-        continue-on-error: true
         env:
           FEFF_FC: ${{ steps.macos-gfortran.outputs.fc }}
         run: cargo test -p feff10 --test integration -- --test-threads=1

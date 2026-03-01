@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 /// Individual FEFF calculation stages.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Stage {
@@ -22,6 +24,29 @@ pub enum Stage {
 }
 
 impl Stage {
+    pub fn all() -> &'static [Stage] {
+        &[
+            Stage::Rdinp,
+            Stage::Dmdw,
+            Stage::Atomic,
+            Stage::Pot,
+            Stage::Ldos,
+            Stage::Screen,
+            Stage::Crpa,
+            Stage::Opconsat,
+            Stage::Xsph,
+            Stage::Fms,
+            Stage::Mkgtr,
+            Stage::Path,
+            Stage::Genfmt,
+            Stage::Ff2x,
+            Stage::Sfconv,
+            Stage::Compton,
+            Stage::Eels,
+            Stage::Rhorrp,
+        ]
+    }
+
     /// Name of the executable for this stage.
     pub fn executable_name(&self) -> &'static str {
         match self {
@@ -48,26 +73,7 @@ impl Stage {
 
     /// The canonical pipeline order.
     pub fn default_pipeline() -> Vec<Stage> {
-        vec![
-            Stage::Rdinp,
-            Stage::Dmdw,
-            Stage::Atomic,
-            Stage::Pot,
-            Stage::Ldos,
-            Stage::Screen,
-            Stage::Crpa,
-            Stage::Opconsat,
-            Stage::Xsph,
-            Stage::Fms,
-            Stage::Mkgtr,
-            Stage::Path,
-            Stage::Genfmt,
-            Stage::Ff2x,
-            Stage::Sfconv,
-            Stage::Compton,
-            Stage::Eels,
-            Stage::Rhorrp,
-        ]
+        Self::all().to_vec()
     }
 
     /// Which CONTROL flag index (0-5) controls this stage.
@@ -75,8 +81,13 @@ impl Stage {
     pub fn control_index(&self) -> usize {
         match self {
             Stage::Rdinp => 0,
-            Stage::Dmdw | Stage::Atomic | Stage::Pot | Stage::Ldos | Stage::Screen
-            | Stage::Crpa | Stage::Opconsat => 1,
+            Stage::Dmdw
+            | Stage::Atomic
+            | Stage::Pot
+            | Stage::Ldos
+            | Stage::Screen
+            | Stage::Crpa
+            | Stage::Opconsat => 1,
             Stage::Xsph => 2,
             Stage::Fms | Stage::Mkgtr | Stage::Path => 3,
             Stage::Genfmt => 4,
@@ -125,5 +136,51 @@ impl Stage {
 impl std::fmt::Display for Stage {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.executable_name())
+    }
+}
+
+impl FromStr for Stage {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let normalized = s.trim().to_ascii_lowercase();
+        match normalized.as_str() {
+            "rdinp" => Ok(Stage::Rdinp),
+            "dmdw" => Ok(Stage::Dmdw),
+            "atomic" => Ok(Stage::Atomic),
+            "pot" => Ok(Stage::Pot),
+            "ldos" => Ok(Stage::Ldos),
+            "screen" => Ok(Stage::Screen),
+            "crpa" => Ok(Stage::Crpa),
+            "opconsat" => Ok(Stage::Opconsat),
+            "xsph" => Ok(Stage::Xsph),
+            "fms" => Ok(Stage::Fms),
+            "mkgtr" => Ok(Stage::Mkgtr),
+            "path" => Ok(Stage::Path),
+            "genfmt" => Ok(Stage::Genfmt),
+            "ff2x" => Ok(Stage::Ff2x),
+            "sfconv" => Ok(Stage::Sfconv),
+            "compton" => Ok(Stage::Compton),
+            "eels" => Ok(Stage::Eels),
+            "rhorrp" => Ok(Stage::Rhorrp),
+            _ => Err(format!("unknown stage '{s}'")),
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::Stage;
+
+    #[test]
+    fn parses_stage_case_insensitive() {
+        let stage: Stage = "PoT".parse().unwrap();
+        assert_eq!(stage, Stage::Pot);
+    }
+
+    #[test]
+    fn rejects_unknown_stage() {
+        let err = "badstage".parse::<Stage>().unwrap_err();
+        assert!(err.contains("unknown stage"));
     }
 }

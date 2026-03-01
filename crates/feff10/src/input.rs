@@ -1,7 +1,13 @@
 use std::io::Write;
 use std::path::Path;
 
-use crate::error::Error;
+use crate::error::{Error, ParseError};
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ParseMode {
+    Permissive,
+    Strict,
+}
 
 /// A potential type definition.
 #[derive(Debug, Clone)]
@@ -58,11 +64,21 @@ impl Default for FeffInput {
 impl FeffInput {
     /// Parse a feff.inp file from a string.
     pub fn parse(content: &str) -> Result<Self, Error> {
+        Self::parse_with_mode(content, ParseMode::Permissive)
+    }
+
+    /// Parse a feff.inp file from a string with strict validation.
+    pub fn parse_strict(content: &str) -> Result<Self, Error> {
+        Self::parse_with_mode(content, ParseMode::Strict)
+    }
+
+    fn parse_with_mode(content: &str, mode: ParseMode) -> Result<Self, Error> {
         let mut input = FeffInput::default();
         let mut in_potentials = false;
         let mut in_atoms = false;
 
-        for (_line_num, line) in content.lines().enumerate() {
+        for (line_idx, line) in content.lines().enumerate() {
+            let line_num = line_idx + 1;
             let line = line.trim();
 
             // Skip empty lines and comments
@@ -84,11 +100,14 @@ impl FeffInput {
 
             // If we're in a section, parse data lines
             if in_potentials {
-                if upper.starts_with(|c: char| c.is_alphabetic()) && !upper.starts_with(|c: char| c.is_ascii_digit()) {
+                if upper.starts_with(|c: char| c.is_alphabetic()) {
                     // New card keyword encountered - exit potentials section
                     in_potentials = false;
                 } else {
-                    if let Some(pot) = parse_potential_line(line) {
+                    if mode == ParseMode::Strict {
+                        let pot = parse_potential_line_strict(line, line_num)?;
+                        input.potentials.push(pot);
+                    } else if let Some(pot) = parse_potential_line(line) {
                         input.potentials.push(pot);
                         continue;
                     }
@@ -97,10 +116,13 @@ impl FeffInput {
             }
 
             if in_atoms {
-                if upper.starts_with(|c: char| c.is_alphabetic()) && !upper.starts_with('-') {
+                if upper.starts_with(|c: char| c.is_alphabetic()) {
                     in_atoms = false;
                 } else {
-                    if let Some(atom) = parse_atom_line(line) {
+                    if mode == ParseMode::Strict {
+                        let atom = parse_atom_line_strict(line, line_num)?;
+                        input.atoms.push(atom);
+                    } else if let Some(atom) = parse_atom_line(line) {
                         input.atoms.push(atom);
                         continue;
                     }
@@ -117,26 +139,47 @@ impl FeffInput {
                 input.edge = Some(rest.to_string());
             } else if upper.starts_with("S02") {
                 let rest = line.get(3..).unwrap_or("").trim();
-                if let Ok(val) = rest.parse::<f64>() {
-                    input.s02 = Some(val);
+                if rest.is_empty() {
+                    if mode == ParseMode::Strict {
+                        return Err(parse_error(line_num, "S02 requires a numeric value"));
+                    }
+                } else {
+                    match rest.parse::<f64>() {
+                        Ok(val) => input.s02 = Some(val),
+                        Err(_) if mode == ParseMode::Strict => {
+                            return Err(parse_error(
+                                line_num,
+                                format!("invalid S02 value '{rest}'"),
+                            ));
+                        }
+                        Err(_) => {}
+                    }
                 }
             } else if upper.starts_with("CONTROL") {
                 let rest = line.get(7..).unwrap_or("").trim();
-                let vals: Vec<u32> = rest
-                    .split_whitespace()
-                    .filter_map(|s| s.parse().ok())
-                    .collect();
-                for (i, &v) in vals.iter().enumerate().take(6) {
-                    input.control[i] = v;
+                if mode == ParseMode::Strict {
+                    input.control = parse_six_u32(rest, line_num, "CONTROL")?;
+                } else {
+                    let vals: Vec<u32> = rest
+                        .split_whitespace()
+                        .filter_map(|s| s.parse().ok())
+                        .collect();
+                    for (i, &v) in vals.iter().enumerate().take(6) {
+                        input.control[i] = v;
+                    }
                 }
             } else if upper.starts_with("PRINT") {
                 let rest = line.get(5..).unwrap_or("").trim();
-                let vals: Vec<u32> = rest
-                    .split_whitespace()
-                    .filter_map(|s| s.parse().ok())
-                    .collect();
-                for (i, &v) in vals.iter().enumerate().take(6) {
-                    input.print_flags[i] = v;
+                if mode == ParseMode::Strict {
+                    input.print_flags = parse_six_u32(rest, line_num, "PRINT")?;
+                } else {
+                    let vals: Vec<u32> = rest
+                        .split_whitespace()
+                        .filter_map(|s| s.parse().ok())
+                        .collect();
+                    for (i, &v) in vals.iter().enumerate().take(6) {
+                        input.print_flags[i] = v;
+                    }
                 }
             } else if upper.starts_with("POTENTIALS") {
                 in_potentials = true;
@@ -155,6 +198,12 @@ impl FeffInput {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let content = std::fs::read_to_string(path)?;
         Self::parse(&content)
+    }
+
+    /// Parse from a file path with strict validation.
+    pub fn from_file_strict(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let content = std::fs::read_to_string(path)?;
+        Self::parse_strict(&content)
     }
 
     /// Write feff.inp to a writer.
@@ -231,7 +280,7 @@ impl FeffInput {
 
 fn parse_potential_line(line: &str) -> Option<Potential> {
     // Strip comments
-    let line = line.split('*').next()?.trim();
+    let line = strip_inline_comment(line);
     if line.is_empty() {
         return None;
     }
@@ -256,7 +305,7 @@ fn parse_potential_line(line: &str) -> Option<Potential> {
 }
 
 fn parse_atom_line(line: &str) -> Option<Atom> {
-    let line = line.split('*').next()?.trim();
+    let line = strip_inline_comment(line);
     if line.is_empty() {
         return None;
     }
@@ -280,15 +329,162 @@ fn parse_atom_line(line: &str) -> Option<Atom> {
     })
 }
 
+fn parse_error(line: usize, message: impl Into<String>) -> Error {
+    Error::Parse(ParseError {
+        line,
+        message: message.into(),
+    })
+}
+
+fn parse_six_u32(rest: &str, line: usize, card: &str) -> Result<[u32; 6], Error> {
+    let tokens: Vec<&str> = rest.split_whitespace().collect();
+    if tokens.len() != 6 {
+        return Err(parse_error(
+            line,
+            format!("{card} must have exactly 6 integer values"),
+        ));
+    }
+    let mut out = [0_u32; 6];
+    for (i, token) in tokens.iter().enumerate() {
+        out[i] = token.parse::<u32>().map_err(|_| {
+            parse_error(
+                line,
+                format!("{card} value {} is not a valid integer: '{token}'", i + 1),
+            )
+        })?;
+    }
+    Ok(out)
+}
+
+fn parse_potential_line_strict(line: &str, line_num: usize) -> Result<Potential, Error> {
+    let line = strip_inline_comment(line);
+    if line.is_empty() {
+        return Err(parse_error(line_num, "empty line in POTENTIALS section"));
+    }
+
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 3 {
+        return Err(parse_error(
+            line_num,
+            "POTENTIALS line must contain at least: ipot z tag",
+        ));
+    }
+
+    let ipot = parts[0].parse::<u32>().map_err(|_| {
+        parse_error(
+            line_num,
+            format!("invalid POTENTIALS ipot value '{}'", parts[0]),
+        )
+    })?;
+    let z = parts[1].parse::<u32>().map_err(|_| {
+        parse_error(
+            line_num,
+            format!("invalid POTENTIALS atomic number '{}'", parts[1]),
+        )
+    })?;
+    let tag = parts[2].to_string();
+    let l_scmt = parts
+        .get(3)
+        .map(|s| {
+            s.parse::<u32>()
+                .map_err(|_| parse_error(line_num, format!("invalid POTENTIALS l_scmt '{}'", s)))
+        })
+        .transpose()?;
+    let l_fms = parts
+        .get(4)
+        .map(|s| {
+            s.parse::<u32>()
+                .map_err(|_| parse_error(line_num, format!("invalid POTENTIALS l_fms '{}'", s)))
+        })
+        .transpose()?;
+    let stoich = parts
+        .get(5)
+        .map(|s| {
+            s.parse::<f64>()
+                .map_err(|_| parse_error(line_num, format!("invalid POTENTIALS stoich '{}'", s)))
+        })
+        .transpose()?;
+
+    Ok(Potential {
+        ipot,
+        z,
+        tag,
+        l_scmt,
+        l_fms,
+        stoich,
+    })
+}
+
+fn parse_atom_line_strict(line: &str, line_num: usize) -> Result<Atom, Error> {
+    let line = strip_inline_comment(line);
+    if line.is_empty() {
+        return Err(parse_error(line_num, "empty line in ATOMS section"));
+    }
+
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() < 5 {
+        return Err(parse_error(
+            line_num,
+            "ATOMS line must contain at least: x y z ipot tag",
+        ));
+    }
+
+    let x = parts[0].parse::<f64>().map_err(|_| {
+        parse_error(
+            line_num,
+            format!("invalid atom x coordinate '{}'", parts[0]),
+        )
+    })?;
+    let y = parts[1].parse::<f64>().map_err(|_| {
+        parse_error(
+            line_num,
+            format!("invalid atom y coordinate '{}'", parts[1]),
+        )
+    })?;
+    let z = parts[2].parse::<f64>().map_err(|_| {
+        parse_error(
+            line_num,
+            format!("invalid atom z coordinate '{}'", parts[2]),
+        )
+    })?;
+    let ipot = parts[3]
+        .parse::<u32>()
+        .map_err(|_| parse_error(line_num, format!("invalid atom ipot '{}'", parts[3])))?;
+    let tag = parts[4].to_string();
+    let distance = parts
+        .get(5)
+        .map(|s| {
+            s.parse::<f64>()
+                .map_err(|_| parse_error(line_num, format!("invalid atom distance '{}'", s)))
+        })
+        .transpose()?
+        .unwrap_or(0.0);
+
+    Ok(Atom {
+        x,
+        y,
+        z,
+        ipot,
+        tag,
+        distance,
+    })
+}
+
+fn strip_inline_comment(line: &str) -> &str {
+    line.split('*').next().unwrap_or("").trim()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn parse_exafs_cu() {
-        let content = std::fs::read_to_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../feff10/examples/EXAFS/Cu/feff.inp")
-        ).unwrap();
+        let content = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../feff10/examples/EXAFS/Cu/feff.inp"
+        ))
+        .unwrap();
         let input = FeffInput::parse(&content).unwrap();
 
         assert_eq!(input.title.len(), 1);
@@ -303,9 +499,11 @@ mod tests {
 
     #[test]
     fn round_trip() {
-        let content = std::fs::read_to_string(
-            concat!(env!("CARGO_MANIFEST_DIR"), "/../../feff10/examples/EXAFS/Cu/feff.inp")
-        ).unwrap();
+        let content = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../feff10/examples/EXAFS/Cu/feff.inp"
+        ))
+        .unwrap();
         let input = FeffInput::parse(&content).unwrap();
 
         let mut buf = Vec::new();
@@ -317,5 +515,85 @@ mod tests {
         assert_eq!(input.potentials.len(), reparsed.potentials.len());
         assert_eq!(input.atoms.len(), reparsed.atoms.len());
         assert_eq!(input.edge, reparsed.edge);
+    }
+
+    #[test]
+    fn parse_strict_exafs_cu() {
+        let content = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../feff10/examples/EXAFS/Cu/feff.inp"
+        ))
+        .unwrap();
+        let input = FeffInput::parse_strict(&content).unwrap();
+        assert_eq!(input.control, [1, 1, 1, 1, 1, 1]);
+    }
+
+    #[test]
+    fn strict_rejects_short_control() {
+        let content = "\
+TITLE test
+CONTROL 1 1 1
+PRINT 0 0 0 0 0 0
+POTENTIALS
+0 29 Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+
+        let err = FeffInput::parse_strict(content).unwrap_err();
+        match err {
+            Error::Parse(e) => {
+                assert_eq!(e.line, 2);
+                assert!(e.message.contains("CONTROL"));
+            }
+            _ => panic!("expected parse error"),
+        }
+    }
+
+    #[test]
+    fn strict_rejects_bad_potential_line() {
+        let content = "\
+TITLE test
+CONTROL 1 1 1 1 1 1
+PRINT 0 0 0 0 0 0
+POTENTIALS
+0 xx Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+
+        let err = FeffInput::parse_strict(content).unwrap_err();
+        match err {
+            Error::Parse(e) => {
+                assert_eq!(e.line, 5);
+                assert!(e.message.contains("POTENTIALS"));
+            }
+            _ => panic!("expected parse error"),
+        }
+    }
+
+    #[test]
+    fn strict_rejects_bad_atom_line() {
+        let content = "\
+TITLE test
+CONTROL 1 1 1 1 1 1
+PRINT 0 0 0 0 0 0
+POTENTIALS
+0 29 Cu
+ATOMS
+0.0 0.0 bad 0 Cu
+END
+";
+
+        let err = FeffInput::parse_strict(content).unwrap_err();
+        match err {
+            Error::Parse(e) => {
+                assert_eq!(e.line, 7);
+                assert!(e.message.contains("coordinate"));
+            }
+            _ => panic!("expected parse error"),
+        }
     }
 }

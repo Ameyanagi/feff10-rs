@@ -43,6 +43,11 @@ The build system automatically detects MKL (from oneAPI) and falls back to OpenB
 | `FEFF_NO_NATIVE` | Disable `-march` entirely |
 | `FEFF_LTO` | Enable link-time optimization |
 
+When using `gfortran`, the build script automatically queries the compiler for the
+`libgfortran` runtime path and adds it to the linker search path. If your setup
+uses a wrapper script or non-standard compiler frontend, set `FEFF_FC` to the
+actual compiler binary path.
+
 ## Usage
 
 ```sh
@@ -64,6 +69,9 @@ feff10-cli compare file1.dat file2.dat
 # Benchmark (3 iterations, JSON output)
 feff10-cli bench path/to/feff.inp -n 3 -o results.json -l my-label
 ```
+
+`validate` uses strict parsing and reports line-numbered errors for malformed
+`CONTROL`, `PRINT`, `POTENTIALS`, and `ATOMS` records.
 
 ## Compiler Benchmarks
 
