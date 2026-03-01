@@ -1,0 +1,216 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.1.0). If empty, creates a draft.'
+        required: false
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # --- Linux: ifx + MKL via Intel oneAPI Docker ---
+  build-linux:
+    runs-on: ubuntu-latest
+    container: intel/oneapi-hpckit:2024.2.1-devel-ubuntu22.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Build
+        env:
+          FEFF_FC: ifx
+          FEFF_NO_NATIVE: "1"
+        run: |
+          . /opt/intel/oneapi/setvars.sh
+          cargo build --release -p feff10-cli
+
+      - name: Package
+        run: |
+          staging="feff10-x86_64-unknown-linux-gnu"
+          mkdir -p "$staging"
+          cp target/release/feff10-cli "$staging/feff10"
+          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
+          if [ -n "$libfeff10" ]; then
+            cp "$libfeff10" "$staging/"
+            echo "Included libfeff10.a ($(du -h "$libfeff10" | cut -f1))"
+          else
+            echo "WARNING: libfeff10.a not found"
+          fi
+          tar czf "$staging.tar.gz" "$staging"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feff10-x86_64-unknown-linux-gnu
+          path: feff10-x86_64-unknown-linux-gnu.tar.gz
+          if-no-files-found: error
+
+  # --- macOS and Windows ---
+  build-other:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary: feff10-cli
+            archive_ext: tar.gz
+          - os: macos-13
+            target: x86_64-apple-darwin
+            binary: feff10-cli
+            archive_ext: tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-gnu
+            binary: feff10-cli.exe
+            archive_ext: zip
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install gfortran (macOS)
+        if: runner.os == 'macOS'
+        run: brew install gcc
+
+      - name: Install gfortran (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc-fortran make
+
+      # --- Build ---
+
+      - name: Build (macOS)
+        if: runner.os == 'macOS'
+        env:
+          FEFF_FC: gfortran
+          FEFF_NO_NATIVE: "1"
+        run: cargo build --release -p feff10-cli
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
+          FEFF_NO_NATIVE: "1"
+        run: |
+          export PATH="/mingw64/bin:$PATH"
+          cargo build --release -p feff10-cli
+
+      # --- Package ---
+
+      - name: Package (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          staging="feff10-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "target/release/${{ matrix.binary }}" "$staging/feff10"
+          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
+          if [ -n "$libfeff10" ]; then
+            cp "$libfeff10" "$staging/"
+            echo "Included libfeff10.a ($(du -h "$libfeff10" | cut -f1))"
+          else
+            echo "WARNING: libfeff10.a not found"
+          fi
+          tar czf "$staging.tar.gz" "$staging"
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          staging="feff10-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp "target/release/${{ matrix.binary }}" "$staging/feff10.exe"
+          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
+          if [ -n "$libfeff10" ]; then
+            cp "$libfeff10" "$staging/"
+            echo "Included libfeff10.a"
+          else
+            echo "WARNING: libfeff10.a not found"
+          fi
+          # Bundle MinGW runtime DLLs
+          for dll in libgfortran-5.dll libgcc_s_seh-1.dll libwinpthread-1.dll libquadmath-0.dll; do
+            dllpath="/mingw64/bin/$dll"
+            if [ -f "$dllpath" ]; then
+              cp "$dllpath" "$staging/"
+              echo "Bundled $dll"
+            fi
+          done
+          7z a "$staging.zip" "$staging"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feff10-${{ matrix.target }}
+          path: feff10-${{ matrix.target }}.${{ matrix.archive_ext }}
+          if-no-files-found: error
+
+  release:
+    needs: [build-linux, build-other]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        run: |
+          cd artifacts
+          sha256sum feff10-*.tar.gz feff10-*.zip > sha256sums.txt
+          echo "=== SHA256 Checksums ==="
+          cat sha256sums.txt
+
+      - name: Determine release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+            echo "draft=false" >> "$GITHUB_OUTPUT"
+          elif [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=draft-$(date +%Y%m%d-%H%M%S)" >> "$GITHUB_OUTPUT"
+            echo "draft=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.tag }}
+          draft: ${{ steps.tag.outputs.draft }}
+          generate_release_notes: true
+          files: |
+            artifacts/feff10-*.tar.gz
+            artifacts/feff10-*.zip
+            artifacts/sha256sums.txt
