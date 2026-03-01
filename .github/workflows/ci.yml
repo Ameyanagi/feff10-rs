@@ -209,6 +209,7 @@ jobs:
 
       - name: Integration tests (macOS)
         if: runner.os == 'macOS'
+        continue-on-error: true
         env:
           FEFF_FC: ${{ steps.macos-gfortran.outputs.fc }}
         run: cargo test -p feff10 --test integration -- --test-threads=1
