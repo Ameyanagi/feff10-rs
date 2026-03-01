@@ -28,7 +28,10 @@ jobs:
           submodules: recursive
 
       - name: Install build dependencies
-        run: apt-get update && apt-get install -y make
+        run: |
+          # Skip apt-get update to avoid Intel GPU repo GPG key issues
+          apt-get install -y make 2>/dev/null || true
+          which make
 
       - name: Install Rust
         run: |
@@ -66,16 +69,7 @@ jobs:
 
   # --- macOS ---
   build-macos:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-latest
-            target: aarch64-apple-darwin
-          - os: macos-14
-            target: x86_64-apple-darwin
-
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     timeout-minutes: 60
 
     steps:
@@ -108,11 +102,21 @@ jobs:
         env:
           FEFF_FC: ${{ steps.fc.outputs.fc }}
           FEFF_NO_NATIVE: "1"
-        run: cargo build --release -p feff10-cli
+        run: |
+          # Add gfortran lib to linker search path
+          FC_DIR=$(dirname "${{ steps.fc.outputs.fc }}")
+          LIB_DIR=$(cd "$FC_DIR/../lib/gcc/current" 2>/dev/null && pwd || echo "")
+          if [ -z "$LIB_DIR" ]; then
+            LIB_DIR=$("${{ steps.fc.outputs.fc }}" -print-file-name=libgfortran.dylib | xargs dirname)
+          fi
+          echo "LIBRARY_PATH=$LIB_DIR" >> "$GITHUB_ENV"
+          export LIBRARY_PATH="$LIB_DIR"
+          echo "Using LIBRARY_PATH=$LIB_DIR"
+          cargo build --release -p feff10-cli
 
       - name: Package
         run: |
-          staging="feff10-${{ matrix.target }}"
+          staging="feff10-aarch64-apple-darwin"
           mkdir -p "$staging"
           cp target/release/feff10-cli "$staging/feff10"
           libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
@@ -127,8 +131,8 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: feff10-${{ matrix.target }}
-          path: feff10-${{ matrix.target }}.tar.gz
+          name: feff10-aarch64-apple-darwin
+          path: feff10-aarch64-apple-darwin.tar.gz
           if-no-files-found: error
 
   # --- Windows ---
@@ -143,8 +147,6 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: x86_64-pc-windows-gnu
 
       - name: Install msys2 and gfortran
         uses: msys2/setup-msys2@v2
@@ -160,15 +162,15 @@ jobs:
           FEFF_NO_NATIVE: "1"
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
-          cargo build --release -p feff10-cli --target x86_64-pc-windows-gnu
+          cargo build --release -p feff10-cli
 
       - name: Package
         shell: msys2 {0}
         run: |
           staging="feff10-x86_64-pc-windows-gnu"
           mkdir -p "$staging"
-          cp target/x86_64-pc-windows-gnu/release/feff10-cli.exe "$staging/feff10.exe"
-          libfeff10=$(find target/x86_64-pc-windows-gnu/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
+          cp target/release/feff10-cli.exe "$staging/feff10.exe"
+          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
           if [ -n "$libfeff10" ]; then
             cp "$libfeff10" "$staging/"
             echo "Included libfeff10.a"
