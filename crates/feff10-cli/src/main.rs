@@ -12,6 +12,7 @@ fn long_version() -> &'static str {
     concat!(
         env!("CARGO_PKG_VERSION"),
         "\n",
+        "FEFF10 commit:    ", env!("FEFF10_COMMIT"), "\n",
         "Fortran compiler: ", env!("FEFF10_FC"), "\n",
         "Fortran flags:    ", env!("FEFF10_FFLAGS"), "\n",
         "BLAS/LAPACK:      ", env!("FEFF10_BLAS"),

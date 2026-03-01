@@ -206,6 +206,23 @@ fn main() {
     println!("cargo:FFLAGS={flags}");
     println!("cargo:BLAS={blas_name}");
 
+    // FEFF10 upstream commit from the git submodule
+    let feff10_dir = manifest_dir.join("../../feff10");
+    let feff10_commit = Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(&feff10_dir)
+        .output()
+        .ok()
+        .and_then(|o| {
+            if o.status.success() {
+                Some(String::from_utf8_lossy(&o.stdout).trim().to_string())
+            } else {
+                None
+            }
+        })
+        .unwrap_or_else(|| "unknown".to_string());
+    println!("cargo:FEFF10_COMMIT={feff10_commit}");
+
     // 13. Emit rerun-if-changed directives
     println!("cargo:rerun-if-env-changed=FEFF_FC");
     println!("cargo:rerun-if-env-changed=FC");

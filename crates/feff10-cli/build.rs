@@ -9,4 +9,7 @@ fn main() {
     if let Ok(blas) = std::env::var("DEP_FEFF10_BLAS") {
         println!("cargo:rustc-env=FEFF10_BLAS={blas}");
     }
+    if let Ok(commit) = std::env::var("DEP_FEFF10_FEFF10_COMMIT") {
+        println!("cargo:rustc-env=FEFF10_COMMIT={commit}");
+    }
 }
