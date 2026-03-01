@@ -42,7 +42,39 @@ jobs:
         env:
           FEFF_FC: /opt/intel/oneapi/compiler/latest/bin/ifx
           FEFF_NO_NATIVE: "1"
-        run: cargo build --release -p feff10-cli
+        run: cargo build --release --workspace
+
+      - name: Unit tests
+        id: unit-tests
+        env:
+          FEFF_FC: /opt/intel/oneapi/compiler/latest/bin/ifx
+          FEFF_NO_NATIVE: "1"
+        run: cargo test --release --workspace --lib
+
+      - name: Integration tests
+        id: integration-tests
+        timeout-minutes: 30
+        env:
+          FEFF_FC: /opt/intel/oneapi/compiler/latest/bin/ifx
+          FEFF_NO_NATIVE: "1"
+        run: cargo test --release -p feff10 --test integration -- --test-threads=1
+
+      - name: Test summary
+        if: always()
+        run: |
+          cat > test-report-linux.md << 'REPORT'
+          ### Linux (ifx + MKL)
+          REPORT
+          echo "- Unit tests: ${{ steps.unit-tests.outcome }}" >> test-report-linux.md
+          echo "- Integration tests: ${{ steps.integration-tests.outcome }}" >> test-report-linux.md
+          cat test-report-linux.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-linux
+          path: test-report-linux.md
 
       - name: Package
         run: |
@@ -110,7 +142,39 @@ jobs:
           echo "LIBRARY_PATH=$LIB_DIR" >> "$GITHUB_ENV"
           export LIBRARY_PATH="$LIB_DIR"
           echo "Using LIBRARY_PATH=$LIB_DIR"
-          cargo build --release -p feff10-cli
+          cargo build --release --workspace
+
+      - name: Unit tests
+        id: unit-tests
+        env:
+          FEFF_FC: ${{ steps.fc.outputs.fc }}
+          FEFF_NO_NATIVE: "1"
+        run: cargo test --release --workspace --lib
+
+      - name: Integration tests
+        id: integration-tests
+        timeout-minutes: 30
+        env:
+          FEFF_FC: ${{ steps.fc.outputs.fc }}
+          FEFF_NO_NATIVE: "1"
+        run: cargo test --release -p feff10 --test integration -- --test-threads=1
+
+      - name: Test summary
+        if: always()
+        run: |
+          cat > test-report-macos.md << 'REPORT'
+          ### macOS (gfortran, arm64)
+          REPORT
+          echo "- Unit tests: ${{ steps.unit-tests.outcome }}" >> test-report-macos.md
+          echo "- Integration tests: ${{ steps.integration-tests.outcome }}" >> test-report-macos.md
+          cat test-report-macos.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-macos
+          path: test-report-macos.md
 
       - name: Package
         run: |
@@ -162,7 +226,46 @@ jobs:
           FEFF_NO_NATIVE: "1"
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
-          cargo build --release --target x86_64-pc-windows-gnu -p feff10-cli
+          cargo build --release --target x86_64-pc-windows-gnu --workspace
+
+      - name: Unit tests
+        id: unit-tests
+        shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
+          FEFF_NO_NATIVE: "1"
+        run: |
+          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
+          cargo test --release --target x86_64-pc-windows-gnu --workspace --lib
+
+      - name: Integration tests
+        id: integration-tests
+        timeout-minutes: 30
+        shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
+          FEFF_NO_NATIVE: "1"
+        run: |
+          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
+          cargo test --release --target x86_64-pc-windows-gnu -p feff10 --test integration -- --test-threads=1
+
+      - name: Test summary
+        if: always()
+        shell: msys2 {0}
+        run: |
+          cat > test-report-windows.md << 'REPORT'
+          ### Windows (gfortran, x86_64)
+          REPORT
+          echo "- Unit tests: ${{ steps.unit-tests.outcome }}" >> test-report-windows.md
+          echo "- Integration tests: ${{ steps.integration-tests.outcome }}" >> test-report-windows.md
+          cat test-report-windows.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-windows
+          path: test-report-windows.md
 
       - name: Package
         shell: msys2 {0}
@@ -213,6 +316,25 @@ jobs:
           echo "=== SHA256 Checksums ==="
           cat sha256sums.txt
 
+      - name: Assemble test summary
+        run: |
+          echo "## Test Results" > release-body.md
+          echo "" >> release-body.md
+          for report in artifacts/test-report-*.md; do
+            if [ -f "$report" ]; then
+              cat "$report" >> release-body.md
+              echo "" >> release-body.md
+            fi
+          done
+          echo "## SHA256 Checksums" >> release-body.md
+          echo '```' >> release-body.md
+          cat artifacts/sha256sums.txt >> release-body.md
+          echo '```' >> release-body.md
+          echo ""
+          echo "=== Release Body ==="
+          cat release-body.md
+          cat release-body.md >> "$GITHUB_STEP_SUMMARY"
+
       - name: Determine release tag
         id: tag
         run: |
@@ -234,6 +356,8 @@ jobs:
           name: ${{ steps.tag.outputs.tag }}
           draft: ${{ steps.tag.outputs.draft }}
           generate_release_notes: true
+          append_body: true
+          body_path: release-body.md
           files: |
             artifacts/feff10-*.tar.gz
             artifacts/feff10-*.zip
