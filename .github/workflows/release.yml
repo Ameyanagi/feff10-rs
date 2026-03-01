@@ -185,7 +185,7 @@ jobs:
               echo "Bundled $dll"
             fi
           done
-          7z a "$staging.zip" "$staging"
+          "/c/Program Files/7-Zip/7z.exe" a "$staging.zip" "$staging"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
