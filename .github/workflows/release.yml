@@ -40,7 +40,7 @@ jobs:
 
       - name: Build
         env:
-          FEFF_FC: ifx
+          FEFF_FC: /opt/intel/oneapi/compiler/latest/bin/ifx
           FEFF_NO_NATIVE: "1"
         run: cargo build --release -p feff10-cli
 

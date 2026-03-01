@@ -448,37 +448,32 @@ fn create_archive_from_objects(build_src: &Path, archive_path: &Path) {
     // Remove existing archive to avoid stale entries
     let _ = fs::remove_file(archive_path);
 
-    // On Windows, passing 435+ object files as args exceeds the command line limit.
-    // Use a response file (@file) to pass object paths to ar.
-    if cfg!(target_os = "windows") {
-        let rsp_path = archive_path.with_extension("rsp");
-        let rsp_content: Vec<String> = objects.iter().map(|o| o.display().to_string()).collect();
-        fs::write(&rsp_path, rsp_content.join("\n"))
-            .expect("Failed to write ar response file");
-
-        let status = Command::new("ar")
-            .arg("rcs")
-            .arg(archive_path)
-            .arg(format!("@{}", rsp_path.display()))
-            .status()
-            .expect("Failed to run ar. Is `ar` (binutils) installed?");
-
-        let _ = fs::remove_file(&rsp_path);
-
-        if !status.success() {
-            panic!("feff10-sys: ar rcs failed");
-        }
+    // On Windows, passing 435+ absolute-path object files as args exceeds the
+    // command line limit (~32K chars). Use relative paths from build_src to keep
+    // the command short (e.g. "ATOM/akeato.o" instead of the full absolute path).
+    let use_relative = cfg!(target_os = "windows");
+    let rel_objects: Vec<PathBuf> = if use_relative {
+        objects
+            .iter()
+            .map(|o| o.strip_prefix(build_src).unwrap_or(o).to_path_buf())
+            .collect()
     } else {
-        let status = Command::new("ar")
-            .arg("rcs")
-            .arg(archive_path)
-            .args(&objects)
-            .status()
-            .expect("Failed to run ar. Is `ar` (binutils) installed?");
+        objects
+    };
 
-        if !status.success() {
-            panic!("feff10-sys: ar rcs failed");
-        }
+    let mut cmd = Command::new("ar");
+    cmd.arg("rcs").arg(archive_path);
+    if use_relative {
+        cmd.current_dir(build_src);
+    }
+    cmd.args(&rel_objects);
+
+    let status = cmd
+        .status()
+        .expect("Failed to run ar. Is `ar` (binutils) installed?");
+
+    if !status.success() {
+        panic!("feff10-sys: ar rcs failed");
     }
 }
 
