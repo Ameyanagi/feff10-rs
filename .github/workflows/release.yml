@@ -80,23 +80,14 @@ jobs:
 
       - name: Package
         run: |
-          staging="feff10-x86_64-unknown-linux-gnu"
-          mkdir -p "$staging"
-          cp target/release/feff10-cli "$staging/feff10"
-          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
-          if [ -n "$libfeff10" ]; then
-            cp "$libfeff10" "$staging/"
-            echo "Included libfeff10.a ($(du -h "$libfeff10" | cut -f1))"
-          else
-            echo "WARNING: libfeff10.a not found"
-          fi
-          tar czf "$staging.tar.gz" "$staging"
+          cp target/release/feff10-cli feff10-x86_64-unknown-linux-gnu
+          chmod +x feff10-x86_64-unknown-linux-gnu
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: feff10-x86_64-unknown-linux-gnu
-          path: feff10-x86_64-unknown-linux-gnu.tar.gz
+          path: feff10-x86_64-unknown-linux-gnu
           if-no-files-found: error
 
   # --- macOS ---
@@ -182,23 +173,14 @@ jobs:
 
       - name: Package
         run: |
-          staging="feff10-aarch64-apple-darwin"
-          mkdir -p "$staging"
-          cp target/release/feff10-cli "$staging/feff10"
-          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
-          if [ -n "$libfeff10" ]; then
-            cp "$libfeff10" "$staging/"
-            echo "Included libfeff10.a ($(du -h "$libfeff10" | cut -f1))"
-          else
-            echo "WARNING: libfeff10.a not found"
-          fi
-          tar czf "$staging.tar.gz" "$staging"
+          cp target/release/feff10-cli feff10-aarch64-apple-darwin
+          chmod +x feff10-aarch64-apple-darwin
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: feff10-aarch64-apple-darwin
-          path: feff10-aarch64-apple-darwin.tar.gz
+          path: feff10-aarch64-apple-darwin
           if-no-files-found: error
 
   # --- Windows ---
@@ -252,13 +234,6 @@ jobs:
           staging="feff10-x86_64-pc-windows-gnu"
           mkdir -p "$staging"
           cp target/x86_64-pc-windows-gnu/release/feff10-cli.exe "$staging/feff10.exe"
-          libfeff10=$(find target/x86_64-pc-windows-gnu/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
-          if [ -n "$libfeff10" ]; then
-            cp "$libfeff10" "$staging/"
-            echo "Included libfeff10.a"
-          else
-            echo "WARNING: libfeff10.a not found"
-          fi
           # Bundle MinGW runtime DLLs
           for dll in libgfortran-5.dll libgcc_s_seh-1.dll libwinpthread-1.dll libquadmath-0.dll; do
             dllpath="/mingw64/bin/$dll"
@@ -291,7 +266,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum feff10-*.tar.gz feff10-*.zip > sha256sums.txt
+          sha256sum feff10-* > sha256sums.txt
           echo "=== SHA256 Checksums ==="
           cat sha256sums.txt
 
@@ -338,6 +313,7 @@ jobs:
           append_body: true
           body_path: release-body.md
           files: |
-            artifacts/feff10-*.tar.gz
-            artifacts/feff10-*.zip
+            artifacts/feff10-x86_64-unknown-linux-gnu
+            artifacts/feff10-aarch64-apple-darwin
+            artifacts/feff10-x86_64-pc-windows-gnu.zip
             artifacts/sha256sums.txt
