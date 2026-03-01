@@ -80,14 +80,14 @@ jobs:
 
       - name: Package
         run: |
-          cp target/release/feff10-cli feff10-x86_64-unknown-linux-gnu
-          chmod +x feff10-x86_64-unknown-linux-gnu
+          cp target/release/feff10-cli feff10-linux-x86_64
+          chmod +x feff10-linux-x86_64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: feff10-x86_64-unknown-linux-gnu
-          path: feff10-x86_64-unknown-linux-gnu
+          name: feff10-linux-x86_64
+          path: feff10-linux-x86_64
           if-no-files-found: error
 
   # --- macOS ---
@@ -173,14 +173,14 @@ jobs:
 
       - name: Package
         run: |
-          cp target/release/feff10-cli feff10-aarch64-apple-darwin
-          chmod +x feff10-aarch64-apple-darwin
+          cp target/release/feff10-cli feff10-macos-arm64
+          chmod +x feff10-macos-arm64
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: feff10-aarch64-apple-darwin
-          path: feff10-aarch64-apple-darwin
+          name: feff10-macos-arm64
+          path: feff10-macos-arm64
           if-no-files-found: error
 
   # --- Windows ---
@@ -210,6 +210,7 @@ jobs:
         env:
           FEFF_FC: gfortran
           FEFF_NO_NATIVE: "1"
+          RUSTFLAGS: "-C target-feature=+crt-static"
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo build --release --target x86_64-pc-windows-gnu -p feff10-cli
@@ -231,24 +232,13 @@ jobs:
       - name: Package
         shell: msys2 {0}
         run: |
-          staging="feff10-x86_64-pc-windows-gnu"
-          mkdir -p "$staging"
-          cp target/x86_64-pc-windows-gnu/release/feff10-cli.exe "$staging/feff10.exe"
-          # Bundle MinGW runtime DLLs
-          for dll in libgfortran-5.dll libgcc_s_seh-1.dll libwinpthread-1.dll libquadmath-0.dll; do
-            dllpath="/mingw64/bin/$dll"
-            if [ -f "$dllpath" ]; then
-              cp "$dllpath" "$staging/"
-              echo "Bundled $dll"
-            fi
-          done
-          "/c/Program Files/7-Zip/7z.exe" a "$staging.zip" "$staging"
+          cp target/x86_64-pc-windows-gnu/release/feff10-cli.exe feff10-windows-x86_64.exe
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: feff10-x86_64-pc-windows-gnu
-          path: feff10-x86_64-pc-windows-gnu.zip
+          name: feff10-windows-x86_64
+          path: feff10-windows-x86_64.exe
           if-no-files-found: error
 
   release:
@@ -313,7 +303,7 @@ jobs:
           append_body: true
           body_path: release-body.md
           files: |
-            artifacts/feff10-x86_64-unknown-linux-gnu
-            artifacts/feff10-aarch64-apple-darwin
-            artifacts/feff10-x86_64-pc-windows-gnu.zip
+            artifacts/feff10-linux-x86_64
+            artifacts/feff10-macos-arm64
+            artifacts/feff10-windows-x86_64.exe
             artifacts/sha256sums.txt
