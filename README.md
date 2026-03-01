@@ -17,7 +17,7 @@ The 18 Fortran modules of FEFF10 are compiled into a single static library (`lib
 Requires a Fortran compiler and a BLAS/LAPACK implementation (MKL preferred).
 
 ```sh
-# Default (gfortran + auto-detected MKL or system BLAS)
+# Default (gfortran + auto-detected MKL or system BLAS, -march=native)
 cargo build --release
 
 # Intel Fortran (ifx) — needs oneAPI installed
@@ -25,9 +25,23 @@ FEFF_FC=/opt/intel/oneapi/compiler/latest/bin/ifx cargo build --release
 
 # LLVM Flang
 FEFF_FC=flang-new cargo build --release
+
+# Portable binary for distribution (-march=x86-64-v3, AVX2+FMA, ~2013+ CPUs)
+FEFF_PORTABLE=1 cargo build --release
 ```
 
 The build system automatically detects MKL (from oneAPI) and falls back to OpenBLAS or system LAPACK. All dependencies are linked statically — the resulting binary has no special runtime requirements.
+
+### Build environment variables
+
+| Variable | Description |
+|---|---|
+| `FEFF_FC` | Fortran compiler path (default: auto-detect) |
+| `FEFF_FFLAGS` | Override all Fortran flags |
+| `FEFF_PORTABLE` | Use `-march=x86-64-v3` for distributable binaries |
+| `FEFF_MARCH` | Explicit `-march=` value (e.g. `x86-64-v2`) |
+| `FEFF_NO_NATIVE` | Disable `-march` entirely |
+| `FEFF_LTO` | Enable link-time optimization |
 
 ## Usage
 

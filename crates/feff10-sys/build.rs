@@ -633,13 +633,32 @@ fn detect_compiler() -> (String, String) {
 }
 
 fn default_flags_for(compiler: &str) -> String {
-    let march = if env::var("FEFF_NO_NATIVE").is_ok() {
-        ""
+    // FEFF_MARCH: explicit arch target (e.g. "x86-64-v3")
+    // FEFF_PORTABLE: shorthand for -march=x86-64-v3 (good for distributing binaries)
+    // FEFF_NO_NATIVE: disable -march entirely
+    // Default: -march=native (best for local builds)
+    let march = if let Ok(arch) = env::var("FEFF_MARCH") {
+        format!(" -march={arch}")
+    } else if env::var("FEFF_PORTABLE").is_ok() {
+        " -march=x86-64-v3".to_string()
+    } else if env::var("FEFF_NO_NATIVE").is_ok() {
+        String::new()
     } else {
-        " -march=native"
+        " -march=native".to_string()
     };
 
     let lto = env::var("FEFF_LTO").is_ok();
+
+    // Intel compilers use -xHost/-march=core-avx2 instead of -march=native/-march=x86-64-v3
+    let intel_arch = if let Ok(arch) = env::var("FEFF_MARCH") {
+        format!(" -march={arch}")
+    } else if env::var("FEFF_PORTABLE").is_ok() {
+        " -march=core-avx2".to_string()
+    } else if env::var("FEFF_NO_NATIVE").is_ok() {
+        String::new()
+    } else {
+        " -xHost".to_string()
+    };
 
     // -fPIC is needed because Rust links a PIE executable
     if compiler.contains("gfortran") {
@@ -648,10 +667,10 @@ fn default_flags_for(compiler: &str) -> String {
     } else if compiler.contains("ifx") {
         let lto_flag = if lto { " -ipo" } else { "" };
         // -no-vec: workaround for ifx 2025.3 ICE in VPlan vectorizer on ff2chijas.f90
-        format!("-O3 -fpp -fPIC -xHost -no-vec{lto_flag}")
+        format!("-O3 -fpp -fPIC{intel_arch} -no-vec{lto_flag}")
     } else if compiler.contains("ifort") {
         let lto_flag = if lto { " -ipo" } else { "" };
-        format!("-O3 -fPIC -xHost{lto_flag}")
+        format!("-O3 -fPIC{intel_arch}{lto_flag}")
     } else if compiler.contains("flang") {
         let lto_flag = if lto { " -flto" } else { "" };
         format!("-O3 -cpp -fPIC -fno-automatic{march}{lto_flag}")
