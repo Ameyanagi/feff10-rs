@@ -194,7 +194,19 @@ fn main() {
         println!("cargo:rustc-link-lib=dl");
     }
 
-    // 12. Emit rerun-if-changed directives
+    // 12. Expose build metadata to dependent crates
+    let blas_name = match &blas_type {
+        BlasType::Mkl { .. } => "MKL",
+        BlasType::OpenBlas => "OpenBLAS",
+        BlasType::SystemBlas => "system BLAS",
+        BlasType::Accelerate => "Accelerate",
+        BlasType::None => "naive (built-in)",
+    };
+    println!("cargo:FC={compiler}");
+    println!("cargo:FFLAGS={flags}");
+    println!("cargo:BLAS={blas_name}");
+
+    // 13. Emit rerun-if-changed directives
     println!("cargo:rerun-if-env-changed=FEFF_FC");
     println!("cargo:rerun-if-env-changed=FC");
     println!("cargo:rerun-if-env-changed=FEFF_FFLAGS");

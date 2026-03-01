@@ -7,13 +7,27 @@ use indicatif::{ProgressBar, ProgressStyle};
 use serde::Serialize;
 
 use feff10::config::FeffConfigBuilder;
+
+fn long_version() -> &'static str {
+    concat!(
+        env!("CARGO_PKG_VERSION"),
+        "\n",
+        "Fortran compiler: ", env!("FEFF10_FC"), "\n",
+        "Fortran flags:    ", env!("FEFF10_FFLAGS"), "\n",
+        "BLAS/LAPACK:      ", env!("FEFF10_BLAS"),
+    )
+}
 use feff10::input::FeffInput;
 use feff10::output::XmuDat;
 use feff10::pipeline::{FeffPipeline, StageProgress};
 use feff10::stage::Stage;
 
 #[derive(Parser)]
-#[command(name = "feff10", about = "FEFF10 X-ray absorption spectroscopy calculations")]
+#[command(
+    name = "feff10",
+    about = "FEFF10 X-ray absorption spectroscopy calculations",
+    version = long_version(),
+)]
 enum Cli {
     /// Run a FEFF calculation
     Run {
