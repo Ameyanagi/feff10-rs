@@ -448,15 +448,37 @@ fn create_archive_from_objects(build_src: &Path, archive_path: &Path) {
     // Remove existing archive to avoid stale entries
     let _ = fs::remove_file(archive_path);
 
-    let status = Command::new("ar")
-        .arg("rcs")
-        .arg(archive_path)
-        .args(&objects)
-        .status()
-        .expect("Failed to run ar. Is `ar` (binutils) installed?");
+    // On Windows, passing 435+ object files as args exceeds the command line limit.
+    // Use a response file (@file) to pass object paths to ar.
+    if cfg!(target_os = "windows") {
+        let rsp_path = archive_path.with_extension("rsp");
+        let rsp_content: Vec<String> = objects.iter().map(|o| o.display().to_string()).collect();
+        fs::write(&rsp_path, rsp_content.join("\n"))
+            .expect("Failed to write ar response file");
 
-    if !status.success() {
-        panic!("feff10-sys: ar rcs failed");
+        let status = Command::new("ar")
+            .arg("rcs")
+            .arg(archive_path)
+            .arg(format!("@{}", rsp_path.display()))
+            .status()
+            .expect("Failed to run ar. Is `ar` (binutils) installed?");
+
+        let _ = fs::remove_file(&rsp_path);
+
+        if !status.success() {
+            panic!("feff10-sys: ar rcs failed");
+        }
+    } else {
+        let status = Command::new("ar")
+            .arg("rcs")
+            .arg(archive_path)
+            .args(&objects)
+            .status()
+            .expect("Failed to run ar. Is `ar` (binutils) installed?");
+
+        if !status.success() {
+            panic!("feff10-sys: ar rcs failed");
+        }
     }
 }
 

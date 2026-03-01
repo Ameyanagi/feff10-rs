@@ -42,10 +42,7 @@ jobs:
         env:
           FEFF_FC: ifx
           FEFF_NO_NATIVE: "1"
-        run: |
-          # setvars.sh is already sourced in the container; --force avoids exit code 3
-          . /opt/intel/oneapi/setvars.sh --force || true
-          cargo build --release -p feff10-cli
+        run: cargo build --release -p feff10-cli
 
       - name: Package
         run: |
@@ -161,7 +158,6 @@ jobs:
         env:
           FEFF_FC: gfortran
           FEFF_NO_NATIVE: "1"
-          CARGO_TARGET_DIR: D:\t
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo build --release -p feff10-cli
@@ -171,8 +167,8 @@ jobs:
         run: |
           staging="feff10-x86_64-pc-windows-gnu"
           mkdir -p "$staging"
-          cp /d/t/release/feff10-cli.exe "$staging/feff10.exe"
-          libfeff10=$(find /d/t/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
+          cp target/release/feff10-cli.exe "$staging/feff10.exe"
+          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit 2>/dev/null)
           if [ -n "$libfeff10" ]; then
             cp "$libfeff10" "$staging/"
             echo "Included libfeff10.a"
