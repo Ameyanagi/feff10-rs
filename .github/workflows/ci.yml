@@ -22,8 +22,8 @@ jobs:
             compiler: ifx
             install: ""  # handled by setup-fortran action
           - os: ubuntu-latest
-            compiler: flang-new
-            install: sudo apt-get update && sudo apt-get install -y flang-new || true
+            compiler: flang
+            install: ""  # handled by LLVM apt repo setup below
             allow-failure: true
           - os: macos-latest
             compiler: gfortran
@@ -110,8 +110,19 @@ jobs:
           echo "Found ifx at: $FC"
 
       - name: Install LLVM Flang
-        if: matrix.compiler == 'flang-new'
-        run: ${{ matrix.install }}
+        if: matrix.compiler == 'flang'
+        id: flang-path
+        run: |
+          # Add official LLVM apt repository for Ubuntu
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
+          CODENAME=$(lsb_release -cs)
+          echo "deb http://apt.llvm.org/$CODENAME/ llvm-toolchain-$CODENAME-20 main" | sudo tee /etc/apt/sources.list.d/llvm-20.list
+          sudo apt-get update
+          sudo apt-get install -y flang-20
+          # flang-20 installs the binary as flang-new-20
+          FC=$(which flang-new-20)
+          echo "fc=$FC" >> "$GITHUB_OUTPUT"
+          echo "Found flang at: $FC"
 
       # --- Build ---
 
@@ -127,10 +138,10 @@ jobs:
           FEFF_FC: ${{ steps.ifx-path.outputs.fc }}
         run: cargo build --workspace
 
-      - name: Build (Linux - flang-new)
-        if: matrix.compiler == 'flang-new' && runner.os == 'Linux'
+      - name: Build (Linux - flang)
+        if: matrix.compiler == 'flang' && runner.os == 'Linux'
         env:
-          FEFF_FC: flang-new
+          FEFF_FC: ${{ steps.flang-path.outputs.fc }}
         run: cargo build --workspace
 
       - name: Build (macOS)
@@ -168,8 +179,8 @@ jobs:
           FEFF_FC: ${{ steps.ifx-path.outputs.fc }}
         run: cargo test --workspace --lib
 
-      - name: Unit tests (Linux - flang-new)
-        if: matrix.compiler == 'flang-new' && runner.os == 'Linux'
+      - name: Unit tests (Linux - flang)
+        if: matrix.compiler == 'flang' && runner.os == 'Linux'
         run: cargo test --workspace --lib
 
       - name: Unit tests (macOS)
@@ -200,10 +211,10 @@ jobs:
         run: cargo test -p feff10 --test integration -- --test-threads=1
         timeout-minutes: 30
 
-      - name: Integration tests (Linux - flang-new)
-        if: matrix.compiler == 'flang-new' && runner.os == 'Linux'
+      - name: Integration tests (Linux - flang)
+        if: matrix.compiler == 'flang' && runner.os == 'Linux'
         env:
-          FEFF_FC: flang-new
+          FEFF_FC: ${{ steps.flang-path.outputs.fc }}
         run: cargo test -p feff10 --test integration -- --test-threads=1
         timeout-minutes: 30
 

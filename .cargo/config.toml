@@ -1,0 +1,7 @@
+# macOS: use clang instead of gcc for C compilation and linking.
+# This avoids issues with Homebrew gcc conflicting with system frameworks.
+[target.aarch64-apple-darwin]
+linker = "clang"
+
+[target.x86_64-apple-darwin]
+linker = "clang"

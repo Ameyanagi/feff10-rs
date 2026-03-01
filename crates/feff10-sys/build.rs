@@ -591,7 +591,7 @@ fn emit_fortran_runtime_links(compiler: &str) {
         }
     } else if compiler.contains("flang") {
         // LLVM Flang runtime — find the clang resource directory
-        let flang_rt_found = find_flang_runtime();
+        let flang_rt_found = find_flang_runtime(compiler);
         if !flang_rt_found {
             eprintln!("feff10-sys: warning: could not find flang_rt.runtime library path");
         }
@@ -601,32 +601,33 @@ fn emit_fortran_runtime_links(compiler: &str) {
 
 /// Find and emit link search path for LLVM Flang runtime library.
 /// Searches clang resource directories for libflang_rt.runtime.a.
-fn find_flang_runtime() -> bool {
-    // Try: flang-new --print-resource-dir
-    for flang_cmd in &["flang-new", "flang"] {
+fn find_flang_runtime(compiler: &str) -> bool {
+    // Try the actual compiler first (e.g. flang-new-20), then common names
+    let mut candidates: Vec<&str> = vec![compiler];
+    let extra = ["flang-new", "flang"];
+    for c in &extra {
+        if *c != compiler {
+            candidates.push(c);
+        }
+    }
+    for flang_cmd in &candidates {
         if let Ok(output) = Command::new(flang_cmd).arg("--print-resource-dir").output() {
             if output.status.success() {
                 let resource_dir = String::from_utf8_lossy(&output.stdout).trim().to_string();
-                let lib_dir = Path::new(&resource_dir).join("lib/linux");
-                if lib_dir.join("libflang_rt.runtime.a").exists() {
-                    println!("cargo:rustc-link-search=native={}", lib_dir.display());
-                    return true;
-                }
-                let lib_dir = Path::new(&resource_dir).join("lib");
-                if lib_dir.join("libflang_rt.runtime.a").exists() {
-                    println!("cargo:rustc-link-search=native={}", lib_dir.display());
-                    return true;
+                // Check lib/linux (common layout) and lib/ (alternative)
+                for subdir in &["lib/linux", "lib"] {
+                    let lib_dir = Path::new(&resource_dir).join(subdir);
+                    if lib_dir.join("libflang_rt.runtime.a").exists() {
+                        println!("cargo:rustc-link-search=native={}", lib_dir.display());
+                        return true;
+                    }
                 }
             }
         }
     }
     // Fallback: search common paths
-    for path in &[
-        "/usr/lib/clang/21/lib/linux",
-        "/usr/lib/clang/20/lib/linux",
-        "/usr/lib/clang/19/lib/linux",
-    ] {
-        let p = Path::new(path);
+    for ver in &["22", "21", "20", "19"] {
+        let p = Path::new("/usr/lib/clang").join(ver).join("lib/linux");
         if p.join("libflang_rt.runtime.a").exists() {
             println!("cargo:rustc-link-search=native={}", p.display());
             return true;
