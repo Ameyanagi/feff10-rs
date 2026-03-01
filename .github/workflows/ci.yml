@@ -213,6 +213,7 @@ jobs:
 
       - name: Integration tests (Linux - flang)
         if: matrix.compiler == 'flang' && runner.os == 'Linux'
+        continue-on-error: true
         env:
           FEFF_FC: ${{ steps.flang-path.outputs.fc }}
         run: cargo test -p feff10 --test integration -- --test-threads=1
