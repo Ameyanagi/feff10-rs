@@ -118,9 +118,13 @@ jobs:
           CODENAME=$(lsb_release -cs)
           echo "deb http://apt.llvm.org/$CODENAME/ llvm-toolchain-$CODENAME-20 main" | sudo tee /etc/apt/sources.list.d/llvm-20.list
           sudo apt-get update
-          sudo apt-get install -y flang-20
+          sudo apt-get install -y flang-20 libclang-rt-20-dev
           # flang-20 installs the binary as flang-new-20
           FC=$(which flang-new-20)
+          # Debug: show where flang_rt.runtime might be
+          echo "Resource dir: $($FC --print-resource-dir 2>/dev/null || true)"
+          find /usr/lib/llvm-20 -name "libflang_rt*" 2>/dev/null || true
+          find /usr/lib/clang/20 -name "libflang_rt*" 2>/dev/null || true
           echo "fc=$FC" >> "$GITHUB_OUTPUT"
           echo "Found flang at: $FC"
 

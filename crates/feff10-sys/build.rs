@@ -591,11 +591,14 @@ fn emit_fortran_runtime_links(compiler: &str) {
         }
     } else if compiler.contains("flang") {
         // LLVM Flang runtime — find the clang resource directory
-        let flang_rt_found = find_flang_runtime(compiler);
-        if !flang_rt_found {
-            eprintln!("feff10-sys: warning: could not find flang_rt.runtime library path");
+        let found = find_flang_runtime(compiler);
+        if found {
+            println!("cargo:rustc-link-lib=static=flang_rt.runtime");
+        } else {
+            // Static library not found — try dynamic linking as fallback
+            eprintln!("feff10-sys: flang_rt.runtime.a not found, trying dynamic linking");
+            println!("cargo:rustc-link-lib=flang_rt.runtime");
         }
-        println!("cargo:rustc-link-lib=static=flang_rt.runtime");
     }
 }
 
@@ -626,8 +629,23 @@ fn find_flang_runtime(compiler: &str) -> bool {
         }
     }
     // Fallback: search common paths
-    for ver in &["22", "21", "20", "19"] {
-        let p = Path::new("/usr/lib/clang").join(ver).join("lib/linux");
+    let search_paths = [
+        // Standard clang resource dir layout
+        "/usr/lib/clang/22/lib/linux",
+        "/usr/lib/clang/21/lib/linux",
+        "/usr/lib/clang/20/lib/linux",
+        "/usr/lib/clang/19/lib/linux",
+        // Per-target layout (used by some distributions)
+        "/usr/lib/clang/20/lib/x86_64-pc-linux-gnu",
+        "/usr/lib/clang/21/lib/x86_64-pc-linux-gnu",
+        "/usr/lib/clang/22/lib/x86_64-pc-linux-gnu",
+        // LLVM versioned install paths
+        "/usr/lib/llvm-20/lib",
+        "/usr/lib/llvm-21/lib",
+        "/usr/lib/llvm-22/lib",
+    ];
+    for path in &search_paths {
+        let p = Path::new(path);
         if p.join("libflang_rt.runtime.a").exists() {
             println!("cargo:rustc-link-search=native={}", p.display());
             return true;
