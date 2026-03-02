@@ -1125,7 +1125,12 @@ fn default_flags_for(compiler: &str) -> String {
         format!("-O3 -fPIC -heap-arrays -init=zero{intel_arch}{lto_flag}")
     } else if compiler.contains("flang") {
         let lto_flag = if lto { " -flto" } else { "" };
-        format!("-O3 -cpp -fPIC -fno-automatic{march}{lto_flag}")
+        // -fno-stack-arrays: prevent array temporaries on the stack
+        // -mmlir -fdynamic-heap-array: force automatic/dynamic arrays onto the heap
+        //   (equivalent of Intel -heap-arrays)
+        format!(
+            "-O3 -cpp -fPIC -fno-automatic -fno-stack-arrays -mmlir -fdynamic-heap-array{march}{lto_flag}"
+        )
     } else {
         "-O3 -fPIC".to_string()
     }
