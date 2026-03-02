@@ -16,5 +16,5 @@ crate-type = ["cdylib"]
 prebuilt = ["feff10/prebuilt"]
 
 [dependencies]
-feff10 = { path = "../feff10", version = "0.1.0" }
+feff10 = { path = "../feff10", version = "0.1.1" }
 pyo3 = { version = "0.23", features = ["extension-module"] }
