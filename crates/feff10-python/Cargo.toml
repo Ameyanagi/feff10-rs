@@ -1,11 +1,11 @@
 [package]
 name = "feff10-python"
-edition.workspace = true
-version.workspace = true
+edition = "2024"
+version = "0.1.0"
 description = "Python bindings for FEFF10 via PyO3"
-license.workspace = true
-repository.workspace = true
-homepage.workspace = true
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/Ameyanagi/feff10-rs"
+homepage = "https://github.com/Ameyanagi/feff10-rs"
 publish = false
 
 [lib]

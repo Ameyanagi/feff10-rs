@@ -834,9 +834,7 @@ fn cmd_bench(
                         .input(feff_input)
                         .build()
                         .map_err(|e| format!("config: {e}"))?;
-                    let res = FeffPipeline::new(config)
-                        .run()
-                        .map_err(|e| e.to_string())?;
+                    let res = FeffPipeline::new(config).run().map_err(|e| e.to_string())?;
                     let mut total = 0.0;
                     for sr in &res.stages {
                         let secs = sr.duration.as_secs_f64();

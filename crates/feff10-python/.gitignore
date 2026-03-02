@@ -6,3 +6,4 @@ __pycache__/
 *.pyc
 target/
 .pytest_cache/
+Cargo.lock

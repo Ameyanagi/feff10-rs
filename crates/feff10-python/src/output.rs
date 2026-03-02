@@ -69,16 +69,12 @@ impl PyXmuDat {
 
     /// Get a specific column by index.
     fn column(&self, index: usize) -> PyResult<Vec<f64>> {
-        self.inner
-            .columns
-            .get(index)
-            .cloned()
-            .ok_or_else(|| {
-                pyo3::exceptions::PyIndexError::new_err(format!(
-                    "column index {index} out of range (ncols={})",
-                    self.inner.columns.len()
-                ))
-            })
+        self.inner.columns.get(index).cloned().ok_or_else(|| {
+            pyo3::exceptions::PyIndexError::new_err(format!(
+                "column index {index} out of range (ncols={})",
+                self.inner.columns.len()
+            ))
+        })
     }
 
     /// Compare with another XmuDat using R-squared metric.

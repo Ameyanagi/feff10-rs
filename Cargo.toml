@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["crates/feff10-sys", "crates/feff10", "crates/feff10-cli", "crates/feff10-python"]
+members = ["crates/feff10-sys", "crates/feff10", "crates/feff10-cli"]
+exclude = ["crates/feff10-python"]
 
 [workspace.package]
 edition = "2024"

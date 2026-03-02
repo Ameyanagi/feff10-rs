@@ -3,6 +3,7 @@ use pyo3::prelude::*;
 
 #[pyclass(name = "Stage", eq, eq_int, hash, frozen)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[allow(clippy::upper_case_acronyms)]
 pub enum PyStage {
     RDINP = 0,
     DMDW = 1,
@@ -77,7 +78,10 @@ impl PyStage {
     /// All stages in pipeline order.
     #[staticmethod]
     fn all() -> Vec<PyStage> {
-        Stage::all().iter().map(|s| PyStage::from_rust(*s)).collect()
+        Stage::all()
+            .iter()
+            .map(|s| PyStage::from_rust(*s))
+            .collect()
     }
 
     /// Default pipeline order.
@@ -93,8 +97,8 @@ impl PyStage {
     #[staticmethod]
     fn from_name(name: &str) -> PyResult<PyStage> {
         name.parse::<Stage>()
-            .map(|s| PyStage::from_rust(s))
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(e))
+            .map(PyStage::from_rust)
+            .map_err(pyo3::exceptions::PyValueError::new_err)
     }
 
     /// Executable name for this stage.
@@ -110,9 +114,6 @@ impl PyStage {
     }
 
     fn __repr__(&self) -> String {
-        format!(
-            "Stage.{}",
-            self.to_rust().executable_name().to_uppercase()
-        )
+        format!("Stage.{}", self.to_rust().executable_name().to_uppercase())
     }
 }
