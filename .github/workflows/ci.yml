@@ -226,5 +226,6 @@ jobs:
       - name: Test prebuilt feature
         if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
         run: |
-          libdir=$(find target/debug/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit | xargs dirname)
+          libdir=$(find target/debug/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit | xargs dirname | xargs realpath)
+          echo "Using prebuilt lib from: $libdir"
           FEFF10_LIB_DIR="$libdir" cargo build --features prebuilt
