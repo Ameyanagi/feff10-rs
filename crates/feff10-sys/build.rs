@@ -1,6 +1,6 @@
 use std::env;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -361,14 +361,6 @@ fn link_prebuilt() {
 /// Download the prebuilt libfeff10.a for the current platform from GitHub releases.
 fn download_prebuilt(out_dir: &Path) {
     let dest = out_dir.join("libfeff10.a");
-    if dest.exists() {
-        eprintln!(
-            "feff10-sys: using cached prebuilt library at {}",
-            dest.display()
-        );
-        return;
-    }
-
     let version = env::var("CARGO_PKG_VERSION").unwrap();
     let asset_name = if cfg!(target_os = "linux") {
         "libfeff10-linux-x86_64.a"
@@ -379,6 +371,17 @@ fn download_prebuilt(out_dir: &Path) {
     } else {
         panic!("feff10-sys: unsupported platform for prebuilt binaries");
     };
+
+    let expected_hash = expected_prebuilt_sha256(&version, asset_name);
+
+    if dest.exists() {
+        eprintln!(
+            "feff10-sys: verifying cached prebuilt library at {}",
+            dest.display()
+        );
+        verify_prebuilt_checksum(&dest, &expected_hash);
+        return;
+    }
 
     let url =
         format!("https://github.com/Ameyanagi/feff10-rs/releases/download/v{version}/{asset_name}");
@@ -400,8 +403,7 @@ fn download_prebuilt(out_dir: &Path) {
         );
     }
 
-    let expected_hash = expected_prebuilt_sha256(&version, asset_name);
-    verify_prebuilt_checksum(&dest, expected_hash.trim());
+    verify_prebuilt_checksum(&dest, &expected_hash);
 
     eprintln!(
         "feff10-sys: downloaded prebuilt library to {}",
@@ -453,11 +455,11 @@ fn expected_prebuilt_sha256(version: &str, asset_name: &str) -> String {
 }
 
 fn verify_prebuilt_checksum(path: &Path, expected_hash: &str) {
-    let expected_hash = expected_hash.trim().to_ascii_lowercase();
+    let expected_hash = expected_hash.trim();
     if expected_hash.is_empty() {
         panic!("feff10-sys: expected SHA256 checksum is empty");
     }
-    if expected_hash.len() != 64 || !expected_hash.chars().all(|c| c.is_ascii_hexdigit()) {
+    if expected_hash.len() != 64 || !expected_hash.bytes().all(|b| b.is_ascii_hexdigit()) {
         panic!("feff10-sys: invalid SHA256 checksum format: '{expected_hash}'");
     }
 
@@ -468,7 +470,7 @@ fn verify_prebuilt_checksum(path: &Path, expected_hash: &str) {
         )
     });
 
-    if actual_hash != expected_hash {
+    if !actual_hash.eq_ignore_ascii_case(expected_hash) {
         let _ = fs::remove_file(path);
         panic!(
             "feff10-sys: SHA256 mismatch for {}.\nexpected: {expected_hash}\nactual:   {actual_hash}",
@@ -482,20 +484,13 @@ fn sha256_file(path: &Path) -> Result<String, String> {
     let mut file =
         fs::File::open(path).map_err(|e| format!("failed to open {}: {e}", path.display()))?;
     let mut hasher = Sha256::new();
-    let mut buf = [0_u8; 64 * 1024];
-    loop {
-        let read = file
-            .read(&mut buf)
-            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buf[..read]);
-    }
+    std::io::copy(&mut file, &mut hasher)
+        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
     let digest = hasher.finalize();
+    use std::fmt::Write;
     let mut out = String::with_capacity(64);
     for b in digest {
-        out.push_str(&format!("{b:02x}"));
+        let _ = write!(out, "{b:02x}");
     }
     Ok(out)
 }

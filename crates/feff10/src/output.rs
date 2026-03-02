@@ -2,6 +2,12 @@ use std::path::Path;
 
 use crate::error::{Error, ParseError};
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ParseMode {
+    Permissive,
+    Strict,
+}
+
 /// Parsed xmu.dat output file.
 #[derive(Debug, Clone)]
 pub struct XmuDat {
@@ -12,7 +18,7 @@ pub struct XmuDat {
 impl XmuDat {
     /// Parse xmu.dat content from a string.
     pub fn parse(content: &str) -> Result<Self, Error> {
-        Self::parse_impl(content, false)
+        Self::parse_with_mode(content, ParseMode::Permissive)
     }
 
     /// Parse xmu.dat content from a string with strict validation.
@@ -21,10 +27,10 @@ impl XmuDat {
     /// - non-numeric tokens in data rows
     /// - inconsistent number of columns between rows
     pub fn parse_strict(content: &str) -> Result<Self, Error> {
-        Self::parse_impl(content, true)
+        Self::parse_with_mode(content, ParseMode::Strict)
     }
 
-    fn parse_impl(content: &str, strict: bool) -> Result<Self, Error> {
+    fn parse_with_mode(content: &str, mode: ParseMode) -> Result<Self, Error> {
         let mut header = Vec::new();
         let mut rows: Vec<Vec<f64>> = Vec::new();
         let mut expected_cols: Option<usize> = None;
@@ -40,7 +46,7 @@ impl XmuDat {
                 continue;
             }
 
-            if strict {
+            if mode == ParseMode::Strict {
                 let tokens: Vec<&str> = line.split_whitespace().collect();
                 if tokens.is_empty() {
                     continue;

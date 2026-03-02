@@ -394,10 +394,10 @@ struct ExampleBench {
 
 type CliResult = Result<(), i32>;
 
-fn print_json<T: Serialize>(value: &T) -> CliResult {
+fn emit_json<T: Serialize>(writer: &mut dyn std::io::Write, value: &T) -> CliResult {
     match serde_json::to_string_pretty(value) {
         Ok(json) => {
-            println!("{json}");
+            let _ = writeln!(writer, "{json}");
             Ok(())
         }
         Err(e) => {
@@ -407,17 +407,12 @@ fn print_json<T: Serialize>(value: &T) -> CliResult {
     }
 }
 
+fn print_json<T: Serialize>(value: &T) -> CliResult {
+    emit_json(&mut std::io::stdout().lock(), value)
+}
+
 fn eprint_json<T: Serialize>(value: &T) -> CliResult {
-    match serde_json::to_string_pretty(value) {
-        Ok(json) => {
-            eprintln!("{json}");
-            Ok(())
-        }
-        Err(e) => {
-            eprintln!("Error serializing JSON output: {e}");
-            Err(1)
-        }
-    }
+    emit_json(&mut std::io::stderr().lock(), value)
 }
 
 fn main() {
@@ -827,68 +822,21 @@ fn cmd_bench(
         let mut total_times: Vec<f64> = Vec::new();
 
         for iter in 0..iterations {
-            let work_dir = match tempfile::tempdir() {
-                Ok(dir) => dir,
-                Err(e) => {
-                    if !global.quiet {
-                        eprintln!(
-                            "  iteration {}/{}: FAILED - tempdir error: {e}",
-                            iter + 1,
-                            iterations
-                        );
-                    }
-                    total_times.push(f64::NAN);
-                    continue;
-                }
-            };
-            if let Err(e) = std::fs::copy(&inp_path, work_dir.path().join("feff.inp")) {
-                if !global.quiet {
-                    eprintln!(
-                        "  iteration {}/{}: FAILED - copy error: {e}",
-                        iter + 1,
-                        iterations
-                    );
-                }
-                total_times.push(f64::NAN);
-                continue;
-            }
-
-            let feff_input = match FeffInput::from_file(work_dir.path().join("feff.inp")) {
-                Ok(input) => input,
-                Err(e) => {
-                    if !global.quiet {
-                        eprintln!(
-                            "  iteration {}/{}: FAILED - input parse error: {e}",
-                            iter + 1,
-                            iterations
-                        );
-                    }
-                    total_times.push(f64::NAN);
-                    continue;
-                }
-            };
-            let config = match FeffConfigBuilder::new()
-                .work_dir(work_dir.path())
-                .input(feff_input)
-                .build()
-            {
-                Ok(config) => config,
-                Err(e) => {
-                    if !global.quiet {
-                        eprintln!(
-                            "  iteration {}/{}: FAILED - config error: {e}",
-                            iter + 1,
-                            iterations
-                        );
-                    }
-                    total_times.push(f64::NAN);
-                    continue;
-                }
-            };
-
-            let pipeline = FeffPipeline::new(config);
-            match pipeline.run() {
-                Ok(res) => {
+            let run_iteration =
+                |stage_timings: &mut BTreeMap<String, Vec<f64>>| -> Result<f64, String> {
+                    let work_dir = tempfile::tempdir().map_err(|e| format!("tempdir: {e}"))?;
+                    std::fs::copy(&inp_path, work_dir.path().join("feff.inp"))
+                        .map_err(|e| format!("copy: {e}"))?;
+                    let feff_input = FeffInput::from_file(work_dir.path().join("feff.inp"))
+                        .map_err(|e| format!("input parse: {e}"))?;
+                    let config = FeffConfigBuilder::new()
+                        .work_dir(work_dir.path())
+                        .input(feff_input)
+                        .build()
+                        .map_err(|e| format!("config: {e}"))?;
+                    let res = FeffPipeline::new(config)
+                        .run()
+                        .map_err(|e| e.to_string())?;
                     let mut total = 0.0;
                     for sr in &res.stages {
                         let secs = sr.duration.as_secs_f64();
@@ -898,14 +846,19 @@ fn cmd_bench(
                             .push(secs);
                         total += secs;
                     }
+                    Ok(total)
+                };
+
+            match run_iteration(&mut stage_timings) {
+                Ok(total) => {
                     total_times.push(total);
                     if !global.quiet {
                         eprintln!("  iteration {}/{}: {:.2}s", iter + 1, iterations, total);
                     }
                 }
-                Err(e) => {
+                Err(msg) => {
                     if !global.quiet {
-                        eprintln!("  iteration {}/{}: FAILED - {e}", iter + 1, iterations);
+                        eprintln!("  iteration {}/{}: FAILED - {msg}", iter + 1, iterations);
                     }
                     total_times.push(f64::NAN);
                 }
@@ -982,17 +935,14 @@ fn cmd_bench(
     }
 
     if let Some(out_path) = output {
-        let json = match serde_json::to_string_pretty(&report) {
-            Ok(json) => json,
+        let mut file = match std::fs::File::create(&out_path) {
+            Ok(f) => f,
             Err(e) => {
-                eprintln!("Error serializing benchmark report: {e}");
+                eprintln!("Error creating {}: {e}", out_path.display());
                 return Err(1);
             }
         };
-        if let Err(e) = std::fs::write(&out_path, &json) {
-            eprintln!("Error writing {}: {e}", out_path.display());
-            return Err(1);
-        }
+        emit_json(&mut file, &report)?;
         if !global.quiet {
             eprintln!("JSON results written to {}", out_path.display());
         }
