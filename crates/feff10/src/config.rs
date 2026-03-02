@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::time::Duration;
 
 use crate::error::Error;
 use crate::input::FeffInput;
@@ -13,6 +14,8 @@ pub struct FeffConfig {
     pub input: FeffInput,
     /// Which stages to run. If empty, derived from CONTROL card.
     pub stages: Vec<Stage>,
+    /// Maximum time per stage before killing it. Unix only.
+    pub stage_timeout: Option<Duration>,
 }
 
 /// Builder for FeffConfig.
@@ -20,6 +23,7 @@ pub struct FeffConfigBuilder {
     work_dir: Option<PathBuf>,
     input: Option<FeffInput>,
     stages: Option<Vec<Stage>>,
+    stage_timeout: Option<Duration>,
 }
 
 impl FeffConfigBuilder {
@@ -28,6 +32,7 @@ impl FeffConfigBuilder {
             work_dir: None,
             input: None,
             stages: None,
+            stage_timeout: None,
         }
     }
 
@@ -51,6 +56,11 @@ impl FeffConfigBuilder {
         self
     }
 
+    pub fn stage_timeout(mut self, timeout: Duration) -> Self {
+        self.stage_timeout = Some(timeout);
+        self
+    }
+
     pub fn build(self) -> Result<FeffConfig, Error> {
         let work_dir = self
             .work_dir
@@ -71,6 +81,7 @@ impl FeffConfigBuilder {
             work_dir,
             input,
             stages,
+            stage_timeout: self.stage_timeout,
         })
     }
 }

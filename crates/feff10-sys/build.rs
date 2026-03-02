@@ -36,6 +36,12 @@ enum BlasType {
 }
 
 fn main() {
+    // Prebuilt mode: skip Fortran compilation, just link the provided libfeff10.a
+    if env::var("CARGO_FEATURE_PREBUILT").is_ok() {
+        link_prebuilt();
+        return;
+    }
+
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let feff_src = manifest_dir.join("../../feff10/src");
@@ -273,6 +279,115 @@ fn main() {
     for dir in &src_dirs {
         println!("cargo:rerun-if-changed={}", feff_src.join(dir).display());
     }
+}
+
+// ---------------------------------------------------------------------------
+// Prebuilt library linking
+// ---------------------------------------------------------------------------
+
+/// Link a prebuilt libfeff10.a without compiling Fortran.
+///
+/// Resolution order:
+/// 1. `FEFF10_LIB_DIR` env var → use libfeff10.a from that directory
+/// 2. Auto-download from GitHub releases into OUT_DIR
+///
+/// The release archives already bundle all dependencies:
+/// - Linux (ifx+MKL): MKL and Intel runtime merged into libfeff10.a
+/// - macOS (gfortran): needs libgfortran + Accelerate at link time
+/// - Windows (gfortran): needs libgfortran at link time
+fn link_prebuilt() {
+    let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+
+    let lib_dir = if let Ok(dir) = env::var("FEFF10_LIB_DIR") {
+        let lib_path = Path::new(&dir).join("libfeff10.a");
+        if !lib_path.exists() {
+            panic!(
+                "feff10-sys: libfeff10.a not found at {}",
+                lib_path.display()
+            );
+        }
+        eprintln!("feff10-sys: using prebuilt library at {}", lib_path.display());
+        dir
+    } else {
+        download_prebuilt(&out_dir);
+        out_dir.display().to_string()
+    };
+
+    println!("cargo:rustc-link-search=native={lib_dir}");
+    println!("cargo:rustc-link-lib=static=feff10");
+
+    // Platform-specific runtime linking
+    if cfg!(target_os = "linux") {
+        // Linux release has MKL + Intel runtime merged — only system libs needed
+    } else if cfg!(target_os = "macos") {
+        // macOS release uses gfortran + Accelerate
+        if let Some(rt_dir) = find_gfortran_runtime_dir("gfortran") {
+            println!("cargo:rustc-link-search=native={}", rt_dir.display());
+        }
+        println!("cargo:rustc-link-lib=gfortran");
+        println!("cargo:rustc-link-lib=framework=Accelerate");
+    } else if cfg!(target_os = "windows") {
+        // Windows release uses gfortran
+        println!("cargo:rustc-link-lib=gfortran");
+    }
+
+    // Common system libraries
+    println!("cargo:rustc-link-lib=pthread");
+    println!("cargo:rustc-link-lib=m");
+    if cfg!(target_os = "linux") {
+        println!("cargo:rustc-link-lib=dl");
+    }
+
+    // Metadata for dependent crates
+    println!("cargo:FC=prebuilt");
+    println!("cargo:FFLAGS=");
+    println!("cargo:BLAS=prebuilt");
+    println!("cargo:FEFF10_COMMIT=unknown");
+
+    println!("cargo:rerun-if-env-changed=FEFF10_LIB_DIR");
+}
+
+/// Download the prebuilt libfeff10.a for the current platform from GitHub releases.
+fn download_prebuilt(out_dir: &Path) {
+    let dest = out_dir.join("libfeff10.a");
+    if dest.exists() {
+        eprintln!("feff10-sys: using cached prebuilt library at {}", dest.display());
+        return;
+    }
+
+    let version = env::var("CARGO_PKG_VERSION").unwrap();
+    let asset_name = if cfg!(target_os = "linux") {
+        "libfeff10-linux-x86_64.a"
+    } else if cfg!(target_os = "macos") {
+        "libfeff10-macos-arm64.a"
+    } else if cfg!(target_os = "windows") {
+        "libfeff10-windows-x86_64.a"
+    } else {
+        panic!("feff10-sys: unsupported platform for prebuilt binaries");
+    };
+
+    let url = format!(
+        "https://github.com/Ameyanagi/feff10-rs/releases/download/v{version}/{asset_name}"
+    );
+
+    eprintln!("feff10-sys: downloading prebuilt library from {url}");
+
+    let status = Command::new("curl")
+        .args(["-fSL", "--retry", "3", "-o"])
+        .arg(&dest)
+        .arg(&url)
+        .status()
+        .expect("feff10-sys: failed to run curl. Is curl installed?");
+
+    if !status.success() {
+        let _ = fs::remove_file(&dest);
+        panic!(
+            "feff10-sys: failed to download prebuilt library from {url}\n\
+             You can manually download it and set FEFF10_LIB_DIR instead."
+        );
+    }
+
+    eprintln!("feff10-sys: downloaded prebuilt library to {}", dest.display());
 }
 
 // ---------------------------------------------------------------------------

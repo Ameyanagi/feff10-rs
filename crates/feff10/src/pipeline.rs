@@ -72,7 +72,7 @@ impl FeffPipeline {
             callback(stage, StageProgress::Starting);
 
             let start = Instant::now();
-            run_stage_isolated(stage, &self.config.work_dir)?;
+            run_stage_isolated(stage, &self.config.work_dir, self.config.stage_timeout)?;
             let duration = start.elapsed();
 
             callback(stage, StageProgress::Finished { duration });
@@ -112,7 +112,11 @@ impl FeffPipeline {
 /// state is not fully isolated between stages. In practice this is fine because
 /// stages communicate via files and `stop` is only called on error paths.
 #[cfg(unix)]
-fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
+fn run_stage_isolated(
+    stage: Stage,
+    work_dir: &std::path::Path,
+    timeout: Option<Duration>,
+) -> Result<(), Error> {
     let _cwd_guard = CwdGuard::enter(work_dir)?;
 
     let pid = unsafe { libc::fork() };
@@ -127,54 +131,113 @@ fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Er
             unsafe { libc::_exit(0) };
         }
         child_pid => {
-            // Wait for child to finish
-            let mut status: libc::c_int = 0;
-            loop {
-                let ret = unsafe { libc::waitpid(child_pid, &mut status, 0) };
-                if ret == -1 {
-                    let err = std::io::Error::last_os_error();
-                    if err.raw_os_error() == Some(libc::EINTR) {
-                        continue;
-                    }
-                    return Err(Error::Io(err));
-                }
-                break;
-            }
-
-            if libc::WIFEXITED(status) {
-                let exit_code = libc::WEXITSTATUS(status);
-                if exit_code == 0 {
-                    Ok(())
-                } else {
-                    Err(Error::Pipeline(PipelineError {
-                        stage: stage.executable_name().to_string(),
-                        exit_code: Some(exit_code),
-                        stderr: String::new(),
-                        feff_error: None,
-                    }))
-                }
-            } else if libc::WIFSIGNALED(status) {
-                let signal = libc::WTERMSIG(status);
-                Err(Error::Pipeline(PipelineError {
-                    stage: stage.executable_name().to_string(),
-                    exit_code: None,
-                    stderr: format!("killed by signal {signal}"),
-                    feff_error: None,
-                }))
+            if timeout.is_some() {
+                wait_with_timeout(stage, child_pid, timeout)
             } else {
-                Err(Error::Pipeline(PipelineError {
-                    stage: stage.executable_name().to_string(),
-                    exit_code: None,
-                    stderr: "unknown child status".to_string(),
-                    feff_error: None,
-                }))
+                wait_blocking(stage, child_pid)
             }
         }
     }
 }
 
+/// Blocking wait (original behavior, no polling overhead).
+#[cfg(unix)]
+fn wait_blocking(stage: Stage, child_pid: libc::pid_t) -> Result<(), Error> {
+    let mut status: libc::c_int = 0;
+    loop {
+        let ret = unsafe { libc::waitpid(child_pid, &mut status, 0) };
+        if ret == -1 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            return Err(Error::Io(err));
+        }
+        break;
+    }
+    check_child_status(stage, status)
+}
+
+/// Non-blocking wait with timeout via WNOHANG polling.
+#[cfg(unix)]
+fn wait_with_timeout(
+    stage: Stage,
+    child_pid: libc::pid_t,
+    timeout: Option<Duration>,
+) -> Result<(), Error> {
+    let start = Instant::now();
+    loop {
+        let mut status: libc::c_int = 0;
+        let ret = unsafe { libc::waitpid(child_pid, &mut status, libc::WNOHANG) };
+
+        if ret == -1 {
+            let err = std::io::Error::last_os_error();
+            if err.raw_os_error() == Some(libc::EINTR) {
+                continue;
+            }
+            return Err(Error::Io(err));
+        }
+
+        if ret == child_pid {
+            return check_child_status(stage, status);
+        }
+
+        // ret == 0: child still running
+        if let Some(t) = timeout
+            && start.elapsed() > t
+        {
+            unsafe { libc::kill(child_pid, libc::SIGKILL) };
+            unsafe { libc::waitpid(child_pid, std::ptr::null_mut(), 0) };
+            return Err(Error::Pipeline(PipelineError {
+                stage: stage.executable_name().to_string(),
+                exit_code: None,
+                stderr: format!("timed out after {}s", t.as_secs()),
+                feff_error: None,
+            }));
+        }
+
+        std::thread::sleep(Duration::from_millis(50));
+    }
+}
+
+#[cfg(unix)]
+fn check_child_status(stage: Stage, status: libc::c_int) -> Result<(), Error> {
+    if libc::WIFEXITED(status) {
+        let exit_code = libc::WEXITSTATUS(status);
+        if exit_code == 0 {
+            Ok(())
+        } else {
+            Err(Error::Pipeline(PipelineError {
+                stage: stage.executable_name().to_string(),
+                exit_code: Some(exit_code),
+                stderr: String::new(),
+                feff_error: None,
+            }))
+        }
+    } else if libc::WIFSIGNALED(status) {
+        let signal = libc::WTERMSIG(status);
+        Err(Error::Pipeline(PipelineError {
+            stage: stage.executable_name().to_string(),
+            exit_code: None,
+            stderr: format!("killed by signal {signal}"),
+            feff_error: None,
+        }))
+    } else {
+        Err(Error::Pipeline(PipelineError {
+            stage: stage.executable_name().to_string(),
+            exit_code: None,
+            stderr: "unknown child status".to_string(),
+            feff_error: None,
+        }))
+    }
+}
+
 #[cfg(not(unix))]
-fn run_stage_isolated(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
+fn run_stage_isolated(
+    stage: Stage,
+    work_dir: &std::path::Path,
+    _timeout: Option<Duration>,
+) -> Result<(), Error> {
     let _cwd_guard = CwdGuard::enter(work_dir)?;
     unsafe { stage.call_ffi() };
     Ok(())

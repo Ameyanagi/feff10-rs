@@ -73,7 +73,7 @@ jobs:
 
       - name: Install gfortran
         if: matrix.compiler == 'gfortran'
-        run: sudo apt-get update && sudo apt-get install -y gfortran
+        run: sudo apt-get update && sudo apt-get install -y gfortran make
 
       - name: Install Intel Fortran (ifx)
         if: matrix.compiler == 'ifx'
@@ -119,7 +119,7 @@ jobs:
       # Run benchmarks on multiple representative examples (3 iterations each)
       - name: Benchmark (${{ matrix.label }})
         run: |
-          cargo run --release -p feff10-cli -- bench \
+          cargo run --release -p feff10-cli --bin feff10-rs -- bench \
             feff10/examples/EXAFS/Cu \
             feff10/examples/XANES/Cu \
             feff10/examples/XANES/BN \

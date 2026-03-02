@@ -151,39 +151,39 @@ jobs:
           echo "fc=$FC" >> "$GITHUB_OUTPUT"
           echo "Found flang at: $FC"
 
+      # --- Resolve compiler path ---
+
+      - name: Set compiler env
+        if: runner.os != 'Windows'
+        id: compiler-env
+        run: |
+          case "${{ matrix.compiler }}" in
+            gfortran)
+              if [ "${{ runner.os }}" = "macOS" ]; then
+                FC="${{ steps.macos-gfortran.outputs.fc }}"
+                FC_DIR=$(dirname "$FC")
+                LIB_DIR=$(cd "$FC_DIR/../lib/gcc/current" 2>/dev/null && pwd || echo "")
+                if [ -z "$LIB_DIR" ]; then
+                  LIB_DIR=$("$FC" -print-file-name=libgfortran.dylib | xargs dirname)
+                fi
+                echo "library_path=$LIB_DIR" >> "$GITHUB_OUTPUT"
+              else
+                FC="gfortran"
+              fi
+              ;;
+            ifx)  FC="${{ steps.ifx-path.outputs.fc }}" ;;
+            flang) FC="${{ steps.flang-path.outputs.fc }}" ;;
+          esac
+          echo "fc=$FC" >> "$GITHUB_OUTPUT"
+
       # --- Build ---
 
-      - name: Build (Linux - gfortran)
-        if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
+      - name: Build
+        if: runner.os != 'Windows'
         env:
-          FEFF_FC: gfortran
+          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
+          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
         run: cargo build --workspace
-
-      - name: Build (Linux - ifx)
-        if: matrix.compiler == 'ifx' && runner.os == 'Linux'
-        env:
-          FEFF_FC: ${{ steps.ifx-path.outputs.fc }}
-        run: cargo build --workspace
-
-      - name: Build (Linux - flang)
-        if: matrix.compiler == 'flang' && runner.os == 'Linux'
-        env:
-          FEFF_FC: ${{ steps.flang-path.outputs.fc }}
-        run: cargo build --workspace
-
-      - name: Build (macOS)
-        if: runner.os == 'macOS'
-        env:
-          FEFF_FC: ${{ steps.macos-gfortran.outputs.fc }}
-        run: |
-          FC_DIR=$(dirname "${{ steps.macos-gfortran.outputs.fc }}")
-          LIB_DIR=$(cd "$FC_DIR/../lib/gcc/current" 2>/dev/null && pwd || echo "")
-          if [ -z "$LIB_DIR" ]; then
-            LIB_DIR=$("${{ steps.macos-gfortran.outputs.fc }}" -print-file-name=libgfortran.dylib | xargs dirname)
-          fi
-          echo "LIBRARY_PATH=$LIB_DIR" >> "$GITHUB_ENV"
-          export LIBRARY_PATH="$LIB_DIR"
-          cargo build --workspace
 
       - name: Build (Windows)
         if: runner.os == 'Windows'
@@ -196,28 +196,11 @@ jobs:
 
       # --- Tests ---
 
-      - name: Unit tests (Linux - gfortran)
-        if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
+      - name: Unit tests
+        if: runner.os != 'Windows'
         env:
-          FEFF_FC: gfortran
-        run: cargo test --workspace --lib
-
-      - name: Unit tests (Linux - ifx)
-        if: matrix.compiler == 'ifx' && runner.os == 'Linux'
-        env:
-          FEFF_FC: ${{ steps.ifx-path.outputs.fc }}
-        run: cargo test --workspace --lib
-
-      - name: Unit tests (Linux - flang)
-        if: matrix.compiler == 'flang' && runner.os == 'Linux'
-        env:
-          FEFF_FC: ${{ steps.flang-path.outputs.fc }}
-        run: cargo test --workspace --lib
-
-      - name: Unit tests (macOS)
-        if: runner.os == 'macOS'
-        env:
-          FEFF_FC: ${{ steps.macos-gfortran.outputs.fc }}
+          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
+          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
         run: cargo test --workspace --lib
 
       - name: Unit tests (Windows)
@@ -227,33 +210,21 @@ jobs:
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo test --workspace --lib --target x86_64-pc-windows-gnu
 
-      - name: Integration tests (Linux - gfortran)
-        if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
+      - name: Integration tests
+        if: runner.os != 'Windows'
         env:
-          FEFF_FC: gfortran
-        run: cargo test -p feff10 --test integration -- --test-threads=1
-        timeout-minutes: 30
-
-      - name: Integration tests (Linux - ifx)
-        if: matrix.compiler == 'ifx' && runner.os == 'Linux'
-        env:
-          FEFF_FC: ${{ steps.ifx-path.outputs.fc }}
-        run: cargo test -p feff10 --test integration -- --test-threads=1
-        timeout-minutes: 30
-
-      - name: Integration tests (Linux - flang)
-        if: matrix.compiler == 'flang' && runner.os == 'Linux'
-        env:
-          FEFF_FC: ${{ steps.flang-path.outputs.fc }}
-        run: cargo test -p feff10 --test integration -- --test-threads=1
-        timeout-minutes: 30
-
-      - name: Integration tests (macOS)
-        if: runner.os == 'macOS'
-        env:
-          FEFF_FC: ${{ steps.macos-gfortran.outputs.fc }}
+          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
+          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
         run: cargo test -p feff10 --test integration -- --test-threads=1
         timeout-minutes: 30
 
       # Windows integration tests skipped: no fork() means Fortran global
       # state is not isolated between stages (causes "already allocated" errors)
+
+      # --- Prebuilt feature test ---
+
+      - name: Test prebuilt feature
+        if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
+        run: |
+          libdir=$(find target/debug/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit | xargs dirname)
+          FEFF10_LIB_DIR="$libdir" cargo build --features prebuilt

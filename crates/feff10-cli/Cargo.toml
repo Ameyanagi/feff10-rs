@@ -3,6 +3,14 @@ name = "feff10-cli"
 edition.workspace = true
 version.workspace = true
 description = "CLI for running FEFF10 calculations"
+license.workspace = true
+
+[[bin]]
+name = "feff10-rs"
+path = "src/main.rs"
+
+[features]
+prebuilt = ["feff10/prebuilt"]
 
 [dependencies]
 feff10 = { path = "../feff10" }

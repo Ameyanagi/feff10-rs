@@ -48,23 +48,28 @@ jobs:
           FEFF_NO_NATIVE: "1"
         run: cargo build --release -p feff10-cli
 
+      - name: Verify examples subcommand
+        run: |
+          target/release/feff10-rs examples
+          target/release/feff10-rs --json examples
+
       - name: Test EXAFS/Cu
         id: test-exafs-cu
         run: |
-          target/release/feff10-cli run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
-          target/release/feff10-cli compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
+          target/release/feff10-rs run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
+          target/release/feff10-rs compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
 
       - name: Test XANES/Cu
         id: test-xanes-cu
         run: |
-          target/release/feff10-cli run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
-          target/release/feff10-cli compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
+          target/release/feff10-rs run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
+          target/release/feff10-rs compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
 
       - name: Test XANES/BN
         id: test-xanes-bn
         run: |
-          target/release/feff10-cli run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
-          target/release/feff10-cli compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
+          target/release/feff10-rs run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
+          target/release/feff10-rs compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
 
       - name: Test summary
         if: always()
@@ -84,7 +89,7 @@ jobs:
 
       - name: Package
         run: |
-          cp target/release/feff10-cli feff10-linux-x86_64
+          cp target/release/feff10-rs feff10-linux-x86_64
           chmod +x feff10-linux-x86_64
           # Extract libfeff10.a for library distribution
           libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit)
@@ -149,20 +154,20 @@ jobs:
       - name: Test EXAFS/Cu
         id: test-exafs-cu
         run: |
-          target/release/feff10-cli run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
-          target/release/feff10-cli compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
+          target/release/feff10-rs run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
+          target/release/feff10-rs compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
 
       - name: Test XANES/Cu
         id: test-xanes-cu
         run: |
-          target/release/feff10-cli run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
-          target/release/feff10-cli compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
+          target/release/feff10-rs run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
+          target/release/feff10-rs compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
 
       - name: Test XANES/BN
         id: test-xanes-bn
         run: |
-          target/release/feff10-cli run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
-          target/release/feff10-cli compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
+          target/release/feff10-rs run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
+          target/release/feff10-rs compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
 
       - name: Test summary
         if: always()
@@ -182,7 +187,7 @@ jobs:
 
       - name: Package
         run: |
-          cp target/release/feff10-cli feff10-macos-arm64
+          cp target/release/feff10-rs feff10-macos-arm64
           chmod +x feff10-macos-arm64
           libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit)
           cp "$libfeff10" libfeff10-macos-arm64.a
@@ -244,7 +249,7 @@ jobs:
       - name: Package
         shell: msys2 {0}
         run: |
-          cp target/x86_64-pc-windows-gnu/release/feff10-cli.exe feff10-windows-x86_64.exe
+          cp target/x86_64-pc-windows-gnu/release/feff10-rs.exe feff10-windows-x86_64.exe
           libfeff10=$(find target/x86_64-pc-windows-gnu/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit)
           cp "$libfeff10" libfeff10-windows-x86_64.a
 

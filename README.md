@@ -9,10 +9,26 @@ The 18 Fortran modules of FEFF10 are compiled into a single static library (`lib
 - Single self-contained binary (~26-29 MB depending on compiler)
 - All 18 FEFF10 stages linked statically (MKL, Fortran runtime included)
 - Supports 3 Fortran compilers: **gfortran**, **ifx** (Intel), **flang-new** (LLVM)
+- **Prebuilt binaries** — no Fortran compiler needed with `--features prebuilt`
+- C library distribution (`libfeff10.a` + `feff10.h`) for use from other languages
 - Built-in benchmarking and output comparison tools
 - Progress bar and per-stage timing
 
-## Building
+## Quick Start (prebuilt)
+
+No Fortran compiler required. The prebuilt `libfeff10.a` is automatically downloaded from GitHub releases:
+
+```sh
+cargo build --release --features prebuilt
+```
+
+Or provide your own prebuilt library:
+
+```sh
+FEFF10_LIB_DIR=./lib cargo build --release --features prebuilt
+```
+
+## Building from Source
 
 Requires a Fortran compiler and a BLAS/LAPACK implementation (MKL preferred).
 
@@ -42,36 +58,54 @@ The build system automatically detects MKL (from oneAPI) and falls back to OpenB
 | `FEFF_MARCH` | Explicit `-march=` value (e.g. `x86-64-v2`) |
 | `FEFF_NO_NATIVE` | Disable `-march` entirely |
 | `FEFF_LTO` | Enable link-time optimization |
-
-When using `gfortran`, the build script automatically queries the compiler for the
-`libgfortran` runtime path and adds it to the linker search path. If your setup
-uses a wrapper script or non-standard compiler frontend, set `FEFF_FC` to the
-actual compiler binary path.
+| `FEFF10_LIB_DIR` | Path to prebuilt `libfeff10.a` (with `--features prebuilt`) |
 
 ## Usage
 
 ```sh
 # Run a FEFF calculation
-feff10-cli run path/to/feff.inp
+feff10-rs run path/to/feff.inp
 
 # Run with explicit working directory
-feff10-cli run path/to/feff.inp -w /tmp/work
+feff10-rs run path/to/feff.inp -w /tmp/work
 
 # Run only specific stages
-feff10-cli run path/to/feff.inp -s rdinp,pot,xsph
+feff10-rs run path/to/feff.inp -s rdinp,pot,xsph
 
 # Validate a feff.inp file
-feff10-cli validate path/to/feff.inp
+feff10-rs validate path/to/feff.inp
 
 # Compare two xmu.dat files
-feff10-cli compare file1.dat file2.dat
+feff10-rs compare file1.dat file2.dat
 
 # Benchmark (3 iterations, JSON output)
-feff10-cli bench path/to/feff.inp -n 3 -o results.json -l my-label
+feff10-rs bench path/to/feff.inp -n 3 -o results.json -l my-label
 ```
 
 `validate` uses strict parsing and reports line-numbered errors for malformed
 `CONTROL`, `PRINT`, `POTENTIALS`, and `ATOMS` records.
+
+## C Library
+
+Each release includes `libfeff10.a` (static library) and `feff10.h` (C header) for Linux, macOS, and Windows. These can be used to call FEFF10 from C, C++, Python (via ctypes/cffi), or any language with C FFI support.
+
+```c
+#include "feff10.h"
+
+// Write feff.inp, chdir to working directory, then:
+feff_rdinp();
+feff_pot();
+feff_xsph();
+feff_fms();
+feff_path();
+feff_genfmt();
+feff_ff2x();
+```
+
+Linker flags (platform-dependent):
+- **Linux** (ifx+MKL): `-lfeff10 -lpthread -lm -ldl` (MKL and Intel runtime are merged into the `.a`)
+- **macOS** (gfortran): `-lfeff10 -lgfortran -framework Accelerate`
+- **Windows** (gfortran): `-lfeff10 -lgfortran -lpthread -lm`
 
 ## Compiler Benchmarks
 
@@ -117,22 +151,27 @@ feff10-rs/
 ├── crates/
 │   ├── feff10-sys/            # Build system + FFI bindings
 │   │   ├── build.rs           # Fortran compilation, driver patching, static linking
+│   │   ├── include/feff10.h   # C header for library usage
 │   │   └── src/lib.rs         # extern "C" declarations for 18 FEFF stages
 │   ├── feff10/                # Safe Rust wrapper
 │   │   ├── src/pipeline.rs    # Pipeline orchestration (fork per stage)
 │   │   ├── src/stage.rs       # Stage enum + FFI dispatch
 │   │   ├── src/input.rs       # feff.inp parser
 │   │   └── src/output.rs      # xmu.dat reader + comparison
-│   └── feff10-cli/            # CLI binary
+│   └── feff10-rs/            # CLI binary
 └── Cargo.toml
 ```
 
 ### How It Works
 
-1. **Build time** (`build.rs`): The Fortran `program` entry points are patched to `subroutine ... bind(C)` in a copy of the source. All objects are compiled and archived into `libfeff10.a`, merged with MKL and the Fortran runtime.
+1. **Build time** (`build.rs`): The Fortran `program` entry points are patched to `subroutine ... bind(C)` in a copy of the source. All objects are compiled and archived into `libfeff10.a`, merged with MKL and the Fortran runtime. With `--features prebuilt`, this step is skipped and a prebuilt library is used instead.
 
 2. **Runtime**: Each FEFF stage runs in a `fork()`-ed child process to isolate Fortran module state (global allocatable arrays, I/O units). This matches the original FEFF behavior where each stage was a separate executable.
 
 ## License
 
-FEFF10 is distributed under its own license. See the `feff10/` submodule for details.
+The Rust wrapper code (`feff10-rs`) is dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at your option.
+
+The FEFF10 Fortran source code (in the `feff10/` submodule) is copyright (c) 2020 FEFF Project, University of Washington and SLAC National Accelerator Laboratory, and is distributed under its own [license](feff10/LICENSE). This software is based on or developed using FEFF10.0.
+
+All licenses permit redistribution and use in source and binary forms, with or without modification, subject to their respective conditions. See [LICENSE-MIT](LICENSE-MIT), [LICENSE-APACHE](LICENSE-APACHE), and [feff10/LICENSE](feff10/LICENSE) for full terms.

@@ -3,7 +3,11 @@ name = "feff10-sys"
 edition.workspace = true
 version.workspace = true
 description = "Build system for FEFF10 Fortran code"
+license.workspace = true
 links = "feff10"
+
+[features]
+prebuilt = []
 
 [build-dependencies]
 which = "7"
