@@ -1,4 +1,21 @@
-"""FEFF10: Python bindings for X-ray absorption spectroscopy calculations."""
+"""Python bindings for FEFF10 X-ray absorption spectroscopy calculations.
+
+This package provides a Pythonic interface to FEFF10, a real-space
+multiple-scattering code for ab initio calculations of X-ray absorption
+spectra (EXAFS, XANES), electronic structure, and related properties.
+
+Example:
+    ```python
+    import feff10
+
+    inp = feff10.FeffInput.from_file("feff.inp")
+    config = feff10.FeffConfig("./work", inp)
+    result = feff10.FeffPipeline(config).run()
+
+    xmu = feff10.XmuDat.from_file("./work/xmu.dat")
+    print(xmu)
+    ```
+"""
 
 from feff10._feff10 import (
     # Input types
