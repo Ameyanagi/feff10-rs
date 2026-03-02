@@ -1116,11 +1116,13 @@ fn default_flags_for(compiler: &str) -> String {
         format!("-ffree-line-length-none -cpp -O3 -fPIC -fallow-argument-mismatch{march}{lto_flag}")
     } else if compiler.contains("ifx") {
         let lto_flag = if lto { " -ipo" } else { "" };
+        // -heap-arrays: FEFF10 has large local arrays that overflow the stack without this
+        // -init=zero: match upstream FEFF10 convention — initialize locals to zero
         // -no-vec: workaround for ifx 2025.3 ICE in VPlan vectorizer on ff2chijas.f90
-        format!("-O3 -fpp -fPIC{intel_arch} -no-vec{lto_flag}")
+        format!("-O3 -fpp -fPIC -heap-arrays -init=zero{intel_arch} -no-vec{lto_flag}")
     } else if compiler.contains("ifort") {
         let lto_flag = if lto { " -ipo" } else { "" };
-        format!("-O3 -fPIC{intel_arch}{lto_flag}")
+        format!("-O3 -fPIC -heap-arrays -init=zero{intel_arch}{lto_flag}")
     } else if compiler.contains("flang") {
         let lto_flag = if lto { " -flto" } else { "" };
         format!("-O3 -cpp -fPIC -fno-automatic{march}{lto_flag}")
