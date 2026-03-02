@@ -64,9 +64,11 @@ impl FeffPipeline {
         let feff_error_path = self.config.work_dir.join(".feff.error");
         let _ = fs::remove_file(&feff_error_path);
 
-        let _exec_lock = FEFF_EXEC_LOCK
-            .lock()
-            .map_err(|_| Error::Config("global FEFF execution lock is poisoned".to_string()))?;
+        // Recover from poison so one failed run does not permanently disable FEFF execution.
+        let _exec_lock = match FEFF_EXEC_LOCK.lock() {
+            Ok(lock) => lock,
+            Err(poisoned) => poisoned.into_inner(),
+        };
 
         for &stage in &self.config.stages {
             callback(stage, StageProgress::Starting);

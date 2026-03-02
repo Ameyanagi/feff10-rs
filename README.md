@@ -46,7 +46,7 @@ FEFF_FC=flang-new cargo build --release
 FEFF_PORTABLE=1 cargo build --release
 ```
 
-The build system automatically detects MKL (from oneAPI) and falls back to OpenBLAS or system LAPACK. All dependencies are linked statically — the resulting binary has no special runtime requirements.
+On Linux, the build system automatically detects MKL (from oneAPI) and falls back to OpenBLAS or system LAPACK. On macOS, the default is the built-in naive solver for stability; set `FEFF_BLAS='-framework Accelerate'` to opt in to Accelerate. All dependencies are linked statically — the resulting binary has no special runtime requirements.
 
 ### Build environment variables
 
@@ -59,6 +59,7 @@ The build system automatically detects MKL (from oneAPI) and falls back to OpenB
 | `FEFF_NO_NATIVE` | Disable `-march` entirely |
 | `FEFF_LTO` | Enable link-time optimization |
 | `FEFF10_LIB_DIR` | Path to prebuilt `libfeff10.a` (with `--features prebuilt`) |
+| `FEFF10_LIB_SHA256` | Expected SHA256 of prebuilt `libfeff10.a` (optional override) |
 
 ## Usage
 

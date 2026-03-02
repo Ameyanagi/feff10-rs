@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::error::Error;
+use crate::error::{Error, ParseError};
 
 /// Parsed xmu.dat output file.
 #[derive(Debug, Clone)]
@@ -12,10 +12,25 @@ pub struct XmuDat {
 impl XmuDat {
     /// Parse xmu.dat content from a string.
     pub fn parse(content: &str) -> Result<Self, Error> {
+        Self::parse_impl(content, false)
+    }
+
+    /// Parse xmu.dat content from a string with strict validation.
+    ///
+    /// Strict mode rejects:
+    /// - non-numeric tokens in data rows
+    /// - inconsistent number of columns between rows
+    pub fn parse_strict(content: &str) -> Result<Self, Error> {
+        Self::parse_impl(content, true)
+    }
+
+    fn parse_impl(content: &str, strict: bool) -> Result<Self, Error> {
         let mut header = Vec::new();
         let mut rows: Vec<Vec<f64>> = Vec::new();
+        let mut expected_cols: Option<usize> = None;
 
-        for line in content.lines() {
+        for (line_idx, line) in content.lines().enumerate() {
+            let line_num = line_idx + 1;
             let line = line.trim();
             if line.is_empty() {
                 continue;
@@ -24,12 +39,49 @@ impl XmuDat {
                 header.push(line.to_string());
                 continue;
             }
-            let vals: Vec<f64> = line
-                .split_whitespace()
-                .filter_map(|s| s.parse().ok())
-                .collect();
-            if !vals.is_empty() {
+
+            if strict {
+                let tokens: Vec<&str> = line.split_whitespace().collect();
+                if tokens.is_empty() {
+                    continue;
+                }
+
+                let mut vals = Vec::with_capacity(tokens.len());
+                for token in tokens {
+                    match token.parse::<f64>() {
+                        Ok(v) => vals.push(v),
+                        Err(_) => {
+                            return Err(Error::Parse(ParseError {
+                                line: line_num,
+                                message: format!("invalid numeric token '{token}' in xmu.dat row"),
+                            }));
+                        }
+                    }
+                }
+
+                if let Some(cols) = expected_cols {
+                    if vals.len() != cols {
+                        return Err(Error::Parse(ParseError {
+                            line: line_num,
+                            message: format!(
+                                "inconsistent column count in xmu.dat row: expected {cols}, got {}",
+                                vals.len()
+                            ),
+                        }));
+                    }
+                } else {
+                    expected_cols = Some(vals.len());
+                }
+
                 rows.push(vals);
+            } else {
+                let vals: Vec<f64> = line
+                    .split_whitespace()
+                    .filter_map(|s| s.parse().ok())
+                    .collect();
+                if !vals.is_empty() {
+                    rows.push(vals);
+                }
             }
         }
 
@@ -51,6 +103,12 @@ impl XmuDat {
     pub fn from_file(path: impl AsRef<Path>) -> Result<Self, Error> {
         let content = std::fs::read_to_string(path)?;
         Self::parse(&content)
+    }
+
+    /// Parse from a file with strict validation.
+    pub fn from_file_strict(path: impl AsRef<Path>) -> Result<Self, Error> {
+        let content = std::fs::read_to_string(path)?;
+        Self::parse_strict(&content)
     }
 
     /// Compare two spectra using the R-squared metric (replicates rsqr.py).
@@ -246,5 +304,27 @@ mod tests {
         let xmu = XmuDat::parse(content).unwrap();
         assert_eq!(xmu.columns.len(), 2);
         assert_eq!(xmu.columns[0].len(), 2);
+    }
+
+    #[test]
+    fn parse_strict_rejects_ragged_rows() {
+        let content = "1.0 2.0 3.0\n4.0 5.0\n";
+        let err = XmuDat::parse_strict(content).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("inconsistent column count"),
+            "unexpected error: {msg}"
+        );
+    }
+
+    #[test]
+    fn parse_strict_rejects_invalid_token() {
+        let content = "1.0 2.0\n3.0 abc\n";
+        let err = XmuDat::parse_strict(content).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("invalid numeric token"),
+            "unexpected error: {msg}"
+        );
     }
 }

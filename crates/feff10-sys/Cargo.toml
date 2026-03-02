@@ -10,4 +10,5 @@ links = "feff10"
 prebuilt = []
 
 [build-dependencies]
+sha2 = "0.10"
 which = "7"

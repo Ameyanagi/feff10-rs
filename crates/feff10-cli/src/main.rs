@@ -392,10 +392,38 @@ struct ExampleBench {
     stage_means: BTreeMap<String, f64>,
 }
 
+type CliResult = Result<(), i32>;
+
+fn print_json<T: Serialize>(value: &T) -> CliResult {
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => {
+            println!("{json}");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Error serializing JSON output: {e}");
+            Err(1)
+        }
+    }
+}
+
+fn eprint_json<T: Serialize>(value: &T) -> CliResult {
+    match serde_json::to_string_pretty(value) {
+        Ok(json) => {
+            eprintln!("{json}");
+            Ok(())
+        }
+        Err(e) => {
+            eprintln!("Error serializing JSON output: {e}");
+            Err(1)
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
-    match cli.command {
+    let result = match cli.command {
         Command::Run {
             input,
             work_dir,
@@ -424,6 +452,10 @@ fn main() {
             element,
             output,
         } => cmd_init(calc_type, edge, element, output, &cli.global),
+    };
+
+    if let Err(code) = result {
+        std::process::exit(code);
     }
 }
 
@@ -471,7 +503,7 @@ fn cmd_run(
     stage_names: Option<Vec<String>>,
     timeout: Option<u64>,
     global: &GlobalArgs,
-) {
+) -> CliResult {
     let inp_path = if input.is_dir() {
         input.join("feff.inp")
     } else {
@@ -480,7 +512,7 @@ fn cmd_run(
 
     if !inp_path.exists() {
         eprintln!("Error: {} not found", inp_path.display());
-        std::process::exit(1);
+        return Err(1);
     }
 
     let work = work_dir.unwrap_or_else(|| {
@@ -494,7 +526,7 @@ fn cmd_run(
         Ok(i) => i,
         Err(e) => {
             eprintln!("Error parsing {}: {e}", inp_path.display());
-            std::process::exit(1);
+            return Err(1);
         }
     };
 
@@ -505,7 +537,7 @@ fn cmd_run(
             Ok(stages) => stages,
             Err(msg) => {
                 eprintln!("Error: {msg}");
-                std::process::exit(2);
+                return Err(2);
             }
         };
         builder = builder.stages(stages);
@@ -519,7 +551,7 @@ fn cmd_run(
         Ok(c) => c,
         Err(e) => {
             eprintln!("Config error: {e}");
-            std::process::exit(1);
+            return Err(1);
         }
     };
 
@@ -528,11 +560,11 @@ fn cmd_run(
         ProgressBar::hidden()
     } else {
         let pb = ProgressBar::new(total);
-        pb.set_style(
-            ProgressStyle::default_bar()
-                .template("[{elapsed_precise}] {bar:40} {pos}/{len} {msg}")
-                .unwrap(),
-        );
+        if let Ok(style) =
+            ProgressStyle::default_bar().template("[{elapsed_precise}] {bar:40} {pos}/{len} {msg}")
+        {
+            pb.set_style(style);
+        }
         pb
     };
 
@@ -564,7 +596,7 @@ fn cmd_run(
                         })
                         .collect(),
                 };
-                println!("{}", serde_json::to_string_pretty(&output).unwrap());
+                print_json(&output)?;
             } else if !global.quiet {
                 println!(
                     "FEFF calculation completed successfully in {}",
@@ -592,7 +624,7 @@ fn cmd_run(
                     }),
                     _ => serde_json::json!({ "error": e.to_string() }),
                 };
-                eprintln!("{}", serde_json::to_string_pretty(&err_json).unwrap());
+                eprint_json(&err_json)?;
             } else {
                 eprintln!("Error: {e}");
                 if global.verbose
@@ -606,12 +638,14 @@ fn cmd_run(
                     }
                 }
             }
-            std::process::exit(1);
+            return Err(1);
         }
     }
+
+    Ok(())
 }
 
-fn cmd_validate(input: PathBuf, global: &GlobalArgs) {
+fn cmd_validate(input: PathBuf, global: &GlobalArgs) -> CliResult {
     match FeffInput::from_file_strict(&input) {
         Ok(inp) => {
             let active: Vec<String> = Stage::default_pipeline()
@@ -643,7 +677,7 @@ fn cmd_validate(input: PathBuf, global: &GlobalArgs) {
                     atoms_count: inp.atoms.len(),
                     active_stages: active,
                 };
-                println!("{}", serde_json::to_string_pretty(&output).unwrap());
+                print_json(&output)?;
             } else if !global.quiet {
                 println!("Valid feff.inp: {}", input.display());
                 if let Some(ref edge) = inp.edge {
@@ -670,13 +704,15 @@ fn cmd_validate(input: PathBuf, global: &GlobalArgs) {
                     "valid": false,
                     "error": e.to_string(),
                 });
-                println!("{}", serde_json::to_string_pretty(&err_json).unwrap());
+                print_json(&err_json)?;
             } else {
                 eprintln!("Error: {e}");
             }
-            std::process::exit(1);
+            return Err(1);
         }
     }
+
+    Ok(())
 }
 
 fn cmd_compare(
@@ -686,27 +722,27 @@ fn cmd_compare(
     col_y: usize,
     threshold: f64,
     global: &GlobalArgs,
-) {
+) -> CliResult {
     let (col_x_zero, col_y_zero) = match normalize_compare_columns(col_x, col_y) {
         Ok(cols) => cols,
         Err(msg) => {
             eprintln!("Error: {msg}");
-            std::process::exit(2);
+            return Err(2);
         }
     };
 
-    let xmu1 = match XmuDat::from_file(&file1) {
+    let xmu1 = match XmuDat::from_file_strict(&file1) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("Error reading {}: {e}", file1.display());
-            std::process::exit(1);
+            return Err(1);
         }
     };
-    let xmu2 = match XmuDat::from_file(&file2) {
+    let xmu2 = match XmuDat::from_file_strict(&file2) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("Error reading {}: {e}", file2.display());
-            std::process::exit(1);
+            return Err(1);
         }
     };
 
@@ -724,7 +760,7 @@ fn cmd_compare(
             threshold_pct: threshold,
             pass,
         };
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        print_json(&output)?;
     } else if !global.quiet {
         println!("R-squared comparison (columns {col_x} vs {col_y}):");
         println!("  {} vs {}", file1.display(), file2.display());
@@ -737,8 +773,10 @@ fn cmd_compare(
     }
 
     if !pass {
-        std::process::exit(1);
+        return Err(1);
     }
+
+    Ok(())
 }
 
 fn cmd_bench(
@@ -747,7 +785,7 @@ fn cmd_bench(
     output: Option<PathBuf>,
     label: String,
     global: &GlobalArgs,
-) {
+) -> CliResult {
     let iterations = iterations.max(1);
     let mut report = BenchReport {
         label: label.clone(),
@@ -789,15 +827,64 @@ fn cmd_bench(
         let mut total_times: Vec<f64> = Vec::new();
 
         for iter in 0..iterations {
-            let work_dir = tempfile::tempdir().unwrap();
-            std::fs::copy(&inp_path, work_dir.path().join("feff.inp")).unwrap();
+            let work_dir = match tempfile::tempdir() {
+                Ok(dir) => dir,
+                Err(e) => {
+                    if !global.quiet {
+                        eprintln!(
+                            "  iteration {}/{}: FAILED - tempdir error: {e}",
+                            iter + 1,
+                            iterations
+                        );
+                    }
+                    total_times.push(f64::NAN);
+                    continue;
+                }
+            };
+            if let Err(e) = std::fs::copy(&inp_path, work_dir.path().join("feff.inp")) {
+                if !global.quiet {
+                    eprintln!(
+                        "  iteration {}/{}: FAILED - copy error: {e}",
+                        iter + 1,
+                        iterations
+                    );
+                }
+                total_times.push(f64::NAN);
+                continue;
+            }
 
-            let feff_input = FeffInput::from_file(work_dir.path().join("feff.inp")).unwrap();
-            let config = FeffConfigBuilder::new()
+            let feff_input = match FeffInput::from_file(work_dir.path().join("feff.inp")) {
+                Ok(input) => input,
+                Err(e) => {
+                    if !global.quiet {
+                        eprintln!(
+                            "  iteration {}/{}: FAILED - input parse error: {e}",
+                            iter + 1,
+                            iterations
+                        );
+                    }
+                    total_times.push(f64::NAN);
+                    continue;
+                }
+            };
+            let config = match FeffConfigBuilder::new()
                 .work_dir(work_dir.path())
                 .input(feff_input)
                 .build()
-                .unwrap();
+            {
+                Ok(config) => config,
+                Err(e) => {
+                    if !global.quiet {
+                        eprintln!(
+                            "  iteration {}/{}: FAILED - config error: {e}",
+                            iter + 1,
+                            iterations
+                        );
+                    }
+                    total_times.push(f64::NAN);
+                    continue;
+                }
+            };
 
             let pipeline = FeffPipeline::new(config);
             match pipeline.run() {
@@ -867,7 +954,7 @@ fn cmd_bench(
     }
 
     if global.json {
-        println!("{}", serde_json::to_string_pretty(&report).unwrap());
+        print_json(&report)?;
     } else if !global.quiet {
         println!();
         println!("=== Benchmark Results: {label} ===");
@@ -895,15 +982,26 @@ fn cmd_bench(
     }
 
     if let Some(out_path) = output {
-        let json = serde_json::to_string_pretty(&report).unwrap();
-        std::fs::write(&out_path, &json).unwrap();
+        let json = match serde_json::to_string_pretty(&report) {
+            Ok(json) => json,
+            Err(e) => {
+                eprintln!("Error serializing benchmark report: {e}");
+                return Err(1);
+            }
+        };
+        if let Err(e) = std::fs::write(&out_path, &json) {
+            eprintln!("Error writing {}: {e}", out_path.display());
+            return Err(1);
+        }
         if !global.quiet {
             eprintln!("JSON results written to {}", out_path.display());
         }
     }
+
+    Ok(())
 }
 
-fn cmd_examples(name: Option<String>, output: Option<PathBuf>, global: &GlobalArgs) {
+fn cmd_examples(name: Option<String>, output: Option<PathBuf>, global: &GlobalArgs) -> CliResult {
     match name {
         None => {
             // List all examples
@@ -915,7 +1013,7 @@ fn cmd_examples(name: Option<String>, output: Option<PathBuf>, global: &GlobalAr
                         description: desc.to_string(),
                     })
                     .collect();
-                println!("{}", serde_json::to_string_pretty(&list).unwrap());
+                print_json(&list)?;
             } else if !global.quiet {
                 println!("Available examples:");
                 println!();
@@ -933,12 +1031,12 @@ fn cmd_examples(name: Option<String>, output: Option<PathBuf>, global: &GlobalAr
                     let out_dir = output.unwrap_or_else(|| PathBuf::from("."));
                     if let Err(e) = std::fs::create_dir_all(&out_dir) {
                         eprintln!("Error creating directory {}: {e}", out_dir.display());
-                        std::process::exit(1);
+                        return Err(1);
                     }
                     let out_path = out_dir.join("feff.inp");
                     if let Err(e) = std::fs::write(&out_path, content) {
                         eprintln!("Error writing {}: {e}", out_path.display());
-                        std::process::exit(1);
+                        return Err(1);
                     }
                     if global.json {
                         let info = serde_json::json!({
@@ -946,7 +1044,7 @@ fn cmd_examples(name: Option<String>, output: Option<PathBuf>, global: &GlobalAr
                             "description": desc,
                             "path": out_path.display().to_string(),
                         });
-                        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+                        print_json(&info)?;
                     } else if !global.quiet {
                         println!("Copied {name} ({desc}) to {}", out_path.display());
                     }
@@ -961,11 +1059,13 @@ fn cmd_examples(name: Option<String>, output: Option<PathBuf>, global: &GlobalAr
                             .collect::<Vec<_>>()
                             .join(", ")
                     );
-                    std::process::exit(2);
+                    return Err(2);
                 }
             }
         }
     }
+
+    Ok(())
 }
 
 fn cmd_init(
@@ -974,7 +1074,7 @@ fn cmd_init(
     element: Option<String>,
     output: Option<PathBuf>,
     global: &GlobalArgs,
-) {
+) -> CliResult {
     let stdin = std::io::stdin();
     let mut reader = stdin.lock();
 
@@ -994,7 +1094,7 @@ fn cmd_init(
         Some(pair) => pair,
         None => {
             eprintln!("Unknown element: {element}");
-            std::process::exit(2);
+            return Err(2);
         }
     };
 
@@ -1006,11 +1106,11 @@ fn cmd_init(
         && let Err(e) = std::fs::create_dir_all(parent)
     {
         eprintln!("Error creating directory {}: {e}", parent.display());
-        std::process::exit(1);
+        return Err(1);
     }
     if let Err(e) = std::fs::write(&out_path, &template) {
         eprintln!("Error writing {}: {e}", out_path.display());
-        std::process::exit(1);
+        return Err(1);
     }
 
     if global.json {
@@ -1021,7 +1121,7 @@ fn cmd_init(
             "element": symbol,
             "z": z,
         });
-        println!("{}", serde_json::to_string_pretty(&info).unwrap());
+        print_json(&info)?;
     } else if !global.quiet {
         println!(
             "Generated {} {} {}-edge template: {}",
@@ -1031,6 +1131,8 @@ fn cmd_init(
             out_path.display()
         );
     }
+
+    Ok(())
 }
 
 fn prompt_choice(reader: &mut impl BufRead, label: &str, options: &[&str]) -> String {
@@ -1130,7 +1232,7 @@ fn generate_template(calc_type: &str, edge: &str, symbol: &str, z: u32) -> Strin
     lines.join("\n")
 }
 
-fn cmd_stages(global: &GlobalArgs) {
+fn cmd_stages(global: &GlobalArgs) -> CliResult {
     let stages = Stage::all();
 
     if global.json {
@@ -1143,7 +1245,7 @@ fn cmd_stages(global: &GlobalArgs) {
                 order: i + 1,
             })
             .collect();
-        println!("{}", serde_json::to_string_pretty(&output).unwrap());
+        print_json(&output)?;
     } else if !global.quiet {
         println!("{:<6} {:<12} CONTROL group", "Order", "Stage");
         println!("{}", "-".repeat(32));
@@ -1156,6 +1258,8 @@ fn cmd_stages(global: &GlobalArgs) {
             );
         }
     }
+
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1714,7 +1818,8 @@ mod tests {
             Some("exafs-sf6".to_string()),
             Some(tmp.path().to_path_buf()),
             &global,
-        );
+        )
+        .expect("cmd_examples should succeed");
         let feff_inp = tmp.path().join("feff.inp");
         assert!(feff_inp.exists(), "feff.inp not created");
         let content = std::fs::read_to_string(&feff_inp).unwrap();
@@ -1734,7 +1839,8 @@ mod tests {
                 Some(name.to_string()),
                 Some(tmp.path().to_path_buf()),
                 &global,
-            );
+            )
+            .expect("cmd_examples should succeed");
             let content = std::fs::read_to_string(tmp.path().join("feff.inp")).unwrap();
             assert_eq!(content, *expected_content, "mismatch for example {name}");
         }

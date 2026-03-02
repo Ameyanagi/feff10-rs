@@ -1,8 +1,10 @@
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use sha2::{Digest, Sha256};
 
 /// Mapping: (pipeline_stage_name, source_file_relative_path, fortran_program_name)
 const DRIVERS: &[(&str, &str, &str)] = &[
@@ -225,6 +227,8 @@ fn main() {
     println!("cargo:rerun-if-env-changed=FEFF_FFLAGS");
     println!("cargo:rerun-if-env-changed=FEFF_BLAS");
     println!("cargo:rerun-if-env-changed=FEFF_NO_NATIVE");
+    println!("cargo:rerun-if-env-changed=FEFF_MARCH");
+    println!("cargo:rerun-if-env-changed=FEFF_PORTABLE");
     println!("cargo:rerun-if-env-changed=FEFF_LTO");
     println!("cargo:rerun-if-env-changed=MKLROOT");
     println!("cargo:rerun-if-env-changed=LD_LIBRARY_PATH");
@@ -310,6 +314,9 @@ fn link_prebuilt() {
             "feff10-sys: using prebuilt library at {}",
             lib_path.display()
         );
+        if let Ok(expected) = env::var("FEFF10_LIB_SHA256") {
+            verify_prebuilt_checksum(&lib_path, expected.trim());
+        }
         dir
     } else {
         download_prebuilt(&out_dir);
@@ -348,6 +355,7 @@ fn link_prebuilt() {
     println!("cargo:FEFF10_COMMIT=unknown");
 
     println!("cargo:rerun-if-env-changed=FEFF10_LIB_DIR");
+    println!("cargo:rerun-if-env-changed=FEFF10_LIB_SHA256");
 }
 
 /// Download the prebuilt libfeff10.a for the current platform from GitHub releases.
@@ -392,10 +400,104 @@ fn download_prebuilt(out_dir: &Path) {
         );
     }
 
+    let expected_hash = expected_prebuilt_sha256(&version, asset_name);
+    verify_prebuilt_checksum(&dest, expected_hash.trim());
+
     eprintln!(
         "feff10-sys: downloaded prebuilt library to {}",
         dest.display()
     );
+}
+
+fn expected_prebuilt_sha256(version: &str, asset_name: &str) -> String {
+    if let Ok(value) = env::var("FEFF10_LIB_SHA256") {
+        let value = value.trim().to_string();
+        if !value.is_empty() {
+            eprintln!("feff10-sys: using FEFF10_LIB_SHA256 from environment");
+            return value;
+        }
+    }
+
+    let manifest_url = format!(
+        "https://github.com/Ameyanagi/feff10-rs/releases/download/v{version}/sha256sums.txt"
+    );
+    let output = Command::new("curl")
+        .args(["-fSL", "--retry", "3"])
+        .arg(&manifest_url)
+        .output()
+        .expect("feff10-sys: failed to run curl for checksum manifest");
+    if !output.status.success() {
+        panic!("feff10-sys: failed to download checksum manifest from {manifest_url}");
+    }
+
+    let manifest = String::from_utf8_lossy(&output.stdout);
+    for line in manifest.lines() {
+        let line = line.trim();
+        if line.is_empty() {
+            continue;
+        }
+        let mut parts = line.split_whitespace();
+        let Some(hash) = parts.next() else {
+            continue;
+        };
+        let Some(file) = parts.next() else {
+            continue;
+        };
+        let file = file.trim_start_matches('*').trim_start_matches("./");
+        if file == asset_name {
+            return hash.to_string();
+        }
+    }
+
+    panic!("feff10-sys: {asset_name} not found in checksum manifest at {manifest_url}");
+}
+
+fn verify_prebuilt_checksum(path: &Path, expected_hash: &str) {
+    let expected_hash = expected_hash.trim().to_ascii_lowercase();
+    if expected_hash.is_empty() {
+        panic!("feff10-sys: expected SHA256 checksum is empty");
+    }
+    if expected_hash.len() != 64 || !expected_hash.chars().all(|c| c.is_ascii_hexdigit()) {
+        panic!("feff10-sys: invalid SHA256 checksum format: '{expected_hash}'");
+    }
+
+    let actual_hash = sha256_file(path).unwrap_or_else(|e| {
+        panic!(
+            "feff10-sys: failed to compute SHA256 for {}: {e}",
+            path.display()
+        )
+    });
+
+    if actual_hash != expected_hash {
+        let _ = fs::remove_file(path);
+        panic!(
+            "feff10-sys: SHA256 mismatch for {}.\nexpected: {expected_hash}\nactual:   {actual_hash}",
+            path.display()
+        );
+    }
+    eprintln!("feff10-sys: SHA256 verified for {}", path.display());
+}
+
+fn sha256_file(path: &Path) -> Result<String, String> {
+    let mut file =
+        fs::File::open(path).map_err(|e| format!("failed to open {}: {e}", path.display()))?;
+    let mut hasher = Sha256::new();
+    let mut buf = [0_u8; 64 * 1024];
+    loop {
+        let read = file
+            .read(&mut buf)
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buf[..read]);
+    }
+    let digest = hasher.finalize();
+    let mut out = String::with_capacity(64);
+    for b in digest {
+        out.push_str(&format!("{b:02x}"));
+    }
+    Ok(out)
 }
 
 // ---------------------------------------------------------------------------
@@ -983,21 +1085,27 @@ fn detect_blas_full(compiler: &str) -> (String, String, BlasType) {
 
     if let Ok(blas) = env::var("FEFF_BLAS") {
         eprintln!("feff10-sys: using FEFF_BLAS={blas}");
-        // Can't determine type from user string — treat as generic
-        return (blas, "_MKL".to_string(), BlasType::None);
+        let lower = blas.to_ascii_lowercase();
+        let blas_type = if lower.contains("accelerate") {
+            BlasType::Accelerate
+        } else if lower.contains("openblas") {
+            BlasType::OpenBlas
+        } else if lower.contains("lapack") || lower.contains("blas") {
+            BlasType::SystemBlas
+        } else {
+            BlasType::None
+        };
+        return (blas, "_MKL".to_string(), blas_type);
     }
 
-    // macOS: Accelerate framework
+    // macOS: default to naive solver for runtime stability.
+    // Accelerate can be forced via FEFF_BLAS='-framework Accelerate'.
     if cfg!(target_os = "macos") {
-        let framework_dir = Path::new("/System/Library/Frameworks/Accelerate.framework");
-        if framework_dir.is_dir() {
-            eprintln!("feff10-sys: using Apple Accelerate for BLAS/LAPACK");
-            return (
-                "-framework Accelerate".to_string(),
-                "_MKL".to_string(),
-                BlasType::Accelerate,
-            );
-        }
+        eprintln!(
+            "feff10-sys: macOS defaulting to naive LU solver for stability \
+             (set FEFF_BLAS='-framework Accelerate' to opt in to Accelerate)"
+        );
+        return (String::new(), String::new(), BlasType::None);
     }
 
     // Intel MKL — preferred on Linux

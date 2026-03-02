@@ -17,7 +17,21 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  lint:
+  fmt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+  clippy:
+    needs: fmt
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
@@ -32,8 +46,8 @@ jobs:
       - name: Install gfortran
         run: sudo apt-get update && sudo apt-get install -y gfortran make
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
 
       - name: Clippy
         env:
@@ -41,33 +55,9 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
 
   build-and-test:
-    needs: lint
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            compiler: gfortran
-            install: sudo apt-get update && sudo apt-get install -y gfortran
-          - os: ubuntu-latest
-            compiler: ifx
-            install: ""  # handled by setup-fortran action
-            experimental: true
-          - os: ubuntu-latest
-            compiler: flang
-            install: ""  # handled by LLVM apt repo setup below
-            experimental: true
-          - os: macos-latest
-            compiler: gfortran
-            install: brew install gcc
-            experimental: true
-          - os: windows-latest
-            compiler: gfortran
-            install: ""  # handled by msys2 action
-
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-    continue-on-error: ${{ matrix.experimental || false }}
+    needs: fmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
 
     steps:
       - uses: actions/checkout@v4
@@ -76,156 +66,32 @@ jobs:
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ runner.os == 'Windows' && 'x86_64-pc-windows-gnu' || '' }}
 
-      - name: Cache cargo registry and build
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ${{ runner.os }}-${{ matrix.compiler }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.compiler }}-cargo-
+      - name: Install gfortran
+        run: sudo apt-get update && sudo apt-get install -y gfortran make
 
-      # --- Compiler installation ---
-
-      - name: Install gfortran (Linux)
-        if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
-        run: ${{ matrix.install }}
-
-      - name: Install gfortran (macOS) and find versioned binary
-        if: matrix.compiler == 'gfortran' && runner.os == 'macOS'
-        id: macos-gfortran
-        run: |
-          ${{ matrix.install }}
-          # brew installs gfortran as gfortran-NN, find the versioned name
-          FC=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | head -1 || true)
-          if [ -z "$FC" ]; then
-            FC=$(which gfortran 2>/dev/null || true)
-          fi
-          if [ -z "$FC" ]; then
-            echo "ERROR: gfortran not found"
-            exit 1
-          fi
-          echo "fc=$FC" >> "$GITHUB_OUTPUT"
-          echo "Found Fortran compiler: $FC"
-
-      - name: Install gfortran (Windows)
-        if: matrix.compiler == 'gfortran' && runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: false
-          install: mingw-w64-x86_64-gcc-fortran make
-
-      - name: Install Intel Fortran (ifx)
-        if: matrix.compiler == 'ifx'
-        uses: fortran-lang/setup-fortran@v1
-        with:
-          compiler: intel
-          version: '2024.0'
-
-      - name: Resolve ifx compiler path
-        if: matrix.compiler == 'ifx'
-        id: ifx-path
-        run: |
-          FC=$(which ifx)
-          echo "fc=$FC" >> "$GITHUB_OUTPUT"
-          echo "Found ifx at: $FC"
-
-      - name: Install LLVM Flang
-        if: matrix.compiler == 'flang'
-        id: flang-path
-        run: |
-          # Add official LLVM apt repository for Ubuntu
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo tee /etc/apt/trusted.gpg.d/apt.llvm.org.asc
-          CODENAME=$(lsb_release -cs)
-          echo "deb http://apt.llvm.org/$CODENAME/ llvm-toolchain-$CODENAME-20 main" | sudo tee /etc/apt/sources.list.d/llvm-20.list
-          sudo apt-get update
-          sudo apt-get install -y flang-20
-          # flang-20 installs the binary as flang-new-20
-          FC=$(which flang-new-20)
-          echo "fc=$FC" >> "$GITHUB_OUTPUT"
-          echo "Found flang at: $FC"
-
-      # --- Resolve compiler path ---
-
-      - name: Set compiler env
-        if: runner.os != 'Windows'
-        id: compiler-env
-        run: |
-          case "${{ matrix.compiler }}" in
-            gfortran)
-              if [ "${{ runner.os }}" = "macOS" ]; then
-                FC="${{ steps.macos-gfortran.outputs.fc }}"
-                FC_DIR=$(dirname "$FC")
-                LIB_DIR=$(cd "$FC_DIR/../lib/gcc/current" 2>/dev/null && pwd || echo "")
-                if [ -z "$LIB_DIR" ]; then
-                  LIB_DIR=$("$FC" -print-file-name=libgfortran.dylib | xargs dirname)
-                fi
-                echo "library_path=$LIB_DIR" >> "$GITHUB_OUTPUT"
-              else
-                FC="gfortran"
-              fi
-              ;;
-            ifx)  FC="${{ steps.ifx-path.outputs.fc }}" ;;
-            flang) FC="${{ steps.flang-path.outputs.fc }}" ;;
-          esac
-          echo "fc=$FC" >> "$GITHUB_OUTPUT"
-
-      # --- Build ---
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
 
       - name: Build
-        if: runner.os != 'Windows'
-        env:
-          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
-          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
-        run: cargo build --workspace
-
-      - name: Build (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
         env:
           FEFF_FC: gfortran
-        run: |
-          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
-          cargo build --workspace --target x86_64-pc-windows-gnu
-
-      # --- Tests ---
+        run: cargo build --workspace
 
       - name: Unit tests
-        if: runner.os != 'Windows'
         env:
-          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
-          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
+          FEFF_FC: gfortran
         run: cargo test --workspace --lib
 
-      - name: Unit tests (Windows)
-        if: runner.os == 'Windows'
-        shell: msys2 {0}
-        run: |
-          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
-          cargo test --workspace --lib --target x86_64-pc-windows-gnu
-
       - name: Integration tests
-        if: runner.os != 'Windows'
         env:
-          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
-          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
+          FEFF_FC: gfortran
         run: cargo test -p feff10 --test integration -- --test-threads=1
         timeout-minutes: 30
 
-      # Windows integration tests skipped: no fork() means Fortran global
-      # state is not isolated between stages (causes "already allocated" errors)
-
-      # --- Prebuilt feature test ---
-
       - name: Test prebuilt feature
-        if: matrix.compiler == 'gfortran' && runner.os == 'Linux'
         run: |
+          set -euo pipefail
           libdir=$(find target/debug/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit | xargs dirname | xargs realpath)
           echo "Using prebuilt lib from: $libdir"
           FEFF10_LIB_DIR="$libdir" cargo build --features prebuilt

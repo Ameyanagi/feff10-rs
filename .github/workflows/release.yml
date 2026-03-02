@@ -508,6 +508,11 @@ jobs:
           echo "=== SHA256 Checksums ==="
           cat sha256sums.txt
 
+      - name: Verify checksums
+        run: |
+          cd artifacts
+          sha256sum -c sha256sums.txt
+
       - name: Assemble test summary
         run: |
           echo "## Test Results" > release-body.md
@@ -541,14 +546,35 @@ jobs:
             echo "draft=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Validate tag matches Cargo version
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Validate tag matches workspace version
         if: startsWith(steps.tag.outputs.tag, 'v')
         run: |
-          CARGO_VERSION=$(awk -F '"' '/^version = / {print $2; exit}' Cargo.toml)
+          CARGO_VERSION=$(python3 - <<'PY'
+          import json
+          import subprocess
+          import sys
+
+          meta = json.loads(
+              subprocess.check_output(
+                  ["cargo", "metadata", "--no-deps", "--format-version", "1"],
+                  text=True,
+              )
+          )
+          ws = set(meta["workspace_members"])
+          versions = sorted({pkg["version"] for pkg in meta["packages"] if pkg["id"] in ws})
+          if len(versions) != 1:
+              print(f"ERROR: expected one workspace version, found: {versions}", file=sys.stderr)
+              sys.exit(1)
+          print(versions[0])
+          PY
+          )
           TAG_VERSION="${{ steps.tag.outputs.tag }}"
           TAG_VERSION="${TAG_VERSION#v}"
           if [ "$TAG_VERSION" != "$CARGO_VERSION" ]; then
-            echo "ERROR: tag version '$TAG_VERSION' does not match Cargo.toml version '$CARGO_VERSION'"
+            echo "ERROR: tag version '$TAG_VERSION' does not match workspace version '$CARGO_VERSION'"
             exit 1
           fi
 
