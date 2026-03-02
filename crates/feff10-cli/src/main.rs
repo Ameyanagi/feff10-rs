@@ -61,26 +61,106 @@ const EXAMPLES: &[(&str, &str, &str)] = &[
 // --- Element table (symbol -> Z) ---
 
 const ELEMENTS: &[(&str, u32)] = &[
-    ("H", 1), ("He", 2), ("Li", 3), ("Be", 4), ("B", 5),
-    ("C", 6), ("N", 7), ("O", 8), ("F", 9), ("Ne", 10),
-    ("Na", 11), ("Mg", 12), ("Al", 13), ("Si", 14), ("P", 15),
-    ("S", 16), ("Cl", 17), ("Ar", 18), ("K", 19), ("Ca", 20),
-    ("Sc", 21), ("Ti", 22), ("V", 23), ("Cr", 24), ("Mn", 25),
-    ("Fe", 26), ("Co", 27), ("Ni", 28), ("Cu", 29), ("Zn", 30),
-    ("Ga", 31), ("Ge", 32), ("As", 33), ("Se", 34), ("Br", 35),
-    ("Kr", 36), ("Rb", 37), ("Sr", 38), ("Y", 39), ("Zr", 40),
-    ("Nb", 41), ("Mo", 42), ("Tc", 43), ("Ru", 44), ("Rh", 45),
-    ("Pd", 46), ("Ag", 47), ("Cd", 48), ("In", 49), ("Sn", 50),
-    ("Sb", 51), ("Te", 52), ("I", 53), ("Xe", 54), ("Cs", 55),
-    ("Ba", 56), ("La", 57), ("Ce", 58), ("Pr", 59), ("Nd", 60),
-    ("Pm", 61), ("Sm", 62), ("Eu", 63), ("Gd", 64), ("Tb", 65),
-    ("Dy", 66), ("Ho", 67), ("Er", 68), ("Tm", 69), ("Yb", 70),
-    ("Lu", 71), ("Hf", 72), ("Ta", 73), ("W", 74), ("Re", 75),
-    ("Os", 76), ("Ir", 77), ("Pt", 78), ("Au", 79), ("Hg", 80),
-    ("Tl", 81), ("Pb", 82), ("Bi", 83), ("Po", 84), ("At", 85),
-    ("Rn", 86), ("Fr", 87), ("Ra", 88), ("Ac", 89), ("Th", 90),
-    ("Pa", 91), ("U", 92), ("Np", 93), ("Pu", 94), ("Am", 95),
-    ("Cm", 96), ("Bk", 97), ("Cf", 98), ("Es", 99), ("Fm", 100),
+    ("H", 1),
+    ("He", 2),
+    ("Li", 3),
+    ("Be", 4),
+    ("B", 5),
+    ("C", 6),
+    ("N", 7),
+    ("O", 8),
+    ("F", 9),
+    ("Ne", 10),
+    ("Na", 11),
+    ("Mg", 12),
+    ("Al", 13),
+    ("Si", 14),
+    ("P", 15),
+    ("S", 16),
+    ("Cl", 17),
+    ("Ar", 18),
+    ("K", 19),
+    ("Ca", 20),
+    ("Sc", 21),
+    ("Ti", 22),
+    ("V", 23),
+    ("Cr", 24),
+    ("Mn", 25),
+    ("Fe", 26),
+    ("Co", 27),
+    ("Ni", 28),
+    ("Cu", 29),
+    ("Zn", 30),
+    ("Ga", 31),
+    ("Ge", 32),
+    ("As", 33),
+    ("Se", 34),
+    ("Br", 35),
+    ("Kr", 36),
+    ("Rb", 37),
+    ("Sr", 38),
+    ("Y", 39),
+    ("Zr", 40),
+    ("Nb", 41),
+    ("Mo", 42),
+    ("Tc", 43),
+    ("Ru", 44),
+    ("Rh", 45),
+    ("Pd", 46),
+    ("Ag", 47),
+    ("Cd", 48),
+    ("In", 49),
+    ("Sn", 50),
+    ("Sb", 51),
+    ("Te", 52),
+    ("I", 53),
+    ("Xe", 54),
+    ("Cs", 55),
+    ("Ba", 56),
+    ("La", 57),
+    ("Ce", 58),
+    ("Pr", 59),
+    ("Nd", 60),
+    ("Pm", 61),
+    ("Sm", 62),
+    ("Eu", 63),
+    ("Gd", 64),
+    ("Tb", 65),
+    ("Dy", 66),
+    ("Ho", 67),
+    ("Er", 68),
+    ("Tm", 69),
+    ("Yb", 70),
+    ("Lu", 71),
+    ("Hf", 72),
+    ("Ta", 73),
+    ("W", 74),
+    ("Re", 75),
+    ("Os", 76),
+    ("Ir", 77),
+    ("Pt", 78),
+    ("Au", 79),
+    ("Hg", 80),
+    ("Tl", 81),
+    ("Pb", 82),
+    ("Bi", 83),
+    ("Po", 84),
+    ("At", 85),
+    ("Rn", 86),
+    ("Fr", 87),
+    ("Ra", 88),
+    ("Ac", 89),
+    ("Th", 90),
+    ("Pa", 91),
+    ("U", 92),
+    ("Np", 93),
+    ("Pu", 94),
+    ("Am", 95),
+    ("Cm", 96),
+    ("Bk", 97),
+    ("Cf", 98),
+    ("Es", 99),
+    ("Fm", 100),
 ];
 
 fn element_symbol_to_z(input: &str) -> Option<(String, u32)> {
@@ -903,12 +983,12 @@ fn cmd_init(
     });
     let calc_type_upper = calc_type.to_uppercase();
 
-    let edge = edge.unwrap_or_else(|| {
-        prompt_choice(&mut reader, "Absorption edge", &["K", "L1", "L2", "L3"])
-    });
+    let edge = edge
+        .unwrap_or_else(|| prompt_choice(&mut reader, "Absorption edge", &["K", "L1", "L2", "L3"]));
     let edge_upper = edge.to_uppercase();
 
-    let element = element.unwrap_or_else(|| prompt_input(&mut reader, "Absorber element (symbol or Z)"));
+    let element =
+        element.unwrap_or_else(|| prompt_input(&mut reader, "Absorber element (symbol or Z)"));
 
     let (symbol, z) = match element_symbol_to_z(&element) {
         Some(pair) => pair,
@@ -943,7 +1023,13 @@ fn cmd_init(
         });
         println!("{}", serde_json::to_string_pretty(&info).unwrap());
     } else if !global.quiet {
-        println!("Generated {} {} {}-edge template: {}", calc_type_upper, symbol, edge_upper, out_path.display());
+        println!(
+            "Generated {} {} {}-edge template: {}",
+            calc_type_upper,
+            symbol,
+            edge_upper,
+            out_path.display()
+        );
     }
 }
 
@@ -1297,6 +1383,389 @@ mod tests {
     #[test]
     fn prompt_input_reads_line() {
         let input = b"Cu\n";
+        let mut reader = std::io::BufReader::new(&input[..]);
+        let result = prompt_input(&mut reader, "Element");
+        assert_eq!(result, "Cu");
+    }
+
+    // --- Additional CLI arg parsing tests ---
+
+    #[test]
+    fn cli_parses_run_default_input() {
+        let cli = Cli::try_parse_from(["feff10-rs", "run"]).unwrap();
+        match cli.command {
+            Command::Run { input, .. } => assert_eq!(input, PathBuf::from(".")),
+            _ => panic!("expected Run"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_run_with_stages() {
+        let cli = Cli::try_parse_from(["feff10-rs", "run", ".", "-s", "rdinp,pot,xsph"]).unwrap();
+        match cli.command {
+            Command::Run { stages, .. } => {
+                let s = stages.unwrap();
+                assert_eq!(s, vec!["rdinp", "pot", "xsph"]);
+            }
+            _ => panic!("expected Run"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_run_with_work_dir() {
+        let cli = Cli::try_parse_from(["feff10-rs", "run", "feff.inp", "-w", "/tmp/work"]).unwrap();
+        match cli.command {
+            Command::Run { work_dir, .. } => {
+                assert_eq!(work_dir, Some(PathBuf::from("/tmp/work")));
+            }
+            _ => panic!("expected Run"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_bench() {
+        let cli = Cli::try_parse_from([
+            "feff10-rs",
+            "bench",
+            "dir1",
+            "dir2",
+            "-n",
+            "5",
+            "-l",
+            "test-label",
+            "-o",
+            "results.json",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Bench {
+                inputs,
+                iterations,
+                label,
+                output,
+            } => {
+                assert_eq!(inputs, vec![PathBuf::from("dir1"), PathBuf::from("dir2")]);
+                assert_eq!(iterations, 5);
+                assert_eq!(label, "test-label");
+                assert_eq!(output, Some(PathBuf::from("results.json")));
+            }
+            _ => panic!("expected Bench"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_compare_defaults() {
+        let cli = Cli::try_parse_from(["feff10-rs", "compare", "a.dat", "b.dat"]).unwrap();
+        match cli.command {
+            Command::Compare {
+                col_x,
+                col_y,
+                threshold,
+                ..
+            } => {
+                assert_eq!(col_x, 1);
+                assert_eq!(col_y, 4);
+                assert!((threshold - 0.1).abs() < f64::EPSILON);
+            }
+            _ => panic!("expected Compare"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_init_no_args() {
+        let cli = Cli::try_parse_from(["feff10-rs", "init"]).unwrap();
+        match cli.command {
+            Command::Init {
+                calc_type,
+                edge,
+                element,
+                output,
+            } => {
+                assert!(calc_type.is_none());
+                assert!(edge.is_none());
+                assert!(element.is_none());
+                assert!(output.is_none());
+            }
+            _ => panic!("expected Init"),
+        }
+    }
+
+    #[test]
+    fn cli_multiple_global_flags() {
+        let cli = Cli::try_parse_from(["feff10-rs", "--quiet", "--json", "stages"]).unwrap();
+        assert!(cli.global.quiet);
+        assert!(cli.global.json);
+        assert!(!cli.global.verbose);
+    }
+
+    #[test]
+    fn cli_rejects_unknown_subcommand() {
+        let result = Cli::try_parse_from(["feff10-rs", "nonexistent"]);
+        assert!(result.is_err());
+    }
+
+    // --- Stage parsing edge cases ---
+
+    #[test]
+    fn parse_requested_stages_empty_input() {
+        let stages: Vec<String> = Vec::new();
+        let parsed = parse_requested_stages(&stages).unwrap();
+        assert!(parsed.is_empty());
+    }
+
+    #[test]
+    fn parse_requested_stages_single() {
+        let stages = vec!["pot".to_string()];
+        let parsed = parse_requested_stages(&stages).unwrap();
+        assert_eq!(parsed, vec![Stage::Pot]);
+    }
+
+    #[test]
+    fn parse_requested_stages_preserves_order() {
+        let stages = vec!["ff2x".to_string(), "rdinp".to_string(), "pot".to_string()];
+        let parsed = parse_requested_stages(&stages).unwrap();
+        assert_eq!(parsed, vec![Stage::Ff2x, Stage::Rdinp, Stage::Pot]);
+    }
+
+    #[test]
+    fn parse_requested_stages_all_18() {
+        let all_names: Vec<String> = Stage::all()
+            .iter()
+            .map(|s| s.executable_name().to_string())
+            .collect();
+        let parsed = parse_requested_stages(&all_names).unwrap();
+        assert_eq!(parsed.len(), 18);
+    }
+
+    // --- Column normalization ---
+
+    #[test]
+    fn normalize_compare_columns_both_zero() {
+        let err = normalize_compare_columns(0, 0).unwrap_err();
+        assert!(err.contains(">= 1"));
+    }
+
+    #[test]
+    fn normalize_compare_columns_large_values() {
+        let (x, y) = normalize_compare_columns(10, 20).unwrap();
+        assert_eq!(x, 9);
+        assert_eq!(y, 19);
+    }
+
+    // --- Element table tests ---
+
+    #[test]
+    fn element_lookup_hydrogen() {
+        let (sym, z) = element_symbol_to_z("H").unwrap();
+        assert_eq!(sym, "H");
+        assert_eq!(z, 1);
+    }
+
+    #[test]
+    fn element_lookup_fermium() {
+        let (sym, z) = element_symbol_to_z("Fm").unwrap();
+        assert_eq!(sym, "Fm");
+        assert_eq!(z, 100);
+    }
+
+    #[test]
+    fn element_lookup_by_z_boundaries() {
+        let (sym, _) = element_symbol_to_z("1").unwrap();
+        assert_eq!(sym, "H");
+        let (sym, _) = element_symbol_to_z("100").unwrap();
+        assert_eq!(sym, "Fm");
+    }
+
+    #[test]
+    fn element_table_no_duplicate_symbols() {
+        let mut seen = std::collections::HashSet::new();
+        for (sym, _) in ELEMENTS {
+            assert!(seen.insert(sym), "duplicate symbol: {sym}");
+        }
+    }
+
+    #[test]
+    fn element_table_no_duplicate_z() {
+        let mut seen = std::collections::HashSet::new();
+        for (_, z) in ELEMENTS {
+            assert!(seen.insert(z), "duplicate Z: {z}");
+        }
+    }
+
+    #[test]
+    fn element_table_contiguous_z() {
+        for (i, (_, z)) in ELEMENTS.iter().enumerate() {
+            assert_eq!(
+                *z as usize,
+                i + 1,
+                "element at index {i} has Z={z}, expected {}",
+                i + 1
+            );
+        }
+    }
+
+    // --- Examples tests ---
+
+    #[test]
+    fn examples_unique_names() {
+        let mut seen = std::collections::HashSet::new();
+        for (name, _, _) in EXAMPLES {
+            assert!(seen.insert(name), "duplicate example name: {name}");
+        }
+    }
+
+    #[test]
+    fn examples_parseable_by_feff_input() {
+        for (name, _, content) in EXAMPLES {
+            let result = FeffInput::parse(content);
+            assert!(
+                result.is_ok(),
+                "example {name} failed to parse: {}",
+                result.unwrap_err()
+            );
+            let input = result.unwrap();
+            assert!(
+                !input.potentials.is_empty(),
+                "example {name} has no potentials"
+            );
+            assert!(!input.atoms.is_empty(), "example {name} has no atoms");
+        }
+    }
+
+    #[test]
+    fn examples_have_end_card() {
+        for (name, _, content) in EXAMPLES {
+            assert!(
+                content
+                    .lines()
+                    .any(|l| l.trim().to_uppercase().starts_with("END")),
+                "example {name} missing END card"
+            );
+        }
+    }
+
+    // --- Template tests ---
+
+    #[test]
+    fn generate_template_has_end() {
+        for calc_type in &["EXAFS", "XANES", "XES"] {
+            let t = generate_template(calc_type, "K", "Cu", 29);
+            assert!(t.contains("END"), "{calc_type} template missing END");
+        }
+    }
+
+    #[test]
+    fn generate_template_parseable() {
+        for calc_type in &["EXAFS", "XANES", "XES"] {
+            let t = generate_template(calc_type, "K", "Cu", 29);
+            let result = FeffInput::parse(&t);
+            assert!(
+                result.is_ok(),
+                "{calc_type} template failed to parse: {}",
+                result.unwrap_err()
+            );
+            let input = result.unwrap();
+            assert_eq!(input.edge.as_deref(), Some("K"));
+            assert!(!input.potentials.is_empty());
+            assert!(!input.atoms.is_empty());
+        }
+    }
+
+    #[test]
+    fn generate_template_unknown_type_still_valid() {
+        let t = generate_template("UNKNOWN", "K", "Fe", 26);
+        assert!(t.contains("CONTROL"));
+        assert!(t.contains("POTENTIALS"));
+        assert!(t.contains("ATOMS"));
+        assert!(t.contains("END"));
+        let input = FeffInput::parse(&t).unwrap();
+        assert!(!input.potentials.is_empty());
+    }
+
+    #[test]
+    fn generate_template_various_elements() {
+        for (sym, z) in &[("H", 1u32), ("Fe", 26), ("U", 92)] {
+            let t = generate_template("EXAFS", "K", sym, *z);
+            assert!(t.contains(&format!("{z}")));
+            assert!(t.contains(sym));
+        }
+    }
+
+    #[test]
+    fn generate_template_various_edges() {
+        for edge in &["K", "L1", "L2", "L3"] {
+            let t = generate_template("XANES", edge, "Cu", 29);
+            assert!(t.contains(&format!("EDGE  {edge}")));
+            assert!(t.contains(&format!("{edge}-edge")));
+        }
+    }
+
+    // --- Functional tests ---
+
+    #[test]
+    fn cmd_examples_writes_file_to_tmpdir() {
+        let tmp = tempfile::tempdir().unwrap();
+        let global = GlobalArgs {
+            quiet: true,
+            verbose: false,
+            json: false,
+        };
+        cmd_examples(
+            Some("exafs-sf6".to_string()),
+            Some(tmp.path().to_path_buf()),
+            &global,
+        );
+        let feff_inp = tmp.path().join("feff.inp");
+        assert!(feff_inp.exists(), "feff.inp not created");
+        let content = std::fs::read_to_string(&feff_inp).unwrap();
+        assert!(content.contains("SF6"));
+    }
+
+    #[test]
+    fn cmd_examples_each_example_writes_correctly() {
+        let global = GlobalArgs {
+            quiet: true,
+            verbose: false,
+            json: false,
+        };
+        for (name, _, expected_content) in EXAMPLES {
+            let tmp = tempfile::tempdir().unwrap();
+            cmd_examples(
+                Some(name.to_string()),
+                Some(tmp.path().to_path_buf()),
+                &global,
+            );
+            let content = std::fs::read_to_string(tmp.path().join("feff.inp")).unwrap();
+            assert_eq!(content, *expected_content, "mismatch for example {name}");
+        }
+    }
+
+    // --- Prompt tests ---
+
+    #[test]
+    fn prompt_choice_case_insensitive_text() {
+        let input = b"xanes\n";
+        let mut reader = std::io::BufReader::new(&input[..]);
+        let result = prompt_choice(&mut reader, "Type", &["EXAFS", "XANES", "XES"]);
+        assert_eq!(result, "XANES");
+    }
+
+    #[test]
+    fn prompt_choice_first_and_last_index() {
+        let input = b"1\n";
+        let mut reader = std::io::BufReader::new(&input[..]);
+        let result = prompt_choice(&mut reader, "Test", &["A", "B", "C"]);
+        assert_eq!(result, "A");
+
+        let input = b"3\n";
+        let mut reader = std::io::BufReader::new(&input[..]);
+        let result = prompt_choice(&mut reader, "Test", &["A", "B", "C"]);
+        assert_eq!(result, "C");
+    }
+
+    #[test]
+    fn prompt_input_trims_whitespace() {
+        let input = b"  Cu  \n";
         let mut reader = std::io::BufReader::new(&input[..]);
         let result = prompt_input(&mut reader, "Element");
         assert_eq!(result, "Cu");

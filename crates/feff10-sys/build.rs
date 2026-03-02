@@ -306,7 +306,10 @@ fn link_prebuilt() {
                 lib_path.display()
             );
         }
-        eprintln!("feff10-sys: using prebuilt library at {}", lib_path.display());
+        eprintln!(
+            "feff10-sys: using prebuilt library at {}",
+            lib_path.display()
+        );
         dir
     } else {
         download_prebuilt(&out_dir);
@@ -351,7 +354,10 @@ fn link_prebuilt() {
 fn download_prebuilt(out_dir: &Path) {
     let dest = out_dir.join("libfeff10.a");
     if dest.exists() {
-        eprintln!("feff10-sys: using cached prebuilt library at {}", dest.display());
+        eprintln!(
+            "feff10-sys: using cached prebuilt library at {}",
+            dest.display()
+        );
         return;
     }
 
@@ -366,9 +372,8 @@ fn download_prebuilt(out_dir: &Path) {
         panic!("feff10-sys: unsupported platform for prebuilt binaries");
     };
 
-    let url = format!(
-        "https://github.com/Ameyanagi/feff10-rs/releases/download/v{version}/{asset_name}"
-    );
+    let url =
+        format!("https://github.com/Ameyanagi/feff10-rs/releases/download/v{version}/{asset_name}");
 
     eprintln!("feff10-sys: downloading prebuilt library from {url}");
 
@@ -387,7 +392,10 @@ fn download_prebuilt(out_dir: &Path) {
         );
     }
 
-    eprintln!("feff10-sys: downloaded prebuilt library to {}", dest.display());
+    eprintln!(
+        "feff10-sys: downloaded prebuilt library to {}",
+        dest.display()
+    );
 }
 
 // ---------------------------------------------------------------------------

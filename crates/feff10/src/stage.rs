@@ -183,4 +183,49 @@ mod tests {
         let err = "badstage".parse::<Stage>().unwrap_err();
         assert!(err.contains("unknown stage"));
     }
+
+    #[test]
+    fn all_stages_count() {
+        assert_eq!(Stage::all().len(), 18);
+    }
+
+    #[test]
+    fn all_stages_unique_names() {
+        let names: Vec<_> = Stage::all().iter().map(|s| s.executable_name()).collect();
+        let unique: std::collections::HashSet<_> = names.iter().collect();
+        assert_eq!(names.len(), unique.len(), "duplicate stage names found");
+    }
+
+    #[test]
+    fn display_matches_executable_name() {
+        for stage in Stage::all() {
+            assert_eq!(format!("{stage}"), stage.executable_name());
+        }
+    }
+
+    #[test]
+    fn round_trip_parse_display() {
+        for stage in Stage::all() {
+            let name = stage.executable_name();
+            let parsed: Stage = name.parse().unwrap();
+            assert_eq!(*stage, parsed);
+        }
+    }
+
+    #[test]
+    fn control_index_in_range() {
+        for stage in Stage::all() {
+            assert!(
+                stage.control_index() <= 5,
+                "{} has control_index {} > 5",
+                stage,
+                stage.control_index()
+            );
+        }
+    }
+
+    #[test]
+    fn default_pipeline_matches_all() {
+        assert_eq!(Stage::default_pipeline(), Stage::all().to_vec());
+    }
 }

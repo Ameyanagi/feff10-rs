@@ -596,4 +596,246 @@ END
             _ => panic!("expected parse error"),
         }
     }
+
+    #[test]
+    fn parse_empty_input() {
+        let input = FeffInput::parse("").unwrap();
+        assert!(input.title.is_empty());
+        assert!(input.edge.is_none());
+        assert!(input.s02.is_none());
+        assert!(input.potentials.is_empty());
+        assert!(input.atoms.is_empty());
+    }
+
+    #[test]
+    fn parse_minimal_input() {
+        let content = "\
+POTENTIALS
+0 29 Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        assert_eq!(input.potentials.len(), 1);
+        assert_eq!(input.atoms.len(), 1);
+        // Default control when not specified
+        assert_eq!(input.control, [1; 6]);
+    }
+
+    #[test]
+    fn default_has_all_control_ones() {
+        let input = FeffInput::default();
+        assert_eq!(input.control, [1, 1, 1, 1, 1, 1]);
+        assert_eq!(input.print_flags, [0, 0, 0, 0, 0, 0]);
+    }
+
+    #[test]
+    fn parse_preserves_other_cards() {
+        let content = "\
+TITLE test
+EDGE K
+EXAFS 20.0
+RPATH 5.5
+SCF 5.0
+DEBYE 300 500
+POTENTIALS
+0 29 Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        let cards_upper: Vec<String> = input.other_cards.iter().map(|c| c.to_uppercase()).collect();
+        assert!(
+            cards_upper.iter().any(|c| c.starts_with("EXAFS")),
+            "EXAFS card not preserved"
+        );
+        assert!(
+            cards_upper.iter().any(|c| c.starts_with("RPATH")),
+            "RPATH card not preserved"
+        );
+        assert!(
+            cards_upper.iter().any(|c| c.starts_with("SCF")),
+            "SCF card not preserved"
+        );
+        assert!(
+            cards_upper.iter().any(|c| c.starts_with("DEBYE")),
+            "DEBYE card not preserved"
+        );
+    }
+
+    #[test]
+    fn parse_comments_and_blank_lines_ignored() {
+        let content = "\
+* This is a comment
+TITLE test
+
+* another comment
+EDGE K
+POTENTIALS
+* potential comments
+0 29 Cu
+ATOMS
+* atom comments
+0.0 0.0 0.0 0 Cu
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        assert_eq!(input.edge.as_deref(), Some("K"));
+        assert_eq!(input.potentials.len(), 1);
+        assert_eq!(input.atoms.len(), 1);
+    }
+
+    #[test]
+    fn parse_inline_comment_in_potentials() {
+        let content = "\
+POTENTIALS
+0 29 Cu * absorber
+1 26 Fe * scatterer
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        assert_eq!(input.potentials.len(), 2);
+        assert_eq!(input.potentials[0].tag, "Cu");
+        assert_eq!(input.potentials[1].tag, "Fe");
+    }
+
+    #[test]
+    fn parse_edge_and_s02() {
+        let content = "\
+EDGE L3
+S02 0.9
+POTENTIALS
+0 29 Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        assert_eq!(input.edge.as_deref(), Some("L3"));
+        assert_eq!(input.s02, Some(0.9));
+    }
+
+    #[test]
+    fn parse_multiple_titles() {
+        let content = "\
+TITLE Line one
+TITLE Line two
+TITLE Line three
+POTENTIALS
+0 29 Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        assert_eq!(input.title.len(), 3);
+        assert_eq!(input.title[0], "Line one");
+        assert_eq!(input.title[2], "Line three");
+    }
+
+    #[test]
+    fn write_and_reparse_preserves_structure() {
+        let content = "\
+TITLE Test compound
+EDGE K
+S02 0.85
+CONTROL 1 1 1 0 0 0
+PRINT 0 0 0 0 0 0
+EXAFS 20.0
+POTENTIALS
+0 29 Cu
+1 26 Fe
+ATOMS
+0.000 0.000 0.000 0 Cu 0.00000
+1.805 1.805 0.000 1 Fe 2.55270
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        let mut buf = Vec::new();
+        input.write_to(&mut buf).unwrap();
+        let output = String::from_utf8(buf).unwrap();
+        let reparsed = FeffInput::parse(&output).unwrap();
+
+        assert_eq!(input.title, reparsed.title);
+        assert_eq!(input.edge, reparsed.edge);
+        assert_eq!(input.s02, reparsed.s02);
+        assert_eq!(input.control, reparsed.control);
+        assert_eq!(input.print_flags, reparsed.print_flags);
+        assert_eq!(input.potentials.len(), reparsed.potentials.len());
+        assert_eq!(input.atoms.len(), reparsed.atoms.len());
+        for (a, b) in input.potentials.iter().zip(reparsed.potentials.iter()) {
+            assert_eq!(a.ipot, b.ipot);
+            assert_eq!(a.z, b.z);
+        }
+    }
+
+    #[test]
+    fn strict_rejects_bad_s02() {
+        let content = "\
+S02 not_a_number
+CONTROL 1 1 1 1 1 1
+PRINT 0 0 0 0 0 0
+POTENTIALS
+0 29 Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+        let err = FeffInput::parse_strict(content).unwrap_err();
+        match err {
+            Error::Parse(e) => assert!(e.message.contains("S02")),
+            _ => panic!("expected parse error"),
+        }
+    }
+
+    #[test]
+    fn parse_potential_with_optional_fields() {
+        let content = "\
+POTENTIALS
+0 29 Cu 2 3 1.5
+ATOMS
+0.0 0.0 0.0 0 Cu
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        assert_eq!(input.potentials[0].l_scmt, Some(2));
+        assert_eq!(input.potentials[0].l_fms, Some(3));
+        assert_eq!(input.potentials[0].stoich, Some(1.5));
+    }
+
+    #[test]
+    fn parse_atom_with_distance() {
+        let content = "\
+POTENTIALS
+0 29 Cu
+ATOMS
+1.805 1.805 0.000 0 Cu 2.55270
+END
+";
+        let input = FeffInput::parse(content).unwrap();
+        assert!((input.atoms[0].x - 1.805).abs() < 1e-10);
+        assert!((input.atoms[0].distance - 2.55270).abs() < 1e-4);
+    }
+
+    #[test]
+    fn parse_all_bundled_examples() {
+        let examples_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../feff10/examples");
+        let dirs = ["EXAFS/Cu", "EXAFS/SF6", "XANES/Cu", "XANES/BN", "XES/Cu"];
+        for d in dirs {
+            let path = format!("{examples_dir}/{d}/feff.inp");
+            let content = std::fs::read_to_string(&path)
+                .unwrap_or_else(|e| panic!("failed to read {path}: {e}"));
+            let input = FeffInput::parse(&content)
+                .unwrap_or_else(|e| panic!("failed to parse {path}: {e}"));
+            assert!(
+                !input.potentials.is_empty(),
+                "{d}/feff.inp has no potentials"
+            );
+            assert!(!input.atoms.is_empty(), "{d}/feff.inp has no atoms");
+        }
+    }
 }

@@ -157,4 +157,94 @@ mod tests {
         assert!((interp(&xp, &fp, 0.5) - 5.0).abs() < 1e-10);
         assert!((interp(&xp, &fp, 1.5) - 15.0).abs() < 1e-10);
     }
+
+    #[test]
+    fn interp_clamps_left() {
+        let xp = vec![1.0, 2.0, 3.0];
+        let fp = vec![10.0, 20.0, 30.0];
+        assert!((interp(&xp, &fp, 0.0) - 10.0).abs() < 1e-10);
+        assert!((interp(&xp, &fp, -5.0) - 10.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn interp_clamps_right() {
+        let xp = vec![1.0, 2.0, 3.0];
+        let fp = vec![10.0, 20.0, 30.0];
+        assert!((interp(&xp, &fp, 4.0) - 30.0).abs() < 1e-10);
+        assert!((interp(&xp, &fp, 100.0) - 30.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn interp_at_exact_points() {
+        let xp = vec![0.0, 1.0, 2.0, 3.0];
+        let fp = vec![5.0, 10.0, 15.0, 20.0];
+        for (x, f) in xp.iter().zip(fp.iter()) {
+            assert!(
+                (interp(&xp, &fp, *x) - f).abs() < 1e-10,
+                "interp at x={x} should be {f}"
+            );
+        }
+    }
+
+    #[test]
+    fn parse_empty_content() {
+        let xmu = XmuDat::parse("").unwrap();
+        assert!(xmu.header.is_empty());
+        assert!(xmu.columns.is_empty());
+    }
+
+    #[test]
+    fn parse_header_only() {
+        let xmu = XmuDat::parse("# header line 1\n# header line 2\n").unwrap();
+        assert_eq!(xmu.header.len(), 2);
+        assert!(xmu.columns.is_empty());
+    }
+
+    #[test]
+    fn parse_simple_data() {
+        let content = "# header\n1.0 2.0 3.0\n4.0 5.0 6.0\n";
+        let xmu = XmuDat::parse(content).unwrap();
+        assert_eq!(xmu.columns.len(), 3);
+        assert_eq!(xmu.columns[0], vec![1.0, 4.0]);
+        assert_eq!(xmu.columns[1], vec![2.0, 5.0]);
+        assert_eq!(xmu.columns[2], vec![3.0, 6.0]);
+    }
+
+    #[test]
+    fn r_squared_missing_columns() {
+        let content = "1.0 2.0\n3.0 4.0\n";
+        let xmu = XmuDat::parse(content).unwrap();
+        // Column 5 doesn't exist
+        let rsq = xmu.r_squared(&xmu, 0, 5);
+        assert!(rsq.is_nan());
+    }
+
+    #[test]
+    fn r_squared_no_overlap() {
+        let c1 = "1.0 10.0\n2.0 20.0\n3.0 30.0\n";
+        let c2 = "5.0 50.0\n6.0 60.0\n7.0 70.0\n";
+        let xmu1 = XmuDat::parse(c1).unwrap();
+        let xmu2 = XmuDat::parse(c2).unwrap();
+        let rsq = xmu1.r_squared(&xmu2, 0, 1);
+        assert!(rsq.is_nan(), "non-overlapping ranges should return NaN");
+    }
+
+    #[test]
+    fn r_squared_different_data() {
+        let c1 = "1.0 10.0\n2.0 20.0\n3.0 30.0\n4.0 40.0\n5.0 50.0\n";
+        let c2 = "1.0 15.0\n2.0 25.0\n3.0 35.0\n4.0 45.0\n5.0 55.0\n";
+        let xmu1 = XmuDat::parse(c1).unwrap();
+        let xmu2 = XmuDat::parse(c2).unwrap();
+        let rsq = xmu1.r_squared(&xmu2, 0, 1);
+        assert!(rsq > 0.0, "different data should have non-zero R-squared");
+        assert!(rsq.is_finite());
+    }
+
+    #[test]
+    fn parse_skips_blank_lines() {
+        let content = "# header\n\n1.0 2.0\n\n3.0 4.0\n\n";
+        let xmu = XmuDat::parse(content).unwrap();
+        assert_eq!(xmu.columns.len(), 2);
+        assert_eq!(xmu.columns[0].len(), 2);
+    }
 }
