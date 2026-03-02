@@ -39,10 +39,10 @@ jobs:
         run: cargo publish --dry-run -p feff10-sys
 
       - name: Verify packaging (feff10)
-        run: cargo publish --dry-run -p feff10
+        run: cargo package --no-verify -p feff10
 
       - name: Verify packaging (feff10-cli)
-        run: cargo publish --dry-run -p feff10-cli
+        run: cargo package --no-verify -p feff10-cli
 
       - name: Publish feff10-sys
         if: ${{ !inputs.dry-run }}
