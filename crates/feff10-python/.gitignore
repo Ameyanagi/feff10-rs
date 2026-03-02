@@ -1,0 +1,8 @@
+*.so
+*.dylib
+*.dSYM/
+*.pyd
+__pycache__/
+*.pyc
+target/
+.pytest_cache/

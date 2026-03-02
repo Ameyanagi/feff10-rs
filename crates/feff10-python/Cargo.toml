@@ -1,0 +1,20 @@
+[package]
+name = "feff10-python"
+edition.workspace = true
+version.workspace = true
+description = "Python bindings for FEFF10 via PyO3"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lib]
+name = "_feff10"
+crate-type = ["cdylib"]
+
+[features]
+prebuilt = ["feff10/prebuilt"]
+
+[dependencies]
+feff10 = { path = "../feff10", version = "0.1.0" }
+pyo3 = { version = "0.23", features = ["extension-module"] }
