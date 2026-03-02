@@ -1,3 +1,12 @@
+# Linux: use gcc as linker so that libgfortran is found.
+# Rust 1.86+ defaults to rust-lld on Linux, which does not search
+# the system library paths where libgfortran lives.
+[target.x86_64-unknown-linux-gnu]
+linker = "gcc"
+
+[target.aarch64-unknown-linux-gnu]
+linker = "gcc"
+
 # macOS: use clang instead of gcc for C compilation and linking.
 # This avoids issues with Homebrew gcc conflicting with system frameworks.
 [target.aarch64-apple-darwin]
