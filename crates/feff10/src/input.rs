@@ -89,10 +89,13 @@ impl FeffInput {
                 continue;
             }
 
-            let upper = line.to_uppercase();
+            // Extract the first word (keyword) for matching
+            let first_word = line.split_whitespace().next().unwrap_or("");
+            let keyword = first_word.to_uppercase();
+            let rest = line[first_word.len()..].trim();
 
             // Check for section terminators
-            if upper.starts_with("END") {
+            if keyword == "END" {
                 in_potentials = false;
                 in_atoms = false;
                 continue;
@@ -100,7 +103,7 @@ impl FeffInput {
 
             // If we're in a section, parse data lines
             if in_potentials {
-                if upper.starts_with(|c: char| c.is_alphabetic()) {
+                if first_word.starts_with(|c: char| c.is_alphabetic()) {
                     // New card keyword encountered - exit potentials section
                     in_potentials = false;
                 } else {
@@ -116,7 +119,7 @@ impl FeffInput {
             }
 
             if in_atoms {
-                if upper.starts_with(|c: char| c.is_alphabetic()) {
+                if first_word.starts_with(|c: char| c.is_alphabetic()) {
                     in_atoms = false;
                 } else {
                     if mode == ParseMode::Strict {
@@ -130,64 +133,68 @@ impl FeffInput {
                 }
             }
 
-            // Parse card keywords
-            if upper.starts_with("TITLE") {
-                let rest = line.get(5..).unwrap_or("").trim();
-                input.title.push(rest.to_string());
-            } else if upper.starts_with("EDGE") {
-                let rest = line.get(4..).unwrap_or("").trim();
-                input.edge = Some(rest.to_string());
-            } else if upper.starts_with("S02") {
-                let rest = line.get(3..).unwrap_or("").trim();
-                if rest.is_empty() {
-                    if mode == ParseMode::Strict {
-                        return Err(parse_error(line_num, "S02 requires a numeric value"));
-                    }
-                } else {
-                    match rest.parse::<f64>() {
-                        Ok(val) => input.s02 = Some(val),
-                        Err(_) if mode == ParseMode::Strict => {
-                            return Err(parse_error(
-                                line_num,
-                                format!("invalid S02 value '{rest}'"),
-                            ));
+            // Parse card keywords (exact first-word match to avoid prefix collisions)
+            match keyword.as_str() {
+                "TITLE" => {
+                    input.title.push(rest.to_string());
+                }
+                "EDGE" => {
+                    input.edge = Some(rest.to_string());
+                }
+                "S02" => {
+                    if rest.is_empty() {
+                        if mode == ParseMode::Strict {
+                            return Err(parse_error(line_num, "S02 requires a numeric value"));
                         }
-                        Err(_) => {}
+                    } else {
+                        match rest.parse::<f64>() {
+                            Ok(val) => input.s02 = Some(val),
+                            Err(_) if mode == ParseMode::Strict => {
+                                return Err(parse_error(
+                                    line_num,
+                                    format!("invalid S02 value '{rest}'"),
+                                ));
+                            }
+                            Err(_) => {}
+                        }
                     }
                 }
-            } else if upper.starts_with("CONTROL") {
-                let rest = line.get(7..).unwrap_or("").trim();
-                if mode == ParseMode::Strict {
-                    input.control = parse_six_u32(rest, line_num, "CONTROL")?;
-                } else {
-                    let vals: Vec<u32> = rest
-                        .split_whitespace()
-                        .filter_map(|s| s.parse().ok())
-                        .collect();
-                    for (i, &v) in vals.iter().enumerate().take(6) {
-                        input.control[i] = v;
+                "CONTROL" => {
+                    if mode == ParseMode::Strict {
+                        input.control = parse_six_u32(rest, line_num, "CONTROL")?;
+                    } else {
+                        let vals: Vec<u32> = rest
+                            .split_whitespace()
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
+                        for (i, &v) in vals.iter().enumerate().take(6) {
+                            input.control[i] = v;
+                        }
                     }
                 }
-            } else if upper.starts_with("PRINT") {
-                let rest = line.get(5..).unwrap_or("").trim();
-                if mode == ParseMode::Strict {
-                    input.print_flags = parse_six_u32(rest, line_num, "PRINT")?;
-                } else {
-                    let vals: Vec<u32> = rest
-                        .split_whitespace()
-                        .filter_map(|s| s.parse().ok())
-                        .collect();
-                    for (i, &v) in vals.iter().enumerate().take(6) {
-                        input.print_flags[i] = v;
+                "PRINT" => {
+                    if mode == ParseMode::Strict {
+                        input.print_flags = parse_six_u32(rest, line_num, "PRINT")?;
+                    } else {
+                        let vals: Vec<u32> = rest
+                            .split_whitespace()
+                            .filter_map(|s| s.parse().ok())
+                            .collect();
+                        for (i, &v) in vals.iter().enumerate().take(6) {
+                            input.print_flags[i] = v;
+                        }
                     }
                 }
-            } else if upper.starts_with("POTENTIALS") {
-                in_potentials = true;
-            } else if upper.starts_with("ATOMS") {
-                in_atoms = true;
-            } else {
-                // Preserve other cards verbatim
-                input.other_cards.push(line.to_string());
+                "POTENTIALS" => {
+                    in_potentials = true;
+                }
+                "ATOMS" => {
+                    in_atoms = true;
+                }
+                _ => {
+                    // Preserve other cards verbatim
+                    input.other_cards.push(line.to_string());
+                }
             }
         }
 
@@ -310,14 +317,16 @@ fn parse_atom_line(line: &str) -> Option<Atom> {
         return None;
     }
     let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 5 {
+    if parts.len() < 4 {
         return None;
     }
     let x = parts[0].parse().ok()?;
     let y = parts[1].parse().ok()?;
     let z = parts[2].parse().ok()?;
     let ipot = parts[3].parse().ok()?;
-    let tag = parts[4].to_string();
+    // tag is optional; if the 5th field is non-numeric text, use it as tag
+    let tag = parts.get(4).map(|s| s.to_string()).unwrap_or_default();
+    // distance is optional; try parsing from whichever field follows the tag
     let distance = parts.get(5).and_then(|s| s.parse().ok()).unwrap_or(0.0);
     Some(Atom {
         x,
@@ -422,10 +431,10 @@ fn parse_atom_line_strict(line: &str, line_num: usize) -> Result<Atom, Error> {
     }
 
     let parts: Vec<&str> = line.split_whitespace().collect();
-    if parts.len() < 5 {
+    if parts.len() < 4 {
         return Err(parse_error(
             line_num,
-            "ATOMS line must contain at least: x y z ipot tag",
+            "ATOMS line must contain at least: x y z ipot",
         ));
     }
 
@@ -450,14 +459,12 @@ fn parse_atom_line_strict(line: &str, line_num: usize) -> Result<Atom, Error> {
     let ipot = parts[3]
         .parse::<u32>()
         .map_err(|_| parse_error(line_num, format!("invalid atom ipot '{}'", parts[3])))?;
-    let tag = parts[4].to_string();
+    // tag is optional (FEFF only requires x y z ipot)
+    let tag = parts.get(4).map(|s| s.to_string()).unwrap_or_default();
+    // distance is optional; non-numeric trailing text is ignored as a label/comment
     let distance = parts
         .get(5)
-        .map(|s| {
-            s.parse::<f64>()
-                .map_err(|_| parse_error(line_num, format!("invalid atom distance '{}'", s)))
-        })
-        .transpose()?
+        .and_then(|s| s.parse::<f64>().ok())
         .unwrap_or(0.0);
 
     Ok(Atom {
