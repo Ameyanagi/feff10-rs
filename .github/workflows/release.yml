@@ -359,7 +359,7 @@ jobs:
           echo "=== examples (JSON) ==="
           $BIN --json examples
           echo "=== examples (copy) ==="
-          $BIN examples exafs-sf6 -o /tmp/smoke-example
+          $BIN examples exafs-cu -o /tmp/smoke-example
           test -f /tmp/smoke-example/feff.inp
           echo "=== validate ==="
           $BIN validate /tmp/smoke-example/feff.inp
@@ -367,7 +367,7 @@ jobs:
           $BIN init -t exafs --edge K --element Cu -o /tmp/smoke-init/feff.inp
           test -f /tmp/smoke-init/feff.inp
           $BIN validate /tmp/smoke-init/feff.inp
-          echo "=== run (EXAFS SF6 from bundled example) ==="
+          echo "=== run (EXAFS Cu from bundled example) ==="
           $BIN run /tmp/smoke-example -w /tmp/smoke-run
           echo "=== All smoke tests passed ==="
 
@@ -395,7 +395,7 @@ jobs:
           echo "=== examples (JSON) ==="
           $BIN --json examples
           echo "=== examples (copy) ==="
-          $BIN examples exafs-sf6 -o /tmp/smoke-example
+          $BIN examples exafs-cu -o /tmp/smoke-example
           test -f /tmp/smoke-example/feff.inp
           echo "=== validate ==="
           $BIN validate /tmp/smoke-example/feff.inp
@@ -403,7 +403,7 @@ jobs:
           $BIN init -t exafs --edge K --element Cu -o /tmp/smoke-init/feff.inp
           test -f /tmp/smoke-init/feff.inp
           $BIN validate /tmp/smoke-init/feff.inp
-          echo "=== run (EXAFS SF6 from bundled example) ==="
+          echo "=== run (EXAFS Cu from bundled example) ==="
           $BIN run /tmp/smoke-example -w /tmp/smoke-run
           echo "=== All smoke tests passed ==="
 
@@ -431,7 +431,7 @@ jobs:
           echo "=== examples (JSON) ==="
           $BIN --json examples
           echo "=== examples (copy) ==="
-          $BIN examples exafs-sf6 -o /tmp/smoke-example
+          $BIN examples exafs-cu -o /tmp/smoke-example
           test -f /tmp/smoke-example/feff.inp
           echo "=== validate ==="
           $BIN validate /tmp/smoke-example/feff.inp
@@ -439,7 +439,7 @@ jobs:
           $BIN init -t exafs --edge K --element Cu -o /tmp/smoke-init/feff.inp
           test -f /tmp/smoke-init/feff.inp
           $BIN validate /tmp/smoke-init/feff.inp
-          echo "=== run (EXAFS SF6 from bundled example) ==="
+          echo "=== run (EXAFS Cu from bundled example) ==="
           $BIN run /tmp/smoke-example -w /tmp/smoke-run
           echo "=== All smoke tests passed ==="
 
