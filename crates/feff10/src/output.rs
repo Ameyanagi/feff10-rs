@@ -186,8 +186,19 @@ fn interp(xp: &[f64], fp: &[f64], x: f64) -> f64 {
 mod tests {
     use super::*;
 
+    fn has_submodule() -> bool {
+        std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../feff10/examples/EXAFS/Cu/referencexmu.dat"
+        ))
+        .exists()
+    }
+
     #[test]
     fn parse_reference_xmu() {
+        if !has_submodule() {
+            return;
+        }
         let content = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../feff10/examples/EXAFS/Cu/referencexmu.dat"
@@ -202,6 +213,9 @@ mod tests {
 
     #[test]
     fn r_squared_identical() {
+        if !has_submodule() {
+            return;
+        }
         let content = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../feff10/examples/EXAFS/Cu/referencexmu.dat"

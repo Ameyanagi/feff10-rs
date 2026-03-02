@@ -19,42 +19,42 @@ const EXAMPLES: &[(&str, &str, &str)] = &[
     (
         "exafs-cu",
         "EXAFS Cu crystal (standard reference, 79 atoms)",
-        include_str!("../../../feff10/examples/EXAFS/Cu/feff.inp"),
+        include_str!("../examples/bundled/exafs-cu.inp"),
     ),
     (
         "exafs-sf6",
         "EXAFS SF6 molecule (minimal, 7 atoms)",
-        include_str!("../../../feff10/examples/EXAFS/SF6/feff.inp"),
+        include_str!("../examples/bundled/exafs-sf6.inp"),
     ),
     (
         "xanes-cu",
         "XANES Cu crystal (FMS calculation)",
-        include_str!("../../../feff10/examples/XANES/Cu/feff.inp"),
+        include_str!("../examples/bundled/xanes-cu.inp"),
     ),
     (
         "xanes-bn",
         "XANES BN compound (705 atoms)",
-        include_str!("../../../feff10/examples/XANES/BN/feff.inp"),
+        include_str!("../examples/bundled/xanes-bn.inp"),
     ),
     (
         "xes-cu",
         "XES Cu crystal",
-        include_str!("../../../feff10/examples/XES/Cu/feff.inp"),
+        include_str!("../examples/bundled/xes-cu.inp"),
     ),
     (
         "exafs-ybco",
         "EXAFS YBCO superconductor (multi-element)",
-        include_str!("../../../feff10/examples/EXAFS/YBCO/feff.inp"),
+        include_str!("../examples/bundled/exafs-ybco.inp"),
     ),
     (
         "exafs-gecl4",
         "EXAFS GeCl4 molecule",
-        include_str!("../../../feff10/examples/EXAFS/GeCl_4/feff.inp"),
+        include_str!("../examples/bundled/exafs-gecl4.inp"),
     ),
     (
         "fprime-gecl4",
         "FPRIME GeCl4 (anomalous scattering)",
-        include_str!("../../../feff10/examples/FPRIME/GeCl4/feff.inp"),
+        include_str!("../examples/bundled/fprime-gecl4.inp"),
     ),
 ];
 

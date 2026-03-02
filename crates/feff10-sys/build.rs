@@ -48,6 +48,17 @@ fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let feff_src = manifest_dir.join("../../feff10/src");
 
+    // Auto-fallback: when Fortran source is not available (e.g. crates.io install),
+    // automatically download and link the prebuilt library.
+    if !feff_src.join("Makefile").exists() {
+        eprintln!(
+            "feff10-sys: Fortran source not found at {}, using prebuilt library",
+            feff_src.display()
+        );
+        link_prebuilt();
+        return;
+    }
+
     // 1. Detect Fortran compiler
     let (compiler, flags) = detect_compiler();
     eprintln!("feff10-sys: using Fortran compiler: {compiler}");

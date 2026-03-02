@@ -4,6 +4,11 @@ edition.workspace = true
 version.workspace = true
 description = "CLI for running FEFF10 calculations"
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
 
 [[bin]]
 name = "feff10-rs"
@@ -13,8 +18,8 @@ path = "src/main.rs"
 prebuilt = ["feff10/prebuilt"]
 
 [dependencies]
-feff10 = { path = "../feff10" }
-feff10-sys = { path = "../feff10-sys" }
+feff10 = { path = "../feff10", version = "0.1.0" }
+feff10-sys = { path = "../feff10-sys", version = "0.1.0" }
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
 serde = { version = "1", features = ["derive"] }

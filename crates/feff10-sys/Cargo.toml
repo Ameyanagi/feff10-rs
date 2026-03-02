@@ -4,6 +4,11 @@ edition.workspace = true
 version.workspace = true
 description = "Build system for FEFF10 Fortran code"
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
 links = "feff10"
 
 [features]

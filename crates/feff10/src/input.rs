@@ -478,8 +478,19 @@ fn strip_inline_comment(line: &str) -> &str {
 mod tests {
     use super::*;
 
+    fn has_submodule() -> bool {
+        std::path::Path::new(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../feff10/examples/EXAFS/Cu/feff.inp"
+        ))
+        .exists()
+    }
+
     #[test]
     fn parse_exafs_cu() {
+        if !has_submodule() {
+            return;
+        }
         let content = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../feff10/examples/EXAFS/Cu/feff.inp"
@@ -499,6 +510,9 @@ mod tests {
 
     #[test]
     fn round_trip() {
+        if !has_submodule() {
+            return;
+        }
         let content = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../feff10/examples/EXAFS/Cu/feff.inp"
@@ -519,6 +533,9 @@ mod tests {
 
     #[test]
     fn parse_strict_exafs_cu() {
+        if !has_submodule() {
+            return;
+        }
         let content = std::fs::read_to_string(concat!(
             env!("CARGO_MANIFEST_DIR"),
             "/../../feff10/examples/EXAFS/Cu/feff.inp"
@@ -823,6 +840,9 @@ END
 
     #[test]
     fn parse_all_bundled_examples() {
+        if !has_submodule() {
+            return;
+        }
         let examples_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../feff10/examples");
         let dirs = ["EXAFS/Cu", "EXAFS/SF6", "XANES/Cu", "XANES/BN", "XES/Cu"];
         for d in dirs {

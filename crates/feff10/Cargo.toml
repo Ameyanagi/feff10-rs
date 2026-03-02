@@ -4,12 +4,17 @@ edition.workspace = true
 version.workspace = true
 description = "Rust wrapper for FEFF10 X-ray absorption spectroscopy calculations"
 license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords.workspace = true
+categories.workspace = true
+readme = "README.md"
 
 [features]
 prebuilt = ["feff10-sys/prebuilt"]
 
 [dependencies]
-feff10-sys = { path = "../feff10-sys" }
+feff10-sys = { path = "../feff10-sys", version = "0.1.0" }
 tempfile = "3"
 which = "7"
 
