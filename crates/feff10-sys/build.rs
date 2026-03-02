@@ -151,6 +151,20 @@ fn main() {
         }
     }
 
+    // For gfortran on Linux, merge libgfortran and libquadmath into the archive
+    // so that rust-lld (default since Rust 1.86) can resolve Fortran runtime symbols
+    // without needing gcc as the linker.
+    if compiler.contains("gfortran") && cfg!(target_os = "linux") {
+        for lib_name in ["libgfortran.a", "libquadmath.a"] {
+            if let Some(path) = find_gfortran_static_lib(&compiler, lib_name) {
+                eprintln!("feff10-sys: will merge {}", path.display());
+                merge_libs.push(path);
+            } else {
+                eprintln!("feff10-sys: warning: could not find {lib_name} for static merge");
+            }
+        }
+    }
+
     if !merge_libs.is_empty() && cfg!(target_os = "linux") {
         eprintln!(
             "feff10-sys: merging {} external archives into libfeff10.a",
@@ -824,16 +838,24 @@ fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBu
 /// Emit cargo link directives for the Fortran runtime.
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
-        if let Some(lib_dir) = find_gfortran_runtime_dir(compiler) {
-            println!("cargo:rustc-link-search=native={}", lib_dir.display());
-            eprintln!(
-                "feff10-sys: found gfortran runtime dir: {}",
-                lib_dir.display()
-            );
+        if cfg!(target_os = "linux") {
+            // On Linux, libgfortran is merged into libfeff10.a
+            // so we don't need to link it separately.
+            eprintln!("feff10-sys: gfortran runtime merged into archive (Linux)");
         } else {
-            eprintln!("feff10-sys: warning: could not auto-detect gfortran runtime search path");
+            if let Some(lib_dir) = find_gfortran_runtime_dir(compiler) {
+                println!("cargo:rustc-link-search=native={}", lib_dir.display());
+                eprintln!(
+                    "feff10-sys: found gfortran runtime dir: {}",
+                    lib_dir.display()
+                );
+            } else {
+                eprintln!(
+                    "feff10-sys: warning: could not auto-detect gfortran runtime search path"
+                );
+            }
+            println!("cargo:rustc-link-lib=gfortran");
         }
-        println!("cargo:rustc-link-lib=gfortran");
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
         // Intel runtime is merged into the archive on Linux.
         // On other platforms, link dynamically.
@@ -892,6 +914,31 @@ fn find_gfortran_runtime_dir(compiler: &str) -> Option<PathBuf> {
     }
 
     None
+}
+
+/// Find a specific gfortran static library (e.g. libgfortran.a, libquadmath.a).
+fn find_gfortran_static_lib(compiler: &str, lib_name: &str) -> Option<PathBuf> {
+    let Ok(output) = Command::new(compiler)
+        .arg(format!("-print-file-name={lib_name}"))
+        .output()
+    else {
+        return None;
+    };
+    if !output.status.success() {
+        return None;
+    }
+
+    let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if path.is_empty() || path == lib_name {
+        return None;
+    }
+
+    let candidate = PathBuf::from(path);
+    if candidate.exists() {
+        Some(candidate)
+    } else {
+        None
+    }
 }
 
 /// Find and emit link search path for LLVM Flang runtime libraries.
