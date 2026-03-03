@@ -942,10 +942,9 @@ fn emit_fortran_runtime_links(compiler: &str) {
         } else {
             eprintln!("feff10-sys: gfortran runtime merged into archive");
         }
-    } else if compiler.contains("ifx") || compiler.contains("ifort") {
-        if cfg!(target_os = "linux") {
-            eprintln!("feff10-sys: Intel runtime merged into archive");
-        }
+    } else if (compiler.contains("ifx") || compiler.contains("ifort")) && cfg!(target_os = "linux")
+    {
+        eprintln!("feff10-sys: Intel runtime merged into archive");
     }
 }
 
