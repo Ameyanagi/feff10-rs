@@ -152,14 +152,13 @@ fn main() {
         }
     }
 
-    // On Linux, merge libgfortran and libquadmath into the archive so the resulting
-    // libfeff10.a is self-contained. This ensures compatibility with rust-lld
-    // (default since Rust 1.86) and allows Python wheels to have zero external deps.
-    // On macOS/Windows, gfortran runtime is linked dynamically because:
-    // - macOS: libtool -static can't resolve circular deps in libgfortran.a
-    // - Windows: removing -lgfortran changes pthread resolution causing duplicate symbols
-    // For Python wheels, delocate (macOS) / delvewheel (Windows) bundles the dylibs.
-    if compiler.contains("gfortran") && cfg!(target_os = "linux") {
+    // Merge libgfortran and libquadmath into the archive so the resulting
+    // libfeff10.a is self-contained (no external Fortran runtime needed).
+    // This ensures compatibility with rust-lld (default since Rust 1.86)
+    // and allows Python wheels to have zero external deps on all platforms.
+    // Linux/Windows: uses `ld -r --whole-archive`
+    // macOS: extracts all .o files and re-archives (avoids libtool circular dep issue)
+    if compiler.contains("gfortran") {
         for lib_name in ["libgfortran.a", "libquadmath.a"] {
             if let Some(path) = find_gfortran_static_lib(&compiler, lib_name) {
                 eprintln!("feff10-sys: will merge {}", path.display());
@@ -356,18 +355,8 @@ fn link_prebuilt() {
     println!("cargo:rustc-link-search=native={lib_dir}");
     println!("cargo:rustc-link-lib=static=feff10");
 
-    // Platform-specific runtime linking
-    if target_os == "linux" {
-        // Linux: Fortran runtime + BLAS merged into libfeff10.a — self-contained
-    } else if target_os == "macos" {
-        // macOS: gfortran linked dynamically (delocate bundles it for wheels)
-        println!("cargo:rustc-link-lib=gfortran");
-    } else if target_os == "windows" {
-        // Windows: gfortran linked dynamically (delvewheel bundles it for wheels)
-        println!("cargo:rustc-link-lib=gfortran");
-    }
-
-    // Common system libraries
+    // Fortran runtime + BLAS are merged into libfeff10.a — self-contained.
+    // Only system libraries are needed at link time.
     println!("cargo:rustc-link-lib=pthread");
     println!("cargo:rustc-link-lib=m");
     if target_os == "linux" {
@@ -808,22 +797,36 @@ fn create_archive_from_objects(build_src: &Path, archive_path: &Path) {
 }
 
 /// Merge the FEFF archive with external static libraries (MKL, Intel runtime,
-/// gfortran runtime) using `ld -r` (partial/incremental linking).
+/// gfortran runtime) into a single self-contained archive.
 ///
-/// This is only used on Linux where:
-/// - GNU ld's `--whole-archive` / `--start-group` resolve circular dependencies
-/// - rust-lld (default since Rust 1.86) needs all symbols in one archive
-///
-/// On macOS/Windows, external libraries are linked dynamically instead.
+/// Platform strategies:
+/// - Linux/Windows (GNU ld): `ld -r --whole-archive` for partial linking
+/// - macOS: Extract all .o files and re-archive (libtool -static can't handle
+///   circular deps in libgfortran.a, but ar with all objects works fine)
 fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
-    let combined_o = final_archive.with_extension("o");
-
     // Verify all input archives exist
     for lib in extra_libs {
         if !lib.exists() {
             panic!("feff10-sys: library not found for merge: {}", lib.display());
         }
     }
+
+    if cfg!(target_os = "macos") {
+        merge_archives_ar_extract(raw_archive, final_archive, extra_libs);
+    } else {
+        merge_archives_gnu_ld(raw_archive, final_archive, extra_libs);
+    }
+
+    // Report size
+    if let Ok(meta) = fs::metadata(final_archive) {
+        let size_mb = meta.len() as f64 / (1024.0 * 1024.0);
+        eprintln!("feff10-sys: final archive size: {:.1} MB", size_mb);
+    }
+}
+
+/// Merge archives using GNU ld -r (Linux and Windows/MSYS2).
+fn merge_archives_gnu_ld(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
+    let combined_o = final_archive.with_extension("o");
 
     let mut cmd = Command::new("ld");
     cmd.arg("-r")
@@ -859,34 +862,80 @@ fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBu
 
     // Clean up intermediate .o
     let _ = fs::remove_file(&combined_o);
+}
 
-    // Report size
-    if let Ok(meta) = fs::metadata(final_archive) {
-        let size_mb = meta.len() as f64 / (1024.0 * 1024.0);
-        eprintln!("feff10-sys: final archive size: {:.1} MB", size_mb);
+/// Merge archives by extracting all .o files and re-archiving (macOS).
+///
+/// This avoids the circular dependency issue with `libtool -static` by
+/// extracting all object files from all archives and creating a new archive
+/// containing everything. The final linker (ld) handles symbol resolution.
+fn merge_archives_ar_extract(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
+    let temp_dir = final_archive.parent().unwrap().join("_merge_objs");
+    let _ = fs::remove_dir_all(&temp_dir);
+
+    let all_archives: Vec<&Path> = std::iter::once(raw_archive.as_ref())
+        .chain(extra_libs.iter().map(|p| p.as_path()))
+        .collect();
+
+    let mut all_objects = Vec::new();
+
+    for (i, archive) in all_archives.iter().enumerate() {
+        let sub_dir = temp_dir.join(format!("ar_{i}"));
+        fs::create_dir_all(&sub_dir).unwrap();
+
+        let status = Command::new("ar")
+            .arg("x")
+            .arg(archive)
+            .current_dir(&sub_dir)
+            .status()
+            .unwrap_or_else(|e| panic!("Failed to run ar x on {}: {e}", archive.display()));
+
+        if !status.success() {
+            panic!("feff10-sys: ar x failed for {}", archive.display());
+        }
+
+        // Collect all .o files from this extraction
+        for entry in fs::read_dir(&sub_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+            if path.extension().map_or(false, |ext| ext == "o") {
+                all_objects.push(path);
+            }
+        }
     }
+
+    eprintln!(
+        "feff10-sys: merging {} object files from {} archives (ar extract method)",
+        all_objects.len(),
+        all_archives.len()
+    );
+
+    // Create new archive with all objects
+    let _ = fs::remove_file(final_archive);
+    let mut cmd = Command::new("ar");
+    cmd.arg("rcs").arg(final_archive);
+    for obj in &all_objects {
+        cmd.arg(obj);
+    }
+
+    let status = cmd.status().expect("Failed to run ar rcs for merged archive");
+    if !status.success() {
+        panic!("feff10-sys: ar rcs failed for merged archive");
+    }
+
+    // Clean up temp directory
+    let _ = fs::remove_dir_all(&temp_dir);
 }
 
 /// Emit cargo link directives for the Fortran runtime.
 ///
-/// On Linux, the Fortran runtime is merged into libfeff10.a (no dynamic linking needed).
-/// On macOS/Windows, gfortran runtime is linked dynamically.
+/// The Fortran runtime is merged into libfeff10.a on all platforms,
+/// so no dynamic runtime linking is needed.
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
-        if cfg!(target_os = "linux") {
-            // On Linux, libgfortran is merged into libfeff10.a
-            eprintln!("feff10-sys: gfortran runtime merged into archive (Linux)");
-        } else {
-            // On macOS/Windows, link gfortran dynamically.
-            // For Python wheels, delocate/delvewheel bundles the dylibs.
-            println!("cargo:rustc-link-lib=gfortran");
-            eprintln!("feff10-sys: linking gfortran runtime dynamically");
-        }
+        eprintln!("feff10-sys: gfortran runtime merged into archive");
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
-        // Intel runtime is merged into the archive on Linux.
-        if cfg!(target_os = "linux") {
-            eprintln!("feff10-sys: Intel runtime merged into archive");
-        }
+        eprintln!("feff10-sys: Intel runtime merged into archive");
     } else if compiler.contains("flang") {
         // LLVM Flang runtime — name changed from FortranRuntime (LLVM ≤20)
         // to flang_rt.runtime (LLVM ≥21)

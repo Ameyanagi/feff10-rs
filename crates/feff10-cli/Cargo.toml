@@ -18,8 +18,8 @@ path = "src/main.rs"
 prebuilt = ["feff10/prebuilt"]
 
 [dependencies]
-feff10 = { path = "../feff10", version = "0.1.2" }
-feff10-sys = { path = "../feff10-sys", version = "0.1.2" }
+feff10 = { path = "../feff10", version = "0.1.3" }
+feff10-sys = { path = "../feff10-sys", version = "0.1.3" }
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
 serde = { version = "1", features = ["derive"] }
