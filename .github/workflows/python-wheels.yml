@@ -77,13 +77,27 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install gcc
-          # Find gfortran library directory and add to LIBRARY_PATH
+          # Find gfortran binary
           GFORTRAN=$(ls /usr/local/bin/gfortran-* 2>/dev/null | head -1 || \
                      ls /opt/homebrew/bin/gfortran-* 2>/dev/null | head -1 || \
                      which gfortran)
-          GFORTRAN_LIB=$("$GFORTRAN" -print-file-name=libgfortran.dylib | xargs dirname)
-          echo "LIBRARY_PATH=$GFORTRAN_LIB" >> "$GITHUB_ENV"
-          echo "Using gfortran lib dir: $GFORTRAN_LIB"
+          echo "Found gfortran: $GFORTRAN"
+          # Use libgfortran.a (always exists) to find library directory
+          GFORTRAN_LIB=$("$GFORTRAN" -print-file-name=libgfortran.a)
+          if [ -f "$GFORTRAN_LIB" ]; then
+            GFORTRAN_LIB_DIR=$(dirname "$GFORTRAN_LIB")
+          else
+            # Fallback: search common Homebrew paths
+            for d in /opt/homebrew/lib/gcc/current /usr/local/lib/gcc/current; do
+              if [ -d "$d" ]; then
+                GFORTRAN_LIB_DIR="$d"
+                break
+              fi
+            done
+          fi
+          echo "LIBRARY_PATH=$GFORTRAN_LIB_DIR" >> "$GITHUB_ENV"
+          echo "Using gfortran lib dir: $GFORTRAN_LIB_DIR"
+          ls "$GFORTRAN_LIB_DIR"/libgfortran* || true
 
       # Windows: install MSYS2 gfortran for dynamic linking
       - name: Install MSYS2 and gfortran (Windows)
@@ -125,32 +139,8 @@ jobs:
           path: crates/feff10-python/dist/*.whl
           if-no-files-found: error
 
-  # Build source distribution
-  build-sdist:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Build sdist
-        uses: PyO3/maturin-action@v1
-        with:
-          command: sdist
-          args: --out dist
-          working-directory: crates/feff10-python
-
-      - name: Upload sdist
-        uses: actions/upload-artifact@v4
-        with:
-          name: sdist
-          path: crates/feff10-python/dist/*.tar.gz
-          if-no-files-found: error
-
   publish:
-    needs: [build-wheels, build-sdist]
+    needs: [build-wheels]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
@@ -160,7 +150,7 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: '{wheel-*,sdist}'
+          pattern: 'wheel-*'
           merge-multiple: true
           path: dist
 
