@@ -377,13 +377,6 @@ fn link_prebuilt() {
     if target_os == "linux" {
         println!("cargo:rustc-link-lib=dl");
     }
-    // Windows: merged archive's gfortran objects bring pthread symbols that
-    // conflict with Rust's own pthread linking. Also need advapi32 for
-    // GetUserNameA (used by mingwex's getlogin).
-    if target_os == "windows" {
-        println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
-        println!("cargo:rustc-link-lib=advapi32");
-    }
 
     // Metadata for dependent crates
     println!("cargo:FC=prebuilt");
@@ -917,20 +910,23 @@ fn merge_archives_macos(raw_archive: &Path, combined_o: &Path, extra_libs: &[Pat
     }
 }
 
-/// Windows: GNU ld with `--whole-archive` and `--allow-multiple-definition`
-/// to resolve duplicate `pthread_create` symbols from libgfortran.
+/// Windows: GNU ld with `--whole-archive` for FEFF objects, but only
+/// demand-loading for gfortran runtime (via `--start-group`/`--end-group`).
+/// This avoids pulling in pthread-heavy objects from libgfortran.a that would
+/// conflict with Rust's own pthread linking on Windows (mingw).
 fn merge_archives_windows(raw_archive: &Path, combined_o: &Path, extra_libs: &[PathBuf]) {
     let mut cmd = Command::new("ld");
-    cmd.arg("-r").arg("--whole-archive").arg(raw_archive);
+    cmd.arg("-r")
+        .arg("--whole-archive")
+        .arg(raw_archive)
+        .arg("--no-whole-archive")
+        .arg("--start-group");
 
     for lib in extra_libs {
         cmd.arg(lib);
     }
 
-    cmd.arg("--no-whole-archive")
-        .arg("--allow-multiple-definition")
-        .arg("-o")
-        .arg(combined_o);
+    cmd.arg("--end-group").arg("-o").arg(combined_o);
 
     eprintln!("feff10-sys: running ld -r to merge archives (Windows)");
     let status = cmd.status().expect("Failed to run ld for archive merge");
@@ -946,14 +942,6 @@ fn merge_archives_windows(raw_archive: &Path, combined_o: &Path, extra_libs: &[P
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
         eprintln!("feff10-sys: gfortran runtime merged into archive");
-        // Windows: the merged archive's gfortran objects reference pthread symbols
-        // which conflict with Rust's own -lpthread / -l:libpthread.a linking.
-        // Pass --allow-multiple-definition to the final linker to resolve this.
-        // Also link advapi32 for GetUserNameA (needed by mingwex's getlogin).
-        if cfg!(target_os = "windows") {
-            println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
-            println!("cargo:rustc-link-lib=advapi32");
-        }
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
         if cfg!(target_os = "linux") {
             eprintln!("feff10-sys: Intel runtime merged into archive");
