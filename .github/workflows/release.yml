@@ -403,7 +403,7 @@ jobs:
 
   # --- macOS Intel ---
   build-macos-x86_64:
-    runs-on: macos-13
+    runs-on: macos-15-intel
     timeout-minutes: 60
 
     steps:
@@ -683,7 +683,7 @@ jobs:
 
   smoke-test-macos-x86_64:
     needs: build-macos-x86_64
-    runs-on: macos-13
+    runs-on: macos-15-intel
     timeout-minutes: 10
 
     steps:
