@@ -317,6 +317,14 @@ jobs:
         shell: msys2 {0}
         run: |
           cp target/x86_64-pc-windows-gnu/release/feff10-rs.exe feff10-windows-x86_64.exe
+          # Bundle required MinGW DLLs (gfortran linked dynamically on Windows)
+          for dll in libgfortran-5.dll libquadmath-0.dll libgcc_s_seh-1.dll libwinpthread-1.dll; do
+            src=$(find /mingw64/bin -name "$dll" -print -quit)
+            if [ -n "$src" ]; then
+              cp "$src" .
+              echo "Bundled: $dll"
+            fi
+          done
           libfeff10=$(find target/x86_64-pc-windows-gnu/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit)
           cp "$libfeff10" libfeff10-windows-x86_64.a
 
@@ -327,6 +335,10 @@ jobs:
           path: |
             feff10-windows-x86_64.exe
             libfeff10-windows-x86_64.a
+            libgfortran-5.dll
+            libquadmath-0.dll
+            libgcc_s_seh-1.dll
+            libwinpthread-1.dll
           if-no-files-found: error
 
   # --- Linux ARM64 ---
@@ -624,6 +636,8 @@ jobs:
       - name: Run CLI smoke tests
         shell: bash
         run: |
+          # DLLs are in the same directory as the exe
+          export PATH="$(pwd):$PATH"
           BIN=./feff10-windows-x86_64.exe
           echo "=== version ==="
           $BIN --version
@@ -745,7 +759,7 @@ jobs:
       - name: Generate checksums
         run: |
           cd artifacts
-          sha256sum feff10-* libfeff10-* feff10.h > sha256sums.txt
+          sha256sum feff10-* lib* feff10.h > sha256sums.txt
           echo "=== SHA256 Checksums ==="
           cat sha256sums.txt
 
@@ -835,6 +849,10 @@ jobs:
             artifacts/feff10-macos-arm64
             artifacts/feff10-macos-x86_64
             artifacts/feff10-windows-x86_64.exe
+            artifacts/libgfortran-5.dll
+            artifacts/libquadmath-0.dll
+            artifacts/libgcc_s_seh-1.dll
+            artifacts/libwinpthread-1.dll
             artifacts/libfeff10-linux-x86_64.a
             artifacts/libfeff10-linux-x86_64-compact.a
             artifacts/libfeff10-linux-aarch64.a

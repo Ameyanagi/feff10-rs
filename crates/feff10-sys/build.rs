@@ -153,12 +153,14 @@ fn main() {
     }
 
     // Merge libgfortran and libquadmath into the archive so the resulting
-    // libfeff10.a is self-contained on all platforms. Platform-specific linker
+    // libfeff10.a is self-contained (Linux + macOS). Platform-specific linker
     // strategies handle circular dependencies in libgfortran.a:
     // - Linux: ld -r --whole-archive + --start-group/--end-group
     // - macOS: ld -r -arch <arch> -force_load (resolves circular deps)
-    // - Windows: ld -r --whole-archive + --allow-multiple-definition
-    if compiler.contains("gfortran") {
+    // Windows is excluded: Rust's windows-gnu target links both -lpthread (dll)
+    // and -l:libpthread.a (static), causing multiple-definition errors when
+    // gfortran objects referencing pthread are merged into the archive.
+    if compiler.contains("gfortran") && !cfg!(target_os = "windows") {
         // libgfortran.a + libquadmath.a are the core Fortran runtime.
         // macOS additionally needs:
         //   libgcc_eh.a — provides __emutls_get_address (GCC emulated TLS)
@@ -368,8 +370,11 @@ fn link_prebuilt() {
     println!("cargo:rustc-link-search=native={lib_dir}");
     println!("cargo:rustc-link-lib=static=feff10");
 
-    // All platforms: Fortran runtime + BLAS merged into libfeff10.a — self-contained.
-    // No dynamic gfortran linking needed.
+    // Linux/macOS: Fortran runtime merged into libfeff10.a — self-contained.
+    // Windows: gfortran linked dynamically (pthread conflicts prevent static merge).
+    if target_os == "windows" {
+        println!("cargo:rustc-link-lib=gfortran");
+    }
 
     // Common system libraries
     println!("cargo:rustc-link-lib=pthread");
@@ -937,11 +942,17 @@ fn merge_archives_windows(raw_archive: &Path, combined_o: &Path, extra_libs: &[P
 
 /// Emit cargo link directives for the Fortran runtime.
 ///
-/// The Fortran runtime is merged into libfeff10.a on all platforms,
-/// so no dynamic linking is needed for gfortran or Intel runtimes.
+/// On Linux and macOS, the gfortran runtime is merged into libfeff10.a.
+/// On Windows, it's linked dynamically (due to pthread conflicts with mingw).
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
-        eprintln!("feff10-sys: gfortran runtime merged into archive");
+        if cfg!(target_os = "windows") {
+            // Windows: dynamic gfortran (static merge causes pthread conflicts)
+            eprintln!("feff10-sys: linking gfortran dynamically (Windows)");
+            println!("cargo:rustc-link-lib=gfortran");
+        } else {
+            eprintln!("feff10-sys: gfortran runtime merged into archive");
+        }
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
         if cfg!(target_os = "linux") {
             eprintln!("feff10-sys: Intel runtime merged into archive");

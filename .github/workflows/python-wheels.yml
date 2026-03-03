@@ -72,6 +72,23 @@ jobs:
           # Rename to the canonical name expected by build.rs
           cp "prebuilt/${{ matrix.asset }}" prebuilt/libfeff10.a
 
+      # Windows: gfortran runtime is linked dynamically (not merged into .a)
+      - name: Install MSYS2 and gfortran (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: false
+          install: mingw-w64-x86_64-gcc-fortran
+
+      - name: Set library paths (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          LIB_DIR=$(dirname "$(gfortran -print-file-name=libgfortran.a)")
+          echo "LIB_DIR=$LIB_DIR"
+          echo "LIBRARY_PATH=$LIB_DIR" >> "$GITHUB_ENV"
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -85,6 +102,15 @@ jobs:
           args: --release --out dist --features prebuilt
           manylinux: ${{ matrix.manylinux || 'auto' }}
           working-directory: crates/feff10-python
+
+      - name: Repair wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          pip install delvewheel
+          for whl in crates/feff10-python/dist/*.whl; do
+            delvewheel repair "$whl" --wheel-dir crates/feff10-python/dist/ --no-mangle-all
+          done
 
       - name: List wheels
         shell: bash
