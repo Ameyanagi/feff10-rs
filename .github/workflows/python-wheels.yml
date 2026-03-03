@@ -77,23 +77,21 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           brew install gcc
-          # Find gfortran binary
-          GFORTRAN=$(ls /usr/local/bin/gfortran-* 2>/dev/null | head -1 || \
-                     ls /opt/homebrew/bin/gfortran-* 2>/dev/null | head -1 || \
-                     which gfortran)
+          GCC_PREFIX=$(brew --prefix gcc)
+          echo "GCC prefix: $GCC_PREFIX"
+          # Find gfortran binary from brew prefix
+          GFORTRAN=$(ls "$GCC_PREFIX/bin/gfortran-"* 2>/dev/null | head -1)
+          if [ -z "$GFORTRAN" ]; then
+            echo "ERROR: gfortran not found in $GCC_PREFIX/bin/"
+            ls "$GCC_PREFIX/bin/" || true
+            exit 1
+          fi
           echo "Found gfortran: $GFORTRAN"
-          # Use libgfortran.a (always exists) to find library directory
-          GFORTRAN_LIB=$("$GFORTRAN" -print-file-name=libgfortran.a)
-          if [ -f "$GFORTRAN_LIB" ]; then
-            GFORTRAN_LIB_DIR=$(dirname "$GFORTRAN_LIB")
-          else
-            # Fallback: search common Homebrew paths
-            for d in /opt/homebrew/lib/gcc/current /usr/local/lib/gcc/current; do
-              if [ -d "$d" ]; then
-                GFORTRAN_LIB_DIR="$d"
-                break
-              fi
-            done
+          # Find library directory
+          GFORTRAN_LIB_DIR=$("$GFORTRAN" -print-file-name=libgfortran.a | xargs dirname)
+          if [ ! -d "$GFORTRAN_LIB_DIR" ] || [ "$GFORTRAN_LIB_DIR" = "." ]; then
+            # Fallback: use lib/gcc/current under brew prefix
+            GFORTRAN_LIB_DIR="$GCC_PREFIX/lib/gcc/current"
           fi
           echo "LIBRARY_PATH=$GFORTRAN_LIB_DIR" >> "$GITHUB_ENV"
           echo "Using gfortran lib dir: $GFORTRAN_LIB_DIR"
