@@ -160,10 +160,17 @@ fn main() {
     // - Windows: ld -r --whole-archive + --allow-multiple-definition
     if compiler.contains("gfortran") {
         // libgfortran.a + libquadmath.a are the core Fortran runtime.
-        // libgcc_eh.a provides __emutls_get_address (GCC emulated TLS), needed on macOS.
+        // macOS additionally needs:
+        //   libgcc_eh.a — provides __emutls_get_address (GCC emulated TLS)
+        //   libgcc.a (x86_64 only) — provides ___cpu_model for CPU feature dispatch
+        //     in gfortran's matmul (AVX/SSE paths); not needed on ARM64.
         let mut libs: Vec<&str> = vec!["libgfortran.a", "libquadmath.a"];
         if cfg!(target_os = "macos") {
             libs.push("libgcc_eh.a");
+            let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
+            if target_arch == "x86_64" {
+                libs.push("libgcc.a");
+            }
         }
         for lib_name in libs {
             if let Some(path) = find_gfortran_static_lib(&compiler, lib_name) {
@@ -369,6 +376,13 @@ fn link_prebuilt() {
     println!("cargo:rustc-link-lib=m");
     if target_os == "linux" {
         println!("cargo:rustc-link-lib=dl");
+    }
+    // Windows: merged archive's gfortran objects bring pthread symbols that
+    // conflict with Rust's own pthread linking. Also need advapi32 for
+    // GetUserNameA (used by mingwex's getlogin).
+    if target_os == "windows" {
+        println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
+        println!("cargo:rustc-link-lib=advapi32");
     }
 
     // Metadata for dependent crates
@@ -932,6 +946,14 @@ fn merge_archives_windows(raw_archive: &Path, combined_o: &Path, extra_libs: &[P
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
         eprintln!("feff10-sys: gfortran runtime merged into archive");
+        // Windows: the merged archive's gfortran objects reference pthread symbols
+        // which conflict with Rust's own -lpthread / -l:libpthread.a linking.
+        // Pass --allow-multiple-definition to the final linker to resolve this.
+        // Also link advapi32 for GetUserNameA (needed by mingwex's getlogin).
+        if cfg!(target_os = "windows") {
+            println!("cargo:rustc-link-arg=-Wl,--allow-multiple-definition");
+            println!("cargo:rustc-link-lib=advapi32");
+        }
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
         if cfg!(target_os = "linux") {
             eprintln!("feff10-sys: Intel runtime merged into archive");
