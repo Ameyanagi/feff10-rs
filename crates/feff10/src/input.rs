@@ -305,9 +305,7 @@ impl FeffInput {
         } else {
             // 2. Absorber potential (ipot=0) must exist
             if !self.potentials.iter().any(|p| p.ipot == 0) {
-                errors.push(
-                    "no absorber potential (ipot=0) defined in POTENTIALS".to_string(),
-                );
+                errors.push("no absorber potential (ipot=0) defined in POTENTIALS".to_string());
             }
 
             // 5. No duplicate ipot values
@@ -349,9 +347,7 @@ impl FeffInput {
             if self.potentials.iter().any(|p| p.ipot == 0)
                 && !self.atoms.iter().any(|a| a.ipot == 0)
             {
-                errors.push(
-                    "no atom with ipot=0 (absorber) found in ATOMS list".to_string(),
-                );
+                errors.push("no atom with ipot=0 (absorber) found in ATOMS list".to_string());
             }
         }
 

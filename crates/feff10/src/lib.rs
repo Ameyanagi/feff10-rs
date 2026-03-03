@@ -51,10 +51,7 @@ pub fn run(
 /// let result = feff10::run_input(inp, "./work")?;
 /// # Ok::<(), feff10::Error>(())
 /// ```
-pub fn run_input(
-    input: FeffInput,
-    work_dir: impl Into<PathBuf>,
-) -> Result<PipelineResult, Error> {
+pub fn run_input(input: FeffInput, work_dir: impl Into<PathBuf>) -> Result<PipelineResult, Error> {
     input.validate()?;
     let config = FeffConfigBuilder::new()
         .work_dir(work_dir.into())
@@ -75,10 +72,7 @@ pub fn run_input(
 /// let result = feff10::run_str(&content, "./work")?;
 /// # Ok::<(), feff10::Error>(())
 /// ```
-pub fn run_str(
-    content: &str,
-    work_dir: impl Into<PathBuf>,
-) -> Result<PipelineResult, Error> {
+pub fn run_str(content: &str, work_dir: impl Into<PathBuf>) -> Result<PipelineResult, Error> {
     let input = FeffInput::parse(content)?;
     run_input(input, work_dir)
 }

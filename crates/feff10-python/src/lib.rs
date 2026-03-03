@@ -49,7 +49,11 @@ fn resolve_input(input: &Bound<'_, PyAny>) -> PyResult<FeffInput> {
 ///     FeffPipelineError: If a FEFF stage fails during execution.
 #[pyfunction]
 #[pyo3(signature = (input, work_dir))]
-fn run(py: Python<'_>, input: &Bound<'_, PyAny>, work_dir: &str) -> PyResult<pipeline::PyPipelineResult> {
+fn run(
+    py: Python<'_>,
+    input: &Bound<'_, PyAny>,
+    work_dir: &str,
+) -> PyResult<pipeline::PyPipelineResult> {
     let feff_input = resolve_input(input)?;
     let result = py.detach(|| feff10::run_input(feff_input, work_dir));
     pipeline::convert_result(result)
