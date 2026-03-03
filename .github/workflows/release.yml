@@ -329,6 +329,173 @@ jobs:
             libfeff10-windows-x86_64.a
           if-no-files-found: error
 
+  # --- Linux ARM64 ---
+  build-linux-aarch64:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install build dependencies
+        run: sudo apt-get update && sudo apt-get install -y gfortran make
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build
+        env:
+          FEFF_FC: gfortran
+          FEFF_NO_NATIVE: "1"
+        run: cargo build --release -p feff10-cli
+
+      - name: Test EXAFS/Cu
+        id: test-exafs-cu
+        run: |
+          target/release/feff10-rs run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
+          target/release/feff10-rs compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
+
+      - name: Test XANES/Cu
+        id: test-xanes-cu
+        run: |
+          target/release/feff10-rs run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
+          target/release/feff10-rs compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
+
+      - name: Test XANES/BN
+        id: test-xanes-bn
+        run: |
+          target/release/feff10-rs run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
+          target/release/feff10-rs compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "### Linux (gfortran, aarch64)" > test-report-linux-aarch64.md
+          echo "- EXAFS/Cu: ${{ steps.test-exafs-cu.outcome }}" >> test-report-linux-aarch64.md
+          echo "- XANES/Cu: ${{ steps.test-xanes-cu.outcome }}" >> test-report-linux-aarch64.md
+          echo "- XANES/BN: ${{ steps.test-xanes-bn.outcome }}" >> test-report-linux-aarch64.md
+          cat test-report-linux-aarch64.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-linux-aarch64
+          path: test-report-linux-aarch64.md
+
+      - name: Package
+        run: |
+          cp target/release/feff10-rs feff10-linux-aarch64
+          chmod +x feff10-linux-aarch64
+          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit)
+          cp "$libfeff10" libfeff10-linux-aarch64.a
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feff10-linux-aarch64
+          path: |
+            feff10-linux-aarch64
+            libfeff10-linux-aarch64.a
+          if-no-files-found: error
+
+  # --- macOS Intel ---
+  build-macos-x86_64:
+    runs-on: macos-13
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install gfortran
+        run: brew install gcc
+
+      - name: Find gfortran
+        id: fc
+        run: |
+          FC=$(ls /usr/local/bin/gfortran-* 2>/dev/null | head -1 || true)
+          if [ -z "$FC" ]; then
+            FC=$(which gfortran 2>/dev/null || true)
+          fi
+          if [ -z "$FC" ]; then
+            echo "ERROR: gfortran not found"
+            exit 1
+          fi
+          echo "fc=$FC" >> "$GITHUB_OUTPUT"
+          echo "Found Fortran compiler: $FC"
+
+      - name: Build
+        env:
+          FEFF_FC: ${{ steps.fc.outputs.fc }}
+          FEFF_NO_NATIVE: "1"
+        run: |
+          FC_DIR=$(dirname "${{ steps.fc.outputs.fc }}")
+          LIB_DIR=$(cd "$FC_DIR/../lib/gcc/current" 2>/dev/null && pwd || echo "")
+          if [ -z "$LIB_DIR" ]; then
+            LIB_DIR=$("${{ steps.fc.outputs.fc }}" -print-file-name=libgfortran.dylib | xargs dirname)
+          fi
+          echo "LIBRARY_PATH=$LIB_DIR" >> "$GITHUB_ENV"
+          export LIBRARY_PATH="$LIB_DIR"
+          echo "Using LIBRARY_PATH=$LIB_DIR"
+          cargo build --release -p feff10-cli
+
+      - name: Test EXAFS/Cu
+        id: test-exafs-cu
+        run: |
+          target/release/feff10-rs run feff10/examples/EXAFS/Cu -w /tmp/test-exafs-cu
+          target/release/feff10-rs compare /tmp/test-exafs-cu/xmu.dat feff10/examples/EXAFS/Cu/referencexmu.dat
+
+      - name: Test XANES/Cu
+        id: test-xanes-cu
+        run: |
+          target/release/feff10-rs run feff10/examples/XANES/Cu -w /tmp/test-xanes-cu
+          target/release/feff10-rs compare /tmp/test-xanes-cu/xmu.dat feff10/examples/XANES/Cu/referencexmu.dat
+
+      - name: Test XANES/BN
+        id: test-xanes-bn
+        run: |
+          target/release/feff10-rs run feff10/examples/XANES/BN -w /tmp/test-xanes-bn
+          target/release/feff10-rs compare /tmp/test-xanes-bn/xmu.dat feff10/examples/XANES/BN/referencexmu.dat
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "### macOS (gfortran, x86_64)" > test-report-macos-x86_64.md
+          echo "- EXAFS/Cu: ${{ steps.test-exafs-cu.outcome }}" >> test-report-macos-x86_64.md
+          echo "- XANES/Cu: ${{ steps.test-xanes-cu.outcome }}" >> test-report-macos-x86_64.md
+          echo "- XANES/BN: ${{ steps.test-xanes-bn.outcome }}" >> test-report-macos-x86_64.md
+          cat test-report-macos-x86_64.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-report-macos-x86_64
+          path: test-report-macos-x86_64.md
+
+      - name: Package
+        run: |
+          cp target/release/feff10-rs feff10-macos-x86_64
+          chmod +x feff10-macos-x86_64
+          libfeff10=$(find target/release/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit)
+          cp "$libfeff10" libfeff10-macos-x86_64.a
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: feff10-macos-x86_64
+          path: |
+            feff10-macos-x86_64
+            libfeff10-macos-x86_64.a
+          if-no-files-found: error
+
   # ============================================================
   # Smoke tests: download packaged artifacts and run on clean
   # runners (no Fortran compiler, no Rust, no build deps).
@@ -478,16 +645,90 @@ jobs:
           echo "=== All smoke tests passed ==="
           # Note: 'run' subcommand skipped on Windows (no fork() for Fortran isolation)
 
+  smoke-test-linux-aarch64:
+    needs: build-linux-aarch64
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 10
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: feff10-linux-aarch64
+
+      - name: Run CLI smoke tests
+        run: |
+          chmod +x feff10-linux-aarch64
+          BIN=./feff10-linux-aarch64
+          echo "=== version ==="
+          $BIN --version
+          echo "=== stages ==="
+          $BIN stages
+          echo "=== examples (list) ==="
+          $BIN examples
+          echo "=== examples (JSON) ==="
+          $BIN --json examples
+          echo "=== examples (copy) ==="
+          $BIN examples exafs-cu -o /tmp/smoke-example
+          test -f /tmp/smoke-example/feff.inp
+          echo "=== validate ==="
+          $BIN validate /tmp/smoke-example/feff.inp
+          echo "=== init (non-interactive) ==="
+          $BIN init -t exafs --edge K --element Cu -o /tmp/smoke-init/feff.inp
+          test -f /tmp/smoke-init/feff.inp
+          $BIN validate /tmp/smoke-init/feff.inp
+          echo "=== run (EXAFS Cu from bundled example) ==="
+          $BIN run /tmp/smoke-example -w /tmp/smoke-run
+          echo "=== All smoke tests passed ==="
+
+  smoke-test-macos-x86_64:
+    needs: build-macos-x86_64
+    runs-on: macos-13
+    timeout-minutes: 10
+
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: feff10-macos-x86_64
+
+      - name: Run CLI smoke tests
+        run: |
+          chmod +x feff10-macos-x86_64
+          BIN=./feff10-macos-x86_64
+          echo "=== version ==="
+          $BIN --version
+          echo "=== stages ==="
+          $BIN stages
+          echo "=== examples (list) ==="
+          $BIN examples
+          echo "=== examples (JSON) ==="
+          $BIN --json examples
+          echo "=== examples (copy) ==="
+          $BIN examples exafs-cu -o /tmp/smoke-example
+          test -f /tmp/smoke-example/feff.inp
+          echo "=== validate ==="
+          $BIN validate /tmp/smoke-example/feff.inp
+          echo "=== init (non-interactive) ==="
+          $BIN init -t exafs --edge K --element Cu -o /tmp/smoke-init/feff.inp
+          test -f /tmp/smoke-init/feff.inp
+          $BIN validate /tmp/smoke-init/feff.inp
+          echo "=== run (EXAFS Cu from bundled example) ==="
+          $BIN run /tmp/smoke-example -w /tmp/smoke-run
+          echo "=== All smoke tests passed ==="
+
   # ============================================================
   # Create GitHub Release
   # ============================================================
 
   release:
-    needs: [build-linux, build-linux-compact, build-macos, build-windows, smoke-test-linux, smoke-test-linux-compact, smoke-test-macos, smoke-test-windows]
+    needs: [build-linux, build-linux-compact, build-linux-aarch64, build-macos, build-macos-x86_64, build-windows, smoke-test-linux, smoke-test-linux-compact, smoke-test-linux-aarch64, smoke-test-macos, smoke-test-macos-x86_64, smoke-test-windows]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     permissions:
       contents: write
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
 
     steps:
       - uses: actions/checkout@v4
@@ -590,11 +831,15 @@ jobs:
           files: |
             artifacts/feff10-linux-x86_64
             artifacts/feff10-linux-x86_64-compact
+            artifacts/feff10-linux-aarch64
             artifacts/feff10-macos-arm64
+            artifacts/feff10-macos-x86_64
             artifacts/feff10-windows-x86_64.exe
             artifacts/libfeff10-linux-x86_64.a
             artifacts/libfeff10-linux-x86_64-compact.a
+            artifacts/libfeff10-linux-aarch64.a
             artifacts/libfeff10-macos-arm64.a
+            artifacts/libfeff10-macos-x86_64.a
             artifacts/libfeff10-windows-x86_64.a
             artifacts/feff10.h
             artifacts/sha256sums.txt
@@ -607,3 +852,13 @@ jobs:
       dry-run: false
     secrets:
       CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+
+  publish-python:
+    needs: [release]
+    if: startsWith(github.ref, 'refs/tags/v')
+    uses: ./.github/workflows/python-wheels.yml
+    with:
+      tag: ${{ needs.release.outputs.tag }}
+    permissions:
+      contents: read
+      id-token: write

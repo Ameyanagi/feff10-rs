@@ -112,6 +112,7 @@ fn main() {
 
     // 8. Run `make objects`
     run_make_objects(&build_src, &compiler, &flags);
+    compile_parallel_runtime(&build_src, &compiler, &flags);
 
     // 9. Collect all .o files and create libfeff10_raw.a
     let raw_archive = out_dir.join("libfeff10_raw.a");
@@ -151,10 +152,10 @@ fn main() {
         }
     }
 
-    // For gfortran on Linux, merge libgfortran and libquadmath into the archive
-    // so that rust-lld (default since Rust 1.86) can resolve Fortran runtime symbols
-    // without needing gcc as the linker.
-    if compiler.contains("gfortran") && cfg!(target_os = "linux") {
+    // Merge libgfortran and libquadmath into the archive so the resulting
+    // libfeff10.a is self-contained (no external Fortran runtime needed).
+    // On Linux this also ensures compatibility with rust-lld (default since Rust 1.86).
+    if compiler.contains("gfortran") {
         for lib_name in ["libgfortran.a", "libquadmath.a"] {
             if let Some(path) = find_gfortran_static_lib(&compiler, lib_name) {
                 eprintln!("feff10-sys: will merge {}", path.display());
@@ -165,7 +166,7 @@ fn main() {
         }
     }
 
-    if !merge_libs.is_empty() && cfg!(target_os = "linux") {
+    if !merge_libs.is_empty() {
         eprintln!(
             "feff10-sys: merging {} external archives into libfeff10.a",
             merge_libs.len()
@@ -187,11 +188,11 @@ fn main() {
 
     // BLAS (only if NOT merged into the archive)
     match &blas_type {
-        BlasType::Mkl { .. } if cfg!(target_os = "linux") => {
-            // Already merged into libfeff10.a via ld -r
+        BlasType::Mkl { .. } if !merge_libs.is_empty() => {
+            // Already merged into libfeff10.a
         }
         BlasType::Mkl { lib_dir, interface } => {
-            // macOS or other: can't merge, link separately
+            // Not merged — link separately
             println!("cargo:rustc-link-search=native={}", lib_dir.display());
             println!("cargo:rustc-link-lib=static={interface}");
             println!("cargo:rustc-link-lib=static=mkl_sequential");
@@ -320,12 +321,12 @@ fn main() {
 /// 1. `FEFF10_LIB_DIR` env var → use libfeff10.a from that directory
 /// 2. Auto-download from GitHub releases into OUT_DIR
 ///
-/// The release archives already bundle all dependencies:
-/// - Linux (ifx+MKL): MKL and Intel runtime merged into libfeff10.a
-/// - macOS (gfortran): needs libgfortran + Accelerate at link time
-/// - Windows (gfortran): needs libgfortran at link time
+/// Release archives are fully self-contained on all platforms:
+/// Fortran runtime (libgfortran/Intel) and BLAS (MKL/bundled) are merged
+/// into the archive. Only system libraries (libc, libm, libpthread) are needed.
 fn link_prebuilt() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
 
     let lib_dir = if let Ok(dir) = env::var("FEFF10_LIB_DIR") {
         let lib_path = Path::new(&dir).join("libfeff10.a");
@@ -351,25 +352,11 @@ fn link_prebuilt() {
     println!("cargo:rustc-link-search=native={lib_dir}");
     println!("cargo:rustc-link-lib=static=feff10");
 
-    // Platform-specific runtime linking
-    if cfg!(target_os = "linux") {
-        // Linux release has MKL + Intel runtime merged — only system libs needed
-    } else if cfg!(target_os = "macos") {
-        // macOS release uses gfortran + Accelerate
-        if let Some(rt_dir) = find_gfortran_runtime_dir("gfortran") {
-            println!("cargo:rustc-link-search=native={}", rt_dir.display());
-        }
-        println!("cargo:rustc-link-lib=gfortran");
-        println!("cargo:rustc-link-lib=framework=Accelerate");
-    } else if cfg!(target_os = "windows") {
-        // Windows release uses gfortran
-        println!("cargo:rustc-link-lib=gfortran");
-    }
-
-    // Common system libraries
+    // All Fortran runtime and BLAS symbols are merged into libfeff10.a.
+    // Only system libraries are needed at link time.
     println!("cargo:rustc-link-lib=pthread");
     println!("cargo:rustc-link-lib=m");
-    if cfg!(target_os = "linux") {
+    if target_os == "linux" {
         println!("cargo:rustc-link-lib=dl");
     }
 
@@ -383,18 +370,22 @@ fn link_prebuilt() {
     println!("cargo:rerun-if-env-changed=FEFF10_LIB_SHA256");
 }
 
-/// Download the prebuilt libfeff10.a for the current platform from GitHub releases.
+/// Download the prebuilt libfeff10.a for the target platform from GitHub releases.
 fn download_prebuilt(out_dir: &Path) {
     let dest = out_dir.join("libfeff10.a");
     let version = env::var("CARGO_PKG_VERSION").unwrap();
-    let asset_name = if cfg!(target_os = "linux") {
-        "libfeff10-linux-x86_64.a"
-    } else if cfg!(target_os = "macos") {
-        "libfeff10-macos-arm64.a"
-    } else if cfg!(target_os = "windows") {
-        "libfeff10-windows-x86_64.a"
-    } else {
-        panic!("feff10-sys: unsupported platform for prebuilt binaries");
+    // Use CARGO_CFG_TARGET_* (reflects cross-compilation target, not host)
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap();
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap();
+    let asset_name = match (target_os.as_str(), target_arch.as_str()) {
+        ("linux", "x86_64") => "libfeff10-linux-x86_64.a",
+        ("linux", "aarch64") => "libfeff10-linux-aarch64.a",
+        ("macos", "x86_64") => "libfeff10-macos-x86_64.a",
+        ("macos", "aarch64") => "libfeff10-macos-arm64.a",
+        ("windows", "x86_64") => "libfeff10-windows-x86_64.a",
+        _ => panic!(
+            "feff10-sys: unsupported platform for prebuilt binaries: {target_os}-{target_arch}"
+        ),
     };
 
     let expected_hash = expected_prebuilt_sha256(&version, asset_name);
@@ -732,6 +723,31 @@ fn run_make_objects(build_src: &Path, compiler: &str, flags: &str) {
     }
 }
 
+/// Compile PAR/parallel.f90 explicitly.
+///
+/// `PAR/parallel.f90` is synthesized during the build from `PAR/sequential.src`,
+/// so pre-generated dependency makefiles may not include `PAR/parallel.o` in
+/// `make objects`. Compile it here to guarantee `par_*` symbols are archived.
+fn compile_parallel_runtime(build_src: &Path, compiler: &str, flags: &str) {
+    let mut cmd = Command::new(compiler);
+    cmd.current_dir(build_src)
+        .arg("-c")
+        .arg("PAR/parallel.f90")
+        .arg("-o")
+        .arg("PAR/parallel.o");
+
+    for flag in flags.split_whitespace() {
+        cmd.arg(flag);
+    }
+
+    let status = cmd
+        .status()
+        .expect("Failed to compile PAR/parallel.f90");
+    if !status.success() {
+        panic!("feff10-sys: failed to compile PAR/parallel.f90");
+    }
+}
+
 /// Collect all .o files from the build tree and create a static archive.
 fn create_archive_from_objects(build_src: &Path, archive_path: &Path) {
     let objects = find_files_recursive(build_src, "o");
@@ -777,21 +793,36 @@ fn create_archive_from_objects(build_src: &Path, archive_path: &Path) {
     }
 }
 
-/// Merge the FEFF archive with external static libraries (MKL, Intel runtime)
-/// using `ld -r` (partial/incremental linking) to resolve circular dependencies.
+/// Merge the FEFF archive with external static libraries (Fortran runtime, MKL, etc.)
+/// into a single self-contained archive.
 ///
-/// This produces a single relocatable object that contains:
-/// - ALL FEFF code (via --whole-archive)
-/// - Only the needed symbols from external libs (via --start-group)
+/// Platform strategies:
+/// - Linux/Windows (GNU ld): `ld -r --whole-archive` for partial linking
+/// - macOS (Apple toolchain): `libtool -static` for archive concatenation
 fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
-    let combined_o = final_archive.with_extension("o");
-
     // Verify all input archives exist
     for lib in extra_libs {
         if !lib.exists() {
             panic!("feff10-sys: library not found for merge: {}", lib.display());
         }
     }
+
+    if cfg!(target_os = "macos") {
+        merge_archives_macos(raw_archive, final_archive, extra_libs);
+    } else {
+        merge_archives_gnu_ld(raw_archive, final_archive, extra_libs);
+    }
+
+    // Report size
+    if let Ok(meta) = fs::metadata(final_archive) {
+        let size_mb = meta.len() as f64 / (1024.0 * 1024.0);
+        eprintln!("feff10-sys: final archive size: {:.1} MB", size_mb);
+    }
+}
+
+/// Merge archives using GNU ld -r (Linux and Windows/MSYS2).
+fn merge_archives_gnu_ld(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
+    let combined_o = final_archive.with_extension("o");
 
     let mut cmd = Command::new("ld");
     cmd.arg("-r")
@@ -827,50 +858,43 @@ fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBu
 
     // Clean up intermediate .o
     let _ = fs::remove_file(&combined_o);
+}
 
-    // Report size
-    if let Ok(meta) = fs::metadata(final_archive) {
-        let size_mb = meta.len() as f64 / (1024.0 * 1024.0);
-        eprintln!("feff10-sys: final archive size: {:.1} MB", size_mb);
+/// Merge archives using Apple's libtool -static (macOS).
+fn merge_archives_macos(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
+    let _ = fs::remove_file(final_archive);
+
+    let mut cmd = Command::new("libtool");
+    cmd.arg("-static")
+        .arg("-o")
+        .arg(final_archive)
+        .arg(raw_archive);
+
+    for lib in extra_libs {
+        cmd.arg(lib);
+    }
+
+    eprintln!("feff10-sys: running libtool -static to merge archives");
+    let status = cmd
+        .status()
+        .expect("Failed to run libtool for archive merge");
+    if !status.success() {
+        panic!("feff10-sys: libtool -static failed. Cannot merge archives.");
     }
 }
 
 /// Emit cargo link directives for the Fortran runtime.
+///
+/// Since the archive merge now runs on all platforms, the Fortran runtime
+/// (libgfortran/libquadmath or Intel ifcore/imf/svml/irc) is already
+/// included in libfeff10.a. No dynamic runtime linking is needed.
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
-        if cfg!(target_os = "linux") {
-            // On Linux, libgfortran is merged into libfeff10.a
-            // so we don't need to link it separately.
-            eprintln!("feff10-sys: gfortran runtime merged into archive (Linux)");
-        } else {
-            if let Some(lib_dir) = find_gfortran_runtime_dir(compiler) {
-                println!("cargo:rustc-link-search=native={}", lib_dir.display());
-                eprintln!(
-                    "feff10-sys: found gfortran runtime dir: {}",
-                    lib_dir.display()
-                );
-            } else {
-                eprintln!(
-                    "feff10-sys: warning: could not auto-detect gfortran runtime search path"
-                );
-            }
-            println!("cargo:rustc-link-lib=gfortran");
-        }
+        // libgfortran + libquadmath are merged into libfeff10.a on all platforms.
+        eprintln!("feff10-sys: gfortran runtime merged into archive");
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
-        // Intel runtime is merged into the archive on Linux.
-        // On other platforms, link dynamically.
-        if !cfg!(target_os = "linux") {
-            if let Some(compiler_dir) = Path::new(compiler).parent().and_then(|p| p.parent()) {
-                let lib_dir = compiler_dir.join("lib");
-                if lib_dir.is_dir() {
-                    println!("cargo:rustc-link-search=native={}", lib_dir.display());
-                }
-            }
-            println!("cargo:rustc-link-lib=ifcore");
-            println!("cargo:rustc-link-lib=imf");
-            println!("cargo:rustc-link-lib=svml");
-            println!("cargo:rustc-link-lib=irc");
-        }
+        // Intel runtime is merged into the archive.
+        eprintln!("feff10-sys: Intel runtime merged into archive");
     } else if compiler.contains("flang") {
         // LLVM Flang runtime — name changed from FortranRuntime (LLVM ≤20)
         // to flang_rt.runtime (LLVM ≥21)
@@ -886,34 +910,6 @@ fn emit_fortran_runtime_links(compiler: &str) {
         // Flang runtime is C++, needs libstdc++ or libc++
         println!("cargo:rustc-link-lib=stdc++");
     }
-}
-
-fn find_gfortran_runtime_dir(compiler: &str) -> Option<PathBuf> {
-    for lib_name in ["libgfortran.dylib", "libgfortran.so", "libgfortran.a"] {
-        let Ok(output) = Command::new(compiler)
-            .arg(format!("-print-file-name={lib_name}"))
-            .output()
-        else {
-            continue;
-        };
-        if !output.status.success() {
-            continue;
-        }
-
-        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if path.is_empty() || path == lib_name {
-            continue;
-        }
-
-        let candidate = PathBuf::from(path);
-        if candidate.exists()
-            && let Some(parent) = candidate.parent()
-        {
-            return Some(parent.to_path_buf());
-        }
-    }
-
-    None
 }
 
 /// Find a specific gfortran static library (e.g. libgfortran.a, libquadmath.a).

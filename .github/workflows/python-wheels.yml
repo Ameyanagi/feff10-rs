@@ -1,0 +1,145 @@
+name: Python Wheels
+
+on:
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Release tag to download prebuilt libraries from (e.g., v0.1.1)'
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to download prebuilt libraries from (e.g., v0.1.1)'
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-wheels:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: libfeff10-linux-x86_64.a
+            manylinux: auto
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
+            asset: libfeff10-linux-aarch64.a
+            manylinux: auto
+          - os: macos-13
+            target: x86_64-apple-darwin
+            asset: libfeff10-macos-x86_64.a
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset: libfeff10-macos-arm64.a
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: libfeff10-windows-x86_64.a
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Determine tag
+        id: tag
+        shell: bash
+        run: |
+          TAG="${{ inputs.tag }}"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Using release tag: $TAG"
+
+      - name: Download prebuilt library
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p prebuilt
+          gh release download "${{ steps.tag.outputs.tag }}" \
+            --pattern "${{ matrix.asset }}" \
+            --dir prebuilt
+          ls -la prebuilt/
+          # Rename to the canonical name expected by build.rs
+          cp "prebuilt/${{ matrix.asset }}" prebuilt/libfeff10.a
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Build wheel
+        uses: PyO3/maturin-action@v1
+        env:
+          FEFF10_LIB_DIR: ${{ github.workspace }}/prebuilt
+        with:
+          target: ${{ matrix.target }}
+          args: --release --out dist --features prebuilt
+          manylinux: ${{ matrix.manylinux || 'auto' }}
+          working-directory: crates/feff10-python
+
+      - name: List wheels
+        shell: bash
+        run: ls -la crates/feff10-python/dist/
+
+      - name: Upload wheel
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheel-${{ matrix.target }}
+          path: crates/feff10-python/dist/*.whl
+          if-no-files-found: error
+
+  # Build source distribution
+  build-sdist:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build sdist
+        uses: PyO3/maturin-action@v1
+        with:
+          command: sdist
+          args: --out dist
+          working-directory: crates/feff10-python
+
+      - name: Upload sdist
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: crates/feff10-python/dist/*.tar.gz
+          if-no-files-found: error
+
+  publish:
+    needs: [build-wheels, build-sdist]
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '{wheel-*,sdist}'
+          merge-multiple: true
+          path: dist
+
+      - name: List distributions
+        run: ls -la dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
