@@ -3,7 +3,7 @@ requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
 
 [project]
-name = "feff10"
+name = "feff10-rs"
 dynamic = ["version"]
 description = "Python bindings for FEFF10 X-ray absorption spectroscopy calculations"
 license = { text = "MIT OR Apache-2.0" }
