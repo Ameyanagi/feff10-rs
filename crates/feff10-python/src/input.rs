@@ -233,6 +233,7 @@ impl PyFeffInput {
     ) -> Self {
         Self {
             inner: FeffInput {
+                cards: vec![],
                 title,
                 edge,
                 s02,
