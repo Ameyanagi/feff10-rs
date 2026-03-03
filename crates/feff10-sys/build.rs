@@ -152,15 +152,20 @@ fn main() {
         }
     }
 
-    // On Linux, merge libgfortran and libquadmath into the archive so the resulting
-    // libfeff10.a is self-contained. This ensures compatibility with rust-lld
-    // (default since Rust 1.86) and allows Python wheels to have zero external deps.
-    // On macOS/Windows, gfortran runtime is linked dynamically because:
-    // - macOS: ld doesn't do multi-pass archive resolution (circular deps in libgfortran)
-    // - Windows: merging libgfortran causes duplicate pthread symbols
-    // For Python wheels, delocate (macOS) / delvewheel (Windows) bundles the dylibs.
-    if compiler.contains("gfortran") && cfg!(target_os = "linux") {
-        for lib_name in ["libgfortran.a", "libquadmath.a"] {
+    // Merge libgfortran and libquadmath into the archive so the resulting
+    // libfeff10.a is self-contained on all platforms. Platform-specific linker
+    // strategies handle circular dependencies in libgfortran.a:
+    // - Linux: ld -r --whole-archive + --start-group/--end-group
+    // - macOS: ld -r -arch <arch> -force_load (resolves circular deps)
+    // - Windows: ld -r --whole-archive + --allow-multiple-definition
+    if compiler.contains("gfortran") {
+        // libgfortran.a + libquadmath.a are the core Fortran runtime.
+        // libgcc_eh.a provides __emutls_get_address (GCC emulated TLS), needed on macOS.
+        let mut libs: Vec<&str> = vec!["libgfortran.a", "libquadmath.a"];
+        if cfg!(target_os = "macos") {
+            libs.push("libgcc_eh.a");
+        }
+        for lib_name in libs {
             if let Some(path) = find_gfortran_static_lib(&compiler, lib_name) {
                 eprintln!("feff10-sys: will merge {}", path.display());
                 merge_libs.push(path);
@@ -356,16 +361,8 @@ fn link_prebuilt() {
     println!("cargo:rustc-link-search=native={lib_dir}");
     println!("cargo:rustc-link-lib=static=feff10");
 
-    // Platform-specific runtime linking
-    if target_os == "linux" {
-        // Linux: Fortran runtime + BLAS merged into libfeff10.a — self-contained
-    } else if target_os == "macos" {
-        // macOS: gfortran linked dynamically (delocate bundles it for wheels)
-        println!("cargo:rustc-link-lib=gfortran");
-    } else if target_os == "windows" {
-        // Windows: gfortran linked dynamically (delvewheel bundles it for wheels)
-        println!("cargo:rustc-link-lib=gfortran");
-    }
+    // All platforms: Fortran runtime + BLAS merged into libfeff10.a — self-contained.
+    // No dynamic gfortran linking needed.
 
     // Common system libraries
     println!("cargo:rustc-link-lib=pthread");
@@ -806,11 +803,12 @@ fn create_archive_from_objects(build_src: &Path, archive_path: &Path) {
 }
 
 /// Merge the FEFF archive with external static libraries (MKL, Intel runtime,
-/// gfortran runtime) using `ld -r` (partial/incremental linking).
+/// gfortran runtime) into a single self-contained archive using `ld -r`.
 ///
-/// Only used on Linux where GNU ld's `--whole-archive` / `--start-group`
-/// resolve circular dependencies. On macOS/Windows, external libraries
-/// are linked dynamically instead.
+/// Platform-specific strategies:
+/// - Linux: GNU ld with `--whole-archive` + `--start-group`/`--end-group`
+/// - macOS: `ld -r -arch <arch> -force_load` for each archive
+/// - Windows: GNU ld with `--whole-archive` + `--allow-multiple-definition`
 fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBuf]) {
     // Verify all input archives exist
     for lib in extra_libs {
@@ -820,23 +818,12 @@ fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBu
     }
     let combined_o = final_archive.with_extension("o");
 
-    let mut cmd = Command::new("ld");
-    cmd.arg("-r")
-        .arg("--whole-archive")
-        .arg(raw_archive)
-        .arg("--no-whole-archive")
-        .arg("--start-group");
-
-    for lib in extra_libs {
-        cmd.arg(lib);
-    }
-
-    cmd.arg("--end-group").arg("-o").arg(&combined_o);
-
-    eprintln!("feff10-sys: running ld -r to merge archives");
-    let status = cmd.status().expect("Failed to run ld for archive merge");
-    if !status.success() {
-        panic!("feff10-sys: ld -r failed. Cannot merge archives.");
+    if cfg!(target_os = "macos") {
+        merge_archives_macos(raw_archive, &combined_o, extra_libs);
+    } else if cfg!(target_os = "windows") {
+        merge_archives_windows(raw_archive, &combined_o, extra_libs);
+    } else {
+        merge_archives_linux(raw_archive, &combined_o, extra_libs);
     }
 
     // Wrap the combined object in an archive
@@ -862,18 +849,89 @@ fn merge_archives(raw_archive: &Path, final_archive: &Path, extra_libs: &[PathBu
     }
 }
 
+/// Linux: GNU ld with `--whole-archive` and `--start-group`/`--end-group`
+/// for circular dependency resolution.
+fn merge_archives_linux(raw_archive: &Path, combined_o: &Path, extra_libs: &[PathBuf]) {
+    let mut cmd = Command::new("ld");
+    cmd.arg("-r")
+        .arg("--whole-archive")
+        .arg(raw_archive)
+        .arg("--no-whole-archive")
+        .arg("--start-group");
+
+    for lib in extra_libs {
+        cmd.arg(lib);
+    }
+
+    cmd.arg("--end-group").arg("-o").arg(combined_o);
+
+    eprintln!("feff10-sys: running ld -r to merge archives (Linux)");
+    let status = cmd.status().expect("Failed to run ld for archive merge");
+    if !status.success() {
+        panic!("feff10-sys: ld -r failed. Cannot merge archives.");
+    }
+}
+
+/// macOS: `ld -r -arch <arch> -force_load` for each archive.
+/// `-force_load` resolves circular dependencies that prevent `libtool -static` from working.
+/// `-arch` is required by macOS ld when using `-r`.
+fn merge_archives_macos(raw_archive: &Path, combined_o: &Path, extra_libs: &[PathBuf]) {
+    let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_else(|_| "aarch64".to_string());
+    let ld_arch = match target_arch.as_str() {
+        "aarch64" => "arm64",
+        "x86_64" => "x86_64",
+        other => panic!("feff10-sys: unsupported macOS architecture: {other}"),
+    };
+
+    let mut cmd = Command::new("ld");
+    cmd.arg("-r")
+        .arg("-arch")
+        .arg(ld_arch)
+        .arg("-force_load")
+        .arg(raw_archive);
+
+    for lib in extra_libs {
+        cmd.arg("-force_load").arg(lib);
+    }
+
+    cmd.arg("-o").arg(combined_o);
+
+    eprintln!("feff10-sys: running ld -r -arch {ld_arch} to merge archives (macOS)");
+    let status = cmd.status().expect("Failed to run ld for archive merge");
+    if !status.success() {
+        panic!("feff10-sys: ld -r failed. Cannot merge archives.");
+    }
+}
+
+/// Windows: GNU ld with `--whole-archive` and `--allow-multiple-definition`
+/// to resolve duplicate `pthread_create` symbols from libgfortran.
+fn merge_archives_windows(raw_archive: &Path, combined_o: &Path, extra_libs: &[PathBuf]) {
+    let mut cmd = Command::new("ld");
+    cmd.arg("-r").arg("--whole-archive").arg(raw_archive);
+
+    for lib in extra_libs {
+        cmd.arg(lib);
+    }
+
+    cmd.arg("--no-whole-archive")
+        .arg("--allow-multiple-definition")
+        .arg("-o")
+        .arg(combined_o);
+
+    eprintln!("feff10-sys: running ld -r to merge archives (Windows)");
+    let status = cmd.status().expect("Failed to run ld for archive merge");
+    if !status.success() {
+        panic!("feff10-sys: ld -r failed. Cannot merge archives.");
+    }
+}
+
 /// Emit cargo link directives for the Fortran runtime.
 ///
-/// On Linux, the Fortran runtime is merged into libfeff10.a (no dynamic linking needed).
-/// On macOS/Windows, gfortran runtime is linked dynamically.
+/// The Fortran runtime is merged into libfeff10.a on all platforms,
+/// so no dynamic linking is needed for gfortran or Intel runtimes.
 fn emit_fortran_runtime_links(compiler: &str) {
     if compiler.contains("gfortran") {
-        if cfg!(target_os = "linux") {
-            eprintln!("feff10-sys: gfortran runtime merged into archive (Linux)");
-        } else {
-            println!("cargo:rustc-link-lib=gfortran");
-            eprintln!("feff10-sys: linking gfortran runtime dynamically");
-        }
+        eprintln!("feff10-sys: gfortran runtime merged into archive");
     } else if compiler.contains("ifx") || compiler.contains("ifort") {
         if cfg!(target_os = "linux") {
             eprintln!("feff10-sys: Intel runtime merged into archive");

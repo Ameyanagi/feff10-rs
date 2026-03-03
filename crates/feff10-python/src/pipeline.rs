@@ -7,7 +7,7 @@ use crate::config::PyFeffConfig;
 use crate::error::to_pyerr;
 use crate::stage::PyStage;
 
-#[pyclass(name = "StageProgress")]
+#[pyclass(name = "StageProgress", from_py_object)]
 #[derive(Clone)]
 pub struct PyStageProgress {
     #[pyo3(get)]
@@ -33,7 +33,7 @@ impl PyStageProgress {
     }
 }
 
-#[pyclass(name = "StageResult")]
+#[pyclass(name = "StageResult", from_py_object)]
 #[derive(Clone)]
 pub struct PyStageResult {
     #[pyo3(get)]
@@ -104,7 +104,7 @@ impl PyFeffPipeline {
     ///
     /// Releases the GIL during computation so other Python threads can run.
     fn run(&self, py: Python<'_>) -> PyResult<PyPipelineResult> {
-        let result = py.allow_threads(|| self.pipeline.run());
+        let result = py.detach(|| self.pipeline.run());
         convert_result(result)
     }
 
@@ -115,13 +115,13 @@ impl PyFeffPipeline {
     /// raises an exception, it is captured and re-raised after the pipeline
     /// completes (or the current stage finishes).
     #[pyo3(signature = (callback))]
-    fn run_with_progress(&self, py: Python<'_>, callback: PyObject) -> PyResult<PyPipelineResult> {
+    fn run_with_progress(&self, py: Python<'_>, callback: Py<PyAny>) -> PyResult<PyPipelineResult> {
         // Store the first callback error so we can re-raise it after the pipeline.
         let callback_err: Mutex<Option<PyErr>> = Mutex::new(None);
 
-        let result = py.allow_threads(|| {
+        let result = py.detach(|| {
             self.pipeline.run_with_progress(|stage, progress| {
-                Python::with_gil(|py| {
+                Python::attach(|py| {
                     // Don't invoke callback if a previous call already failed.
                     let Ok(guard) = callback_err.lock() else {
                         return;

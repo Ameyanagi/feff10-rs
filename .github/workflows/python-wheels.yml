@@ -72,41 +72,6 @@ jobs:
           # Rename to the canonical name expected by build.rs
           cp "prebuilt/${{ matrix.asset }}" prebuilt/libfeff10.a
 
-      # macOS: install gfortran for dynamic linking
-      - name: Install gfortran (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install gcc
-          GCC_PREFIX=$(brew --prefix gcc)
-          GFORTRAN=$(ls "$GCC_PREFIX/bin/gfortran-"* 2>/dev/null | head -1)
-          if [ -z "$GFORTRAN" ]; then
-            echo "ERROR: gfortran not found in $GCC_PREFIX/bin/"
-            exit 1
-          fi
-          echo "Found gfortran: $GFORTRAN"
-          GFORTRAN_LIB_DIR=$("$GFORTRAN" -print-file-name=libgfortran.a | xargs dirname)
-          if [ ! -d "$GFORTRAN_LIB_DIR" ] || [ "$GFORTRAN_LIB_DIR" = "." ]; then
-            GFORTRAN_LIB_DIR="$GCC_PREFIX/lib/gcc/current"
-          fi
-          echo "LIBRARY_PATH=$GFORTRAN_LIB_DIR" >> "$GITHUB_ENV"
-          echo "DYLD_LIBRARY_PATH=$GFORTRAN_LIB_DIR" >> "$GITHUB_ENV"
-          echo "Using gfortran lib dir: $GFORTRAN_LIB_DIR"
-
-      # Windows: install MSYS2 gfortran for dynamic linking
-      - name: Install MSYS2 and gfortran (Windows)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: false
-          install: mingw-w64-x86_64-gcc-fortran
-
-      - name: Set library paths (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          echo "LIBRARY_PATH=D:/a/_temp/msys64/mingw64/lib" >> "$GITHUB_ENV"
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -120,27 +85,6 @@ jobs:
           args: --release --out dist --features prebuilt
           manylinux: ${{ matrix.manylinux || 'auto' }}
           working-directory: crates/feff10-python
-
-      # macOS: bundle libgfortran into the wheel
-      - name: Repair wheel (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          pip install delocate
-          delocate-listdeps crates/feff10-python/dist/*.whl
-          delocate-wheel -v -w crates/feff10-python/dist-repaired crates/feff10-python/dist/*.whl
-          rm -rf crates/feff10-python/dist
-          mv crates/feff10-python/dist-repaired crates/feff10-python/dist
-
-      # Windows: bundle MinGW runtime DLLs into the wheel
-      - name: Repair wheel (Windows)
-        if: runner.os == 'Windows'
-        shell: bash
-        run: |
-          pip install delvewheel
-          delvewheel show crates/feff10-python/dist/*.whl --add-path "D:/a/_temp/msys64/mingw64/bin" || true
-          delvewheel repair crates/feff10-python/dist/*.whl --add-path "D:/a/_temp/msys64/mingw64/bin" --wheel-dir crates/feff10-python/dist-repaired
-          rm -rf crates/feff10-python/dist
-          mv crates/feff10-python/dist-repaired crates/feff10-python/dist
 
       - name: List wheels
         shell: bash

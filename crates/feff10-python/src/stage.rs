@@ -1,7 +1,7 @@
 use feff10::stage::Stage;
 use pyo3::prelude::*;
 
-#[pyclass(name = "Stage", eq, eq_int, hash, frozen)]
+#[pyclass(name = "Stage", eq, eq_int, hash, frozen, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 #[allow(clippy::upper_case_acronyms)]
 pub enum PyStage {

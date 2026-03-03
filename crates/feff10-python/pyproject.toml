@@ -25,6 +25,6 @@ dev = ["pytest>=7.0"]
 docs = ["mkdocs-material>=9.0"]
 
 [tool.maturin]
-features = ["pyo3/extension-module"]
+features = ["pyo3/extension-module", "pyo3/abi3-py39"]
 python-source = "python"
 module-name = "feff10._feff10"

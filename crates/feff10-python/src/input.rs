@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 use crate::error::to_pyerr;
 
-#[pyclass(name = "Potential")]
+#[pyclass(name = "Potential", from_py_object)]
 #[derive(Clone)]
 pub struct PyPotential {
     pub(crate) inner: Potential,
@@ -106,7 +106,7 @@ impl PyPotential {
     }
 }
 
-#[pyclass(name = "Atom")]
+#[pyclass(name = "Atom", from_py_object)]
 #[derive(Clone)]
 pub struct PyAtom {
     pub(crate) inner: Atom,
@@ -202,7 +202,7 @@ impl PyAtom {
     }
 }
 
-#[pyclass(name = "FeffInput")]
+#[pyclass(name = "FeffInput", from_py_object)]
 #[derive(Clone)]
 pub struct PyFeffInput {
     pub(crate) inner: FeffInput,

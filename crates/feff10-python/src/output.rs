@@ -3,7 +3,7 @@ use pyo3::prelude::*;
 
 use crate::error::to_pyerr;
 
-#[pyclass(name = "XmuDat")]
+#[pyclass(name = "XmuDat", from_py_object)]
 #[derive(Clone)]
 pub struct PyXmuDat {
     pub(crate) inner: XmuDat,
@@ -93,7 +93,7 @@ impl PyXmuDat {
     /// Convert to a pandas DataFrame (requires pandas).
     ///
     /// Raises ImportError if pandas is not installed.
-    fn to_dataframe(&self, py: Python<'_>) -> PyResult<PyObject> {
+    fn to_dataframe(&self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let pd = py.import("pandas")?;
         let dict = pyo3::types::PyDict::new(py);
         for (i, col) in self.inner.columns.iter().enumerate() {
