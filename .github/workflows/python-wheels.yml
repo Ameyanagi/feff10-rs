@@ -99,7 +99,8 @@ jobs:
           FEFF10_LIB_DIR: ${{ github.workspace }}/prebuilt
         with:
           target: ${{ matrix.target }}
-          args: --release --out dist --features prebuilt
+          # -i python3.12: needed for manylinux Docker builds to pick up abi3
+          args: --release --out dist --features prebuilt -i python3.12
           manylinux: ${{ matrix.manylinux || 'auto' }}
           working-directory: crates/feff10-python
 
