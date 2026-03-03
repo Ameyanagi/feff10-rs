@@ -1,7 +1,7 @@
 [package]
 name = "feff10-python"
 edition = "2024"
-version = "0.1.4"
+version = "0.1.5"
 description = "Python bindings for FEFF10 via PyO3"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Ameyanagi/feff10-rs"
@@ -16,5 +16,5 @@ crate-type = ["cdylib"]
 prebuilt = ["feff10/prebuilt"]
 
 [dependencies]
-feff10 = { path = "../feff10", version = "0.1.4" }
+feff10 = { path = "../feff10", version = "0.1.5" }
 pyo3 = { version = "0.28", features = ["extension-module", "abi3-py39"] }
