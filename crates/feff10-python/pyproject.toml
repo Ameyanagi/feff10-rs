@@ -6,6 +6,7 @@ build-backend = "maturin"
 name = "feff10-rs"
 dynamic = ["version"]
 description = "Python bindings for FEFF10 X-ray absorption spectroscopy calculations"
+readme = "README.md"
 license = { text = "MIT OR Apache-2.0" }
 requires-python = ">=3.9"
 keywords = ["feff", "xas", "exafs", "xanes", "spectroscopy"]
@@ -17,6 +18,11 @@ classifiers = [
     "Programming Language :: Python :: Implementation :: CPython",
 ]
 dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/Ameyanagi/feff10-rs"
+Repository = "https://github.com/Ameyanagi/feff10-rs"
+"Bug Tracker" = "https://github.com/Ameyanagi/feff10-rs/issues"
 
 [project.optional-dependencies]
 numpy = ["numpy>=1.20"]

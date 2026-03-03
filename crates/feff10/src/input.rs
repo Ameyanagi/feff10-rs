@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::Path;
 
@@ -282,6 +283,83 @@ impl FeffInput {
         writeln!(w)?;
         writeln!(w, "END")?;
         Ok(())
+    }
+
+    /// Validate semantic correctness of the input.
+    ///
+    /// Checks that potentials, atoms, and cards are consistent and that
+    /// FEFF will be able to run without crashing. Call this before running
+    /// the pipeline to get clear error messages instead of cryptic Fortran failures.
+    ///
+    /// Returns `Ok(())` if the input is valid, or `Err(Error::Config(...))` with
+    /// all validation errors joined by newlines.
+    pub fn validate(&self) -> Result<(), Error> {
+        let mut errors = Vec::new();
+
+        // 1. POTENTIALS must not be empty
+        if self.potentials.is_empty() {
+            errors.push(
+                "POTENTIALS section is empty; at least the absorber (ipot=0) is required"
+                    .to_string(),
+            );
+        } else {
+            // 2. Absorber potential (ipot=0) must exist
+            if !self.potentials.iter().any(|p| p.ipot == 0) {
+                errors.push(
+                    "no absorber potential (ipot=0) defined in POTENTIALS".to_string(),
+                );
+            }
+
+            // 5. No duplicate ipot values
+            let mut seen_ipots = HashSet::new();
+            for pot in &self.potentials {
+                if !seen_ipots.insert(pot.ipot) {
+                    errors.push(format!("duplicate potential index ipot={}", pot.ipot));
+                }
+            }
+
+            // 6. Z in valid range (1-103, up to Lawrencium)
+            for pot in &self.potentials {
+                if pot.z == 0 || pot.z > 103 {
+                    errors.push(format!(
+                        "potential ipot={} has Z={} which is outside the valid range 1-103",
+                        pot.ipot, pot.z
+                    ));
+                }
+            }
+        }
+
+        // 3. ATOMS must not be empty
+        if self.atoms.is_empty() {
+            errors.push("ATOMS section is empty; at least one atom is required".to_string());
+        } else if !self.potentials.is_empty() {
+            // 4. All atom ipot values must reference defined potentials
+            let valid_ipots: HashSet<u32> = self.potentials.iter().map(|p| p.ipot).collect();
+            for (i, atom) in self.atoms.iter().enumerate() {
+                if !valid_ipots.contains(&atom.ipot) {
+                    errors.push(format!(
+                        "atom {} references undefined ipot={}",
+                        i, atom.ipot
+                    ));
+                    break; // avoid spamming hundreds of identical errors
+                }
+            }
+
+            // 7. At least one atom must reference ipot=0 (absorber site)
+            if self.potentials.iter().any(|p| p.ipot == 0)
+                && !self.atoms.iter().any(|a| a.ipot == 0)
+            {
+                errors.push(
+                    "no atom with ipot=0 (absorber) found in ATOMS list".to_string(),
+                );
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(Error::Config(errors.join("\n")))
+        }
     }
 }
 
@@ -863,6 +941,140 @@ END
                 "{d}/feff.inp has no potentials"
             );
             assert!(!input.atoms.is_empty(), "{d}/feff.inp has no atoms");
+        }
+    }
+
+    // --- validate() tests ---
+
+    fn valid_input() -> FeffInput {
+        FeffInput::parse(
+            "\
+TITLE test
+EDGE K
+S02 1.0
+CONTROL 1 1 1 1 1 1
+PRINT 0 0 0 0 0 0
+POTENTIALS
+0 29 Cu
+1 29 Cu
+ATOMS
+0.0 0.0 0.0 0 Cu
+1.805 1.805 0.0 1 Cu
+END
+",
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn validate_valid_input() {
+        valid_input().validate().unwrap();
+    }
+
+    #[test]
+    fn validate_rejects_empty_potentials() {
+        let mut inp = valid_input();
+        inp.potentials.clear();
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("POTENTIALS section is empty"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_missing_absorber_potential() {
+        let mut inp = valid_input();
+        inp.potentials.retain(|p| p.ipot != 0);
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("ipot=0"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_empty_atoms() {
+        let mut inp = valid_input();
+        inp.atoms.clear();
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("ATOMS section is empty"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_undefined_ipot() {
+        let mut inp = valid_input();
+        inp.atoms.push(Atom {
+            x: 2.0,
+            y: 0.0,
+            z: 0.0,
+            ipot: 99,
+            tag: "X".to_string(),
+            distance: 0.0,
+        });
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("undefined ipot=99"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_duplicate_ipot() {
+        let mut inp = valid_input();
+        inp.potentials.push(Potential {
+            ipot: 0,
+            z: 26,
+            tag: "Fe".to_string(),
+            l_scmt: None,
+            l_fms: None,
+            stoich: None,
+        });
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("duplicate potential index ipot=0"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_invalid_z() {
+        let mut inp = valid_input();
+        inp.potentials[0].z = 0;
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("Z=0"), "{err}");
+
+        inp.potentials[0].z = 200;
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("Z=200"), "{err}");
+    }
+
+    #[test]
+    fn validate_rejects_no_absorber_atom() {
+        let mut inp = valid_input();
+        // Keep ipot=0 in potentials but remove all atoms that reference it
+        inp.atoms.retain(|a| a.ipot != 0);
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("no atom with ipot=0"), "{err}");
+    }
+
+    #[test]
+    fn validate_accepts_missing_edge() {
+        let mut inp = valid_input();
+        inp.edge = None;
+        // EDGE is optional — FEFF defaults to K edge
+        inp.validate().unwrap();
+    }
+
+    #[test]
+    fn validate_reports_multiple_errors() {
+        let inp = FeffInput::default(); // empty: no pots, no atoms
+        let err = inp.validate().unwrap_err().to_string();
+        assert!(err.contains("POTENTIALS"), "{err}");
+        assert!(err.contains("ATOMS"), "{err}");
+    }
+
+    #[test]
+    fn validate_bundled_examples() {
+        if !has_submodule() {
+            return;
+        }
+        let examples_dir = concat!(env!("CARGO_MANIFEST_DIR"), "/../../feff10/examples");
+        let dirs = ["EXAFS/Cu", "EXAFS/SF6", "XANES/Cu", "XANES/BN", "XES/Cu"];
+        for d in dirs {
+            let path = format!("{examples_dir}/{d}/feff.inp");
+            let input = FeffInput::from_file(&path).unwrap();
+            input.validate().unwrap_or_else(|e| {
+                panic!("{d}/feff.inp failed validation: {e}");
+            });
         }
     }
 }

@@ -8,12 +8,13 @@ Example:
     ```python
     import feff10
 
+    # Simple one-liner:
+    result = feff10.run("feff.inp", "./work")
+
+    # Or with full control:
     inp = feff10.FeffInput.from_file("feff.inp")
     config = feff10.FeffConfig("./work", inp)
     result = feff10.FeffPipeline(config).run()
-
-    xmu = feff10.XmuDat.from_file("./work/xmu.dat")
-    print(xmu)
     ```
 """
 
@@ -39,9 +40,14 @@ from feff10._feff10 import (
     FeffParseError,
     FeffPipelineError,
     FeffConfigError,
+    # Convenience functions
+    run,
+    validate,
 )
 
 __all__ = [
+    "run",
+    "validate",
     "Potential",
     "Atom",
     "FeffInput",

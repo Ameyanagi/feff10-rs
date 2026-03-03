@@ -382,6 +382,14 @@ impl PyFeffInput {
         self.inner.atoms = v.into_iter().map(|a| a.inner).collect();
     }
 
+    /// Validate semantic correctness of this input.
+    ///
+    /// Checks that potentials, atoms, and absorber are consistent.
+    /// Raises FeffConfigError if validation fails.
+    fn validate(&self) -> PyResult<()> {
+        self.inner.validate().map_err(to_pyerr)
+    }
+
     fn __repr__(&self) -> String {
         format!(
             "FeffInput(edge={:?}, potentials={}, atoms={})",

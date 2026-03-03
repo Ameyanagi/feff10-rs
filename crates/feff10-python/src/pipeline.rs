@@ -166,7 +166,7 @@ impl PyFeffPipeline {
     }
 }
 
-fn convert_result(
+pub(crate) fn convert_result(
     result: Result<feff10::pipeline::PipelineResult, feff10::error::Error>,
 ) -> PyResult<PyPipelineResult> {
     let r = result.map_err(to_pyerr)?;
