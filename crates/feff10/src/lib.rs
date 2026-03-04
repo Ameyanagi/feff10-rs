@@ -8,8 +8,11 @@ pub mod stage;
 // Re-exports for convenience
 pub use config::{FeffConfig, FeffConfigBuilder};
 pub use error::Error;
-pub use input::{Atom, FeffInput, Potential};
-pub use output::XmuDat;
+pub use input::{
+    Atom, CardToken, FeffInput, InputCard, Potential, ResolvedFeffInput, ResolvedFortranInput,
+    TypedCard,
+};
+pub use output::{FeffOutputs, FeffTable, OutputFile, OutputKind, PathEntry, PathLeg, PathsDat};
 pub use pipeline::{FeffPipeline, PipelineResult, StageResult};
 pub use stage::Stage;
 

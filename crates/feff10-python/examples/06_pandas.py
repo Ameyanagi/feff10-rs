@@ -21,7 +21,7 @@ if not os.path.exists(xmu_path):
     print("Run 01_quickstart.py first to generate it.")
     sys.exit(1)
 
-xmu = feff10.XmuDat.from_file(xmu_path)
+xmu = feff10.FeffTable.from_file(xmu_path)
 df = xmu.to_dataframe()
 
 print(f"DataFrame shape: {df.shape}")

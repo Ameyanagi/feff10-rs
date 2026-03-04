@@ -1,6 +1,6 @@
 # Output
 
-## XmuDat
+## FeffTable
 
 Parsed FEFF output file (`xmu.dat`). Provides column-oriented access to spectral data.
 
@@ -8,10 +8,10 @@ Parsed FEFF output file (`xmu.dat`). Provides column-oriented access to spectral
 
 | Method | Returns | Description |
 |---|---|---|
-| `parse(content: str)` | `XmuDat` | Parse from a string (permissive) |
-| `parse_strict(content: str)` | `XmuDat` | Parse from a string (strict — rejects ragged rows, invalid numbers) |
-| `from_file(path: str)` | `XmuDat` | Parse from a file path |
-| `from_file_strict(path: str)` | `XmuDat` | Parse from a file path (strict) |
+| `parse(content: str)` | `FeffTable` | Parse from a string (permissive) |
+| `parse_strict(content: str)` | `FeffTable` | Parse from a string (strict — rejects ragged rows, invalid numbers) |
+| `from_file(path: str)` | `FeffTable` | Parse from a file path |
+| `from_file_strict(path: str)` | `FeffTable` | Parse from a file path (strict) |
 
 ### Properties
 
@@ -28,7 +28,7 @@ Parsed FEFF output file (`xmu.dat`). Provides column-oriented access to spectral
 
 Get a specific column by 0-based index. Raises `IndexError` if out of range.
 
-#### `r_squared(other: XmuDat, col_x: int, col_y: int) -> float`
+#### `r_squared(other: FeffTable, col_x: int, col_y: int) -> float`
 
 Compare two spectra using the R-squared metric. Both spectra are interpolated onto a common energy grid (100 points in the overlapping range).
 

@@ -22,6 +22,10 @@ def test_pipeline_basic(tmp_path):
     assert len(result.stages) > 0
     assert result.total_duration_secs > 0
     assert result.work_dir == work_dir
+    outputs = result.outputs()
+    assert len(outputs.files) > 0
+    xmu = result.read_xmu()
+    assert xmu.ncols >= 4
 
 
 @pytest.mark.skipif(not has_submodule(), reason="feff10 submodule not available")

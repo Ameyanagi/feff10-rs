@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use feff10::config::FeffConfigBuilder;
 use feff10::input::FeffInput;
-use feff10::output::XmuDat;
+use feff10::output::FeffTable;
 use feff10::pipeline::FeffPipeline;
 
 fn feff10_examples_dir() -> PathBuf {
@@ -58,8 +58,8 @@ fn run_and_compare(example_subdir: &str, reference_file: &str, col_x: usize, col
         );
     }
 
-    let output = XmuDat::from_file(&output_file).unwrap();
-    let reference = XmuDat::from_file(&ref_file).unwrap();
+    let output = FeffTable::from_file(&output_file).unwrap();
+    let reference = FeffTable::from_file(&ref_file).unwrap();
 
     let rsq = output.r_squared(&reference, col_x, col_y);
     let pct = rsq * 100.0;

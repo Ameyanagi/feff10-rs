@@ -9,7 +9,7 @@ use serde::Serialize;
 
 use feff10::config::FeffConfigBuilder;
 use feff10::input::FeffInput;
-use feff10::output::XmuDat;
+use feff10::output::{FeffOutputs, FeffTable, OutputKind, PathsDat};
 use feff10::pipeline::{FeffPipeline, StageProgress};
 use feff10::stage::Stage;
 
@@ -304,6 +304,38 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Inspect FEFF output files in a work directory
+    Outputs {
+        #[command(subcommand)]
+        command: OutputCommand,
+    },
+}
+
+#[derive(clap::Subcommand)]
+enum OutputCommand {
+    /// List discovered FEFF output files (*.dat)
+    List {
+        /// FEFF working directory (defaults to current directory)
+        #[arg(default_value = ".")]
+        work_dir: PathBuf,
+    },
+    /// Show a parsed output file summary
+    Show {
+        /// Output file name, e.g. xmu.dat, chi.dat, paths.dat
+        file: String,
+        /// FEFF working directory (defaults to current directory)
+        #[arg(short, long, default_value = ".")]
+        work_dir: PathBuf,
+        /// Use strict numeric parsing (for table files)
+        #[arg(long)]
+        strict: bool,
+        /// Number of rows to preview for table files
+        #[arg(long, default_value = "5")]
+        rows: usize,
+        /// Show a specific 1-based column index for table files
+        #[arg(long)]
+        col: Option<usize>,
+    },
 }
 
 // --- JSON output types ---
@@ -366,6 +398,26 @@ struct StageInfoOutput {
 struct ExampleInfoOutput {
     name: String,
     description: String,
+}
+
+#[derive(Serialize)]
+struct OutputFileInfoOutput {
+    name: String,
+    path: String,
+    kind: String,
+}
+
+#[derive(Serialize)]
+struct OutputsListOutput {
+    work_dir: String,
+    files: Vec<OutputFileInfoOutput>,
+}
+
+#[derive(Serialize)]
+struct PathsSummaryOutput {
+    paths: usize,
+    total_degeneracy: f64,
+    max_r: Option<f64>,
 }
 
 // --- Benchmark types ---
@@ -447,6 +499,16 @@ fn main() {
             element,
             output,
         } => cmd_init(calc_type, edge, element, output, &cli.global),
+        Command::Outputs { command } => match command {
+            OutputCommand::List { work_dir } => cmd_outputs_list(work_dir, &cli.global),
+            OutputCommand::Show {
+                file,
+                work_dir,
+                strict,
+                rows,
+                col,
+            } => cmd_outputs_show(file, work_dir, strict, rows, col, &cli.global),
+        },
     };
 
     if let Err(code) = result {
@@ -726,14 +788,14 @@ fn cmd_compare(
         }
     };
 
-    let xmu1 = match XmuDat::from_file_strict(&file1) {
+    let xmu1 = match FeffTable::from_file_strict(&file1) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("Error reading {}: {e}", file1.display());
             return Err(1);
         }
     };
-    let xmu2 = match XmuDat::from_file_strict(&file2) {
+    let xmu2 = match FeffTable::from_file_strict(&file2) {
         Ok(x) => x,
         Err(e) => {
             eprintln!("Error reading {}: {e}", file2.display());
@@ -772,6 +834,232 @@ fn cmd_compare(
     }
 
     Ok(())
+}
+
+fn cmd_outputs_list(work_dir: PathBuf, global: &GlobalArgs) -> CliResult {
+    let outputs = match FeffOutputs::discover(&work_dir) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("Error reading {}: {e}", work_dir.display());
+            return Err(1);
+        }
+    };
+
+    if global.json {
+        let payload = OutputsListOutput {
+            work_dir: work_dir.display().to_string(),
+            files: outputs
+                .files
+                .iter()
+                .map(|f| OutputFileInfoOutput {
+                    name: f.name.clone(),
+                    path: f.path.display().to_string(),
+                    kind: f.kind.as_str().to_string(),
+                })
+                .collect(),
+        };
+        print_json(&payload)?;
+        return Ok(());
+    }
+
+    if !global.quiet {
+        println!("Outputs in {}:", work_dir.display());
+        if outputs.files.is_empty() {
+            println!("  (no .dat outputs found)");
+        } else {
+            for f in &outputs.files {
+                println!("  {:<12} {}", f.kind.as_str(), f.name);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn cmd_outputs_show(
+    file: String,
+    work_dir: PathBuf,
+    strict: bool,
+    rows: usize,
+    col: Option<usize>,
+    global: &GlobalArgs,
+) -> CliResult {
+    let outputs = match FeffOutputs::discover(&work_dir) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("Error reading {}: {e}", work_dir.display());
+            return Err(1);
+        }
+    };
+
+    let entry = match outputs.file(&file) {
+        Some(e) => e,
+        None => {
+            eprintln!("Error: {file} not found in {}", work_dir.display());
+            return Err(1);
+        }
+    };
+
+    if entry.kind == OutputKind::Paths {
+        return show_paths_output(&file, entry.path.as_path(), global);
+    }
+
+    let table = if strict {
+        match FeffTable::from_file_strict(&entry.path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Error parsing {}: {e}", entry.path.display());
+                return Err(1);
+            }
+        }
+    } else {
+        match FeffTable::from_file(&entry.path) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("Error parsing {}: {e}", entry.path.display());
+                return Err(1);
+            }
+        }
+    };
+
+    let ncols = table.ncols();
+    let nrows = table.nrows();
+
+    let selected_col = if let Some(c1) = col {
+        if c1 == 0 || c1 > ncols {
+            eprintln!("Error: --col must be in 1..={ncols}");
+            return Err(2);
+        }
+        Some(c1 - 1)
+    } else {
+        None
+    };
+
+    let preview_rows = table_preview_rows(&table, rows, selected_col);
+
+    if global.json {
+        let payload = serde_json::json!({
+            "file": file,
+            "path": entry.path.display().to_string(),
+            "kind": entry.kind.as_str(),
+            "strict": strict,
+            "ncols": ncols,
+            "nrows": nrows,
+            "header_lines": table.header.len(),
+            "selected_col": selected_col.map(|c| c + 1),
+            "preview_rows": preview_rows,
+        });
+        print_json(&payload)?;
+        return Ok(());
+    }
+
+    if !global.quiet {
+        println!("File: {}", entry.path.display());
+        println!(
+            "Kind: {} | Columns: {} | Rows: {} | Header lines: {}",
+            entry.kind.as_str(),
+            ncols,
+            nrows,
+            table.header.len()
+        );
+        if let Some(c) = selected_col {
+            println!("Preview (column {}):", c + 1);
+            for row in preview_rows {
+                if let Some(v) = row.first() {
+                    println!("  {:>14.6}", v);
+                }
+            }
+        } else {
+            println!("Preview:");
+            for row in preview_rows {
+                let cells = row
+                    .iter()
+                    .map(|v| format!("{v:>12.5}"))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+                println!("  {cells}");
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn show_paths_output(file: &str, path: &std::path::Path, global: &GlobalArgs) -> CliResult {
+    let paths = match PathsDat::from_file(path) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Error parsing {}: {e}", path.display());
+            return Err(1);
+        }
+    };
+
+    let summary = PathsSummaryOutput {
+        paths: paths.len(),
+        total_degeneracy: paths.total_degeneracy(),
+        max_r: paths.max_r(),
+    };
+
+    if global.json {
+        let payload = serde_json::json!({
+            "file": file,
+            "path": path.display().to_string(),
+            "kind": "paths",
+            "summary": summary,
+            "first_path": paths.entries.first().map(|p| serde_json::json!({
+                "index": p.index,
+                "nleg": p.nleg,
+                "degeneracy": p.degeneracy,
+                "r": p.r,
+                "legs": p.legs.len(),
+            })),
+        });
+        print_json(&payload)?;
+        return Ok(());
+    }
+
+    if !global.quiet {
+        println!("File: {}", path.display());
+        println!("Kind: paths");
+        println!("Paths: {}", summary.paths);
+        println!("Total degeneracy: {:.3}", summary.total_degeneracy);
+        if let Some(r) = summary.max_r {
+            println!("Max r: {:.4}", r);
+        }
+        if let Some(first) = paths.entries.first() {
+            println!(
+                "First path: index={} nleg={} deg={:.3} r={:.4}",
+                first.index, first.nleg, first.degeneracy, first.r
+            );
+        }
+    }
+
+    Ok(())
+}
+
+fn table_preview_rows(
+    table: &FeffTable,
+    rows: usize,
+    selected_col: Option<usize>,
+) -> Vec<Vec<f64>> {
+    let nrows = table.nrows();
+    let ncols = table.ncols();
+    let rows = rows.min(nrows);
+    let mut out = Vec::with_capacity(rows);
+
+    for r in 0..rows {
+        if let Some(c) = selected_col {
+            out.push(vec![table.columns[c][r]]);
+            continue;
+        }
+        let mut row = Vec::with_capacity(ncols);
+        for c in 0..ncols {
+            row.push(table.columns[c][r]);
+        }
+        out.push(row);
+    }
+
+    out
 }
 
 fn cmd_bench(
@@ -1520,6 +1808,57 @@ mod tests {
                 assert!((threshold - 0.1).abs() < f64::EPSILON);
             }
             _ => panic!("expected Compare"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_outputs_list() {
+        let cli = Cli::try_parse_from(["feff10-rs", "outputs", "list", "/tmp/work"]).unwrap();
+        match cli.command {
+            Command::Outputs { command } => match command {
+                OutputCommand::List { work_dir } => {
+                    assert_eq!(work_dir, PathBuf::from("/tmp/work"))
+                }
+                _ => panic!("expected outputs list"),
+            },
+            _ => panic!("expected Outputs"),
+        }
+    }
+
+    #[test]
+    fn cli_parses_outputs_show() {
+        let cli = Cli::try_parse_from([
+            "feff10-rs",
+            "outputs",
+            "show",
+            "xmu.dat",
+            "--work-dir",
+            "/tmp/work",
+            "--strict",
+            "--rows",
+            "10",
+            "--col",
+            "4",
+        ])
+        .unwrap();
+        match cli.command {
+            Command::Outputs { command } => match command {
+                OutputCommand::Show {
+                    file,
+                    work_dir,
+                    strict,
+                    rows,
+                    col,
+                } => {
+                    assert_eq!(file, "xmu.dat");
+                    assert_eq!(work_dir, PathBuf::from("/tmp/work"));
+                    assert!(strict);
+                    assert_eq!(rows, 10);
+                    assert_eq!(col, Some(4));
+                }
+                _ => panic!("expected outputs show"),
+            },
+            _ => panic!("expected Outputs"),
         }
     }
 

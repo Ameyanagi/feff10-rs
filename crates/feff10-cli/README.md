@@ -27,6 +27,12 @@ feff10-rs validate feff.inp
 
 # Compare output spectra
 feff10-rs compare xmu.dat reference.dat
+
+# List discovered outputs from a work directory
+feff10-rs outputs list ./work
+
+# Show parsed summary of one output file
+feff10-rs outputs show xmu.dat --work-dir ./work
 ```
 
 ## Features

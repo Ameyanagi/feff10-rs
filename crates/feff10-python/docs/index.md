@@ -20,8 +20,8 @@ result = pipeline.run()
 print(f"Done in {result.total_duration_secs:.1f}s")
 
 # Parse and compare output
-xmu = feff10.XmuDat.from_file("./work/xmu.dat")
-reference = feff10.XmuDat.from_file("reference_xmu.dat")
+xmu = feff10.FeffTable.from_file("./work/xmu.dat")
+reference = feff10.FeffTable.from_file("reference_xmu.dat")
 rsq = xmu.r_squared(reference, col_x=0, col_y=3)
 print(f"R-squared = {rsq*100:.4f}%")
 ```

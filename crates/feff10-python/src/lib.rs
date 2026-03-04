@@ -98,7 +98,12 @@ fn _feff10(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<pipeline::PyStageProgress>()?;
 
     // Output
-    m.add_class::<output::PyXmuDat>()?;
+    m.add_class::<output::PyFeffTable>()?;
+    m.add_class::<output::PyPathLeg>()?;
+    m.add_class::<output::PyPathEntry>()?;
+    m.add_class::<output::PyPathsDat>()?;
+    m.add_class::<output::PyOutputFileInfo>()?;
+    m.add_class::<output::PyFeffOutputs>()?;
 
     // Convenience functions
     m.add_function(wrap_pyfunction!(run, m)?)?;

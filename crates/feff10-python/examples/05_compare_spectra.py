@@ -50,8 +50,8 @@ print("Running with S02=0.85...")
 r2 = feff10.run(inp2, "./work_compare_2")
 
 # Compare the output spectra
-xmu1 = feff10.XmuDat.from_file(f"{r1.work_dir}/xmu.dat")
-xmu2 = feff10.XmuDat.from_file(f"{r2.work_dir}/xmu.dat")
+xmu1 = feff10.FeffTable.from_file(f"{r1.work_dir}/xmu.dat")
+xmu2 = feff10.FeffTable.from_file(f"{r2.work_dir}/xmu.dat")
 
 rsq = xmu1.r_squared(xmu2, col_x=0, col_y=3)
 print(f"\nR-squared (col_x=0, col_y=3): {rsq * 100:.4f}%")

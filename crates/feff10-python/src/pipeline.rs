@@ -5,6 +5,7 @@ use pyo3::prelude::*;
 
 use crate::config::PyFeffConfig;
 use crate::error::to_pyerr;
+use crate::output::{discover_outputs_from_work_dir, PyFeffOutputs, PyFeffTable, PyPathsDat};
 use crate::stage::PyStage;
 
 #[pyclass(name = "StageProgress", from_py_object)]
@@ -75,6 +76,67 @@ impl PyPipelineResult {
     #[getter]
     fn total_duration_secs(&self) -> f64 {
         self.stages.iter().map(|s| s.duration_secs).sum()
+    }
+
+    /// Discover FEFF output files in the pipeline work directory.
+    fn outputs(&self) -> PyResult<PyFeffOutputs> {
+        discover_outputs_from_work_dir(&self.work_dir)
+    }
+
+    /// Read xmu.dat from the pipeline work directory.
+    #[pyo3(signature = (strict=false))]
+    fn read_xmu(&self, strict: bool) -> PyResult<PyFeffTable> {
+        let path = std::path::Path::new(&self.work_dir).join("xmu.dat");
+        let table = if strict {
+            feff10::output::FeffTable::from_file_strict(&path)
+        } else {
+            feff10::output::FeffTable::from_file(&path)
+        };
+        table.map(|inner| PyFeffTable { inner }).map_err(to_pyerr)
+    }
+
+    /// Read chi.dat from the pipeline work directory.
+    #[pyo3(signature = (strict=false))]
+    fn read_chi(&self, strict: bool) -> PyResult<PyFeffTable> {
+        let path = std::path::Path::new(&self.work_dir).join("chi.dat");
+        let table = if strict {
+            feff10::output::FeffTable::from_file_strict(&path)
+        } else {
+            feff10::output::FeffTable::from_file(&path)
+        };
+        table.map(|inner| PyFeffTable { inner }).map_err(to_pyerr)
+    }
+
+    /// Read eels.dat from the pipeline work directory.
+    #[pyo3(signature = (strict=false))]
+    fn read_eels(&self, strict: bool) -> PyResult<PyFeffTable> {
+        let path = std::path::Path::new(&self.work_dir).join("eels.dat");
+        let table = if strict {
+            feff10::output::FeffTable::from_file_strict(&path)
+        } else {
+            feff10::output::FeffTable::from_file(&path)
+        };
+        table.map(|inner| PyFeffTable { inner }).map_err(to_pyerr)
+    }
+
+    /// Read ldosNN.dat from the pipeline work directory.
+    #[pyo3(signature = (index, strict=false))]
+    fn read_ldos(&self, index: u32, strict: bool) -> PyResult<PyFeffTable> {
+        let path = std::path::Path::new(&self.work_dir).join(format!("ldos{index:02}.dat"));
+        let table = if strict {
+            feff10::output::FeffTable::from_file_strict(&path)
+        } else {
+            feff10::output::FeffTable::from_file(&path)
+        };
+        table.map(|inner| PyFeffTable { inner }).map_err(to_pyerr)
+    }
+
+    /// Read paths.dat from the pipeline work directory.
+    fn read_paths(&self) -> PyResult<PyPathsDat> {
+        let path = std::path::Path::new(&self.work_dir).join("paths.dat");
+        feff10::output::PathsDat::from_file(&path)
+            .map(|inner| PyPathsDat { inner })
+            .map_err(to_pyerr)
     }
 
     fn __repr__(&self) -> String {

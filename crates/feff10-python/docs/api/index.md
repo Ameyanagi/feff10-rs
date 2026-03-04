@@ -25,7 +25,7 @@
 
 | Class | Description |
 |---|---|
-| [`XmuDat`](output.md#xmudat) | Parsed xmu.dat output file |
+| [`FeffTable`](output.md#fefftable) | Parsed xmu.dat output file |
 
 ## Exception Hierarchy
 

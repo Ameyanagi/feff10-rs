@@ -1,6 +1,6 @@
 # Parsing Output
 
-The `XmuDat` class parses FEFF output files (`xmu.dat`) and provides column-oriented access to spectral data.
+The `FeffTable` class parses FEFF output files (`xmu.dat`) and provides column-oriented access to spectral data.
 
 ## Reading Output Files
 
@@ -8,20 +8,20 @@ The `XmuDat` class parses FEFF output files (`xmu.dat`) and provides column-orie
 import feff10
 
 # From a file path
-xmu = feff10.XmuDat.from_file("./work/xmu.dat")
+xmu = feff10.FeffTable.from_file("./work/xmu.dat")
 
 # From a string
 content = open("xmu.dat").read()
-xmu = feff10.XmuDat.parse(content)
+xmu = feff10.FeffTable.parse(content)
 
 # Strict mode — rejects ragged rows and invalid numbers
-xmu = feff10.XmuDat.from_file_strict("xmu.dat")
+xmu = feff10.FeffTable.from_file_strict("xmu.dat")
 ```
 
 ## Inspecting Data
 
 ```python
-xmu = feff10.XmuDat.from_file("xmu.dat")
+xmu = feff10.FeffTable.from_file("xmu.dat")
 
 print(xmu.ncols)    # number of columns
 print(xmu.nrows)    # number of data points
@@ -60,8 +60,8 @@ for col in xmu:
 The R-squared metric quantifies the difference between two spectra by interpolating both onto a common energy grid:
 
 ```python
-calculated = feff10.XmuDat.from_file("./work/xmu.dat")
-reference = feff10.XmuDat.from_file("reference_xmu.dat")
+calculated = feff10.FeffTable.from_file("./work/xmu.dat")
+reference = feff10.FeffTable.from_file("reference_xmu.dat")
 
 # col_x=0 is energy, col_y=3 is the spectrum to compare
 rsq = calculated.r_squared(reference, col_x=0, col_y=3)
@@ -76,7 +76,7 @@ print(f"R-squared = {rsq*100:.4f}%")  # lower is better
 Convert to a pandas DataFrame for further analysis:
 
 ```python
-xmu = feff10.XmuDat.from_file("xmu.dat")
+xmu = feff10.FeffTable.from_file("xmu.dat")
 df = xmu.to_dataframe()  # requires pandas
 print(df.describe())
 ```
@@ -96,12 +96,12 @@ config = feff10.FeffConfig("./work", inp)
 result = feff10.FeffPipeline(config).run()
 
 # Parse and analyze the output
-xmu = feff10.XmuDat.from_file("./work/xmu.dat")
+xmu = feff10.FeffTable.from_file("./work/xmu.dat")
 energy = xmu[0]
 mu = xmu[3]
 
 # Compare with a reference
-ref = feff10.XmuDat.from_file("reference.dat")
+ref = feff10.FeffTable.from_file("reference.dat")
 rsq = xmu.r_squared(ref, col_x=0, col_y=3)
 print(f"Deviation from reference: {rsq*100:.4f}%")
 ```

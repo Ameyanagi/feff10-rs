@@ -37,6 +37,6 @@ for sr in result.stages:
 print(f"  {'total':>10}: {result.total_duration_secs:.3f}s")
 
 # Read the output spectrum
-xmu = feff10.XmuDat.from_file(f"{result.work_dir}/xmu.dat")
+xmu = feff10.FeffTable.from_file(f"{result.work_dir}/xmu.dat")
 print(f"\nOutput: {xmu.nrows} data points, {xmu.ncols} columns")
 print(xmu)

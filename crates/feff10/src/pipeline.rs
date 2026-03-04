@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 
 use crate::config::FeffConfig;
 use crate::error::{Error, PipelineError};
+use crate::output::{FeffOutputs, FeffTable, PathsDat};
 use crate::stage::Stage;
 
 static FEFF_EXEC_LOCK: Mutex<()> = Mutex::new(());
@@ -21,6 +22,58 @@ pub struct StageResult {
 pub struct PipelineResult {
     pub stages: Vec<StageResult>,
     pub work_dir: PathBuf,
+}
+
+impl PipelineResult {
+    /// Discover all FEFF `*.dat` outputs in the work directory.
+    pub fn outputs(&self) -> Result<FeffOutputs, Error> {
+        FeffOutputs::discover(&self.work_dir)
+    }
+
+    /// Read `xmu.dat` from the work directory (permissive parsing).
+    pub fn read_xmu(&self) -> Result<FeffTable, Error> {
+        FeffTable::from_file(self.work_dir.join("xmu.dat"))
+    }
+
+    /// Read `xmu.dat` from the work directory (strict parsing).
+    pub fn read_xmu_strict(&self) -> Result<FeffTable, Error> {
+        FeffTable::from_file_strict(self.work_dir.join("xmu.dat"))
+    }
+
+    /// Read `chi.dat` from the work directory (permissive parsing).
+    pub fn read_chi(&self) -> Result<FeffTable, Error> {
+        FeffTable::from_file(self.work_dir.join("chi.dat"))
+    }
+
+    /// Read `chi.dat` from the work directory (strict parsing).
+    pub fn read_chi_strict(&self) -> Result<FeffTable, Error> {
+        FeffTable::from_file_strict(self.work_dir.join("chi.dat"))
+    }
+
+    /// Read `eels.dat` from the work directory (permissive parsing).
+    pub fn read_eels(&self) -> Result<FeffTable, Error> {
+        FeffTable::from_file(self.work_dir.join("eels.dat"))
+    }
+
+    /// Read `eels.dat` from the work directory (strict parsing).
+    pub fn read_eels_strict(&self) -> Result<FeffTable, Error> {
+        FeffTable::from_file_strict(self.work_dir.join("eels.dat"))
+    }
+
+    /// Read `ldosNN.dat` from the work directory (permissive parsing).
+    pub fn read_ldos(&self, index: u32) -> Result<FeffTable, Error> {
+        FeffTable::from_file(self.work_dir.join(format!("ldos{index:02}.dat")))
+    }
+
+    /// Read `ldosNN.dat` from the work directory (strict parsing).
+    pub fn read_ldos_strict(&self, index: u32) -> Result<FeffTable, Error> {
+        FeffTable::from_file_strict(self.work_dir.join(format!("ldos{index:02}.dat")))
+    }
+
+    /// Read `paths.dat` from the work directory.
+    pub fn read_paths(&self) -> Result<PathsDat, Error> {
+        PathsDat::from_file(self.work_dir.join("paths.dat"))
+    }
 }
 
 /// Progress information for a stage.
@@ -265,7 +318,7 @@ impl Drop for CwdGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::CwdGuard;
+    use super::{CwdGuard, PipelineResult};
 
     #[test]
     fn cwd_guard_restores_previous_directory() {
@@ -281,5 +334,35 @@ mod tests {
 
         let restored = std::env::current_dir().unwrap().canonicalize().unwrap();
         assert_eq!(restored, original);
+    }
+
+    #[test]
+    fn pipeline_result_reads_common_outputs() {
+        let tmp = tempfile::tempdir().unwrap();
+        std::fs::write(tmp.path().join("xmu.dat"), "# header\n1.0 2.0 3.0 4.0\n").unwrap();
+        std::fs::write(
+            tmp.path().join("paths.dat"),
+            "PATH  Rmax= 5.5\n\
+             1 1 1.0  index, nleg, degeneracy, r= 1.0\n\
+             x y z ipot label rleg beta eta\n\
+             0.0 0.0 0.0 0 'A' 1.0 180.0 0.0\n",
+        )
+        .unwrap();
+
+        let result = PipelineResult {
+            stages: vec![],
+            work_dir: tmp.path().to_path_buf(),
+        };
+
+        let xmu = result.read_xmu().unwrap();
+        assert_eq!(xmu.nrows(), 1);
+        assert_eq!(xmu.ncols(), 4);
+
+        let paths = result.read_paths().unwrap();
+        assert_eq!(paths.len(), 1);
+
+        let outputs = result.outputs().unwrap();
+        assert!(outputs.file("xmu.dat").is_some());
+        assert!(outputs.file("paths.dat").is_some());
     }
 }

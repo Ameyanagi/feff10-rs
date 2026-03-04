@@ -28,8 +28,8 @@ result = feff10.run("feff.inp", "./work")
 print(f"Done in {result.total_duration_secs:.1f}s")
 
 # Parse and compare output
-xmu = feff10.XmuDat.from_file("./work/xmu.dat")
-reference = feff10.XmuDat.from_file("reference_xmu.dat")
+xmu = feff10.FeffTable.from_file("./work/xmu.dat")
+reference = feff10.FeffTable.from_file("reference_xmu.dat")
 rsq = xmu.r_squared(reference, col_x=0, col_y=3)
 print(f"R-squared = {rsq*100:.4f}%")
 ```
@@ -177,12 +177,27 @@ for stage in feff10.Stage.all():
 ### Reading xmu.dat
 
 ```python
-xmu = feff10.XmuDat.from_file("./work/xmu.dat")
+result = feff10.run("feff.inp", "./work")
+xmu = result.read_xmu()            # convenience on PipelineResult
+outputs = result.outputs()         # discover all *.dat outputs
 
 print(xmu.ncols)    # number of columns
 print(xmu.nrows)    # number of data points
 print(xmu.header)   # comment lines from file header
 print(xmu)          # shows first 5 rows
+print(len(outputs.files))
+```
+
+### Discovering and parsing multiple outputs
+
+```python
+outputs = feff10.FeffOutputs.discover("./work")
+for f in outputs.files:
+    print(f.kind, f.name)
+
+chi = outputs.read_chi()
+paths = outputs.read_paths()
+print(paths.npaths, paths.total_degeneracy())
 ```
 
 ### Accessing Columns
@@ -199,8 +214,8 @@ for col in xmu:          # iterate over columns
 ### Comparing Spectra
 
 ```python
-calculated = feff10.XmuDat.from_file("./work/xmu.dat")
-reference = feff10.XmuDat.from_file("reference_xmu.dat")
+calculated = feff10.FeffTable.from_file("./work/xmu.dat")
+reference = feff10.FeffTable.from_file("reference_xmu.dat")
 
 rsq = calculated.r_squared(reference, col_x=0, col_y=3)
 print(f"R-squared = {rsq*100:.4f}%")  # lower is better
@@ -259,7 +274,9 @@ Both `run()` and `run_with_progress()` release the Python GIL during FEFF stage 
 | `PipelineResult` | Execution results (stages, work_dir, total_duration_secs) |
 | `StageResult` | Per-stage timing (stage, duration_secs) |
 | `StageProgress` | Progress callback data (kind, duration_secs) |
-| `XmuDat` | Parse xmu.dat output with column access and pandas integration |
+| `FeffTable` | Parse xmu.dat output with column access and pandas integration |
+| `PathsDat` | Parse structured `paths.dat` path-expansion output |
+| `FeffOutputs` | Discover and read output files from a work directory |
 
 ## License
 

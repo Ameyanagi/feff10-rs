@@ -37,7 +37,7 @@ print(feff10.Stage.all())
 Install extras for additional functionality:
 
 ```sh
-# pandas integration (XmuDat.to_dataframe())
+# pandas integration (FeffTable.to_dataframe())
 uv pip install "feff10[pandas]"
 
 # Development (tests)
