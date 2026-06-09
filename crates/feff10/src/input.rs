@@ -596,21 +596,20 @@ impl FeffInput {
                                 input.other_cards.push(line.clone());
                                 section_mode = SectionMode::DensityBlock { card_idx };
                             }
-                            90
-                                if words
-                                    .get(1)
-                                    .map(|s| s.eq_ignore_ascii_case("card"))
-                                    .unwrap_or(false)
-                                => {
-                                    let nlines =
-                                        words.get(2).and_then(|s| parse_i32_token(s)).unwrap_or(0);
-                                    if nlines > 0 {
-                                        section_mode = SectionMode::ConfigCardBlock {
-                                            card_idx,
-                                            remaining: nlines as usize,
-                                        };
-                                    }
+                            90 if words
+                                .get(1)
+                                .map(|s| s.eq_ignore_ascii_case("card"))
+                                .unwrap_or(false) =>
+                            {
+                                let nlines =
+                                    words.get(2).and_then(|s| parse_i32_token(s)).unwrap_or(0);
+                                if nlines > 0 {
+                                    section_mode = SectionMode::ConfigCardBlock {
+                                        card_idx,
+                                        remaining: nlines as usize,
+                                    };
                                 }
+                            }
                             _ => {}
                         }
 
@@ -658,10 +657,10 @@ impl FeffInput {
                                     && token.id() != 57
                                     && token.id() != 64
                                     && !(token.id() == 72 && words.len() == 1)
-                                    && token.id() != 100
-                                => {
-                                    input.other_cards.push(line.clone());
-                                }
+                                    && token.id() != 100 =>
+                            {
+                                input.other_cards.push(line.clone());
+                            }
                             _ => {}
                         }
 
@@ -813,9 +812,10 @@ impl FeffInput {
         for card in &self.other_cards {
             let words = split_words(card);
             if let Some(first) = words.first()
-                && let Some(tok) = CardToken::from_word(first) {
-                    cards_set.insert(tok.id());
-                }
+                && let Some(tok) = CardToken::from_word(first)
+            {
+                cards_set.insert(tok.id());
+            }
         }
         if !self.title.is_empty() {
             cards_set.insert(7);
@@ -1318,12 +1318,13 @@ impl FeffInput {
 
         // 10) HOLE card requires ihole > 0.
         if let Some(ihole) = last_card_i32_arg(self, 2, 1)
-            && ihole <= 0 {
-                errors.push(
+            && ihole <= 0
+        {
+            errors.push(
                     "Use NOHOLE to calculate without core hole. Only ihole greater than zero are allowed."
                         .to_string(),
                 );
-            }
+        }
 
         // 11) MDFF runtime consistency checks tied to NRIXS.
         if let Some(imdff) = last_card_i32_arg(self, 88, 1) {
@@ -1540,12 +1541,13 @@ fn optional_i32(
     field: &str,
 ) -> Result<(), Error> {
     if let Some(token) = words.get(idx).map(String::as_str)
-        && parse_i32_token(token).is_none() {
-            return Err(parse_error(
-                line_num,
-                format!("{card} {field} is not a valid integer: '{token}'"),
-            ));
-        }
+        && parse_i32_token(token).is_none()
+    {
+        return Err(parse_error(
+            line_num,
+            format!("{card} {field} is not a valid integer: '{token}'"),
+        ));
+    }
     Ok(())
 }
 
@@ -1557,12 +1559,13 @@ fn optional_f64(
     field: &str,
 ) -> Result<(), Error> {
     if let Some(token) = words.get(idx).map(String::as_str)
-        && parse_f64_token(token).is_none() {
-            return Err(parse_error(
-                line_num,
-                format!("{card} {field} is not a valid number: '{token}'"),
-            ));
-        }
+        && parse_f64_token(token).is_none()
+    {
+        return Err(parse_error(
+            line_num,
+            format!("{card} {field} is not a valid number: '{token}'"),
+        ));
+    }
     Ok(())
 }
 
@@ -1574,12 +1577,13 @@ fn optional_logical(
     field: &str,
 ) -> Result<(), Error> {
     if let Some(token) = words.get(idx).map(String::as_str)
-        && parse_logical_token(token).is_none() {
-            return Err(parse_error(
-                line_num,
-                format!("{card} {field} is not a valid logical value: '{token}'"),
-            ));
-        }
+        && parse_logical_token(token).is_none()
+    {
+        return Err(parse_error(
+            line_num,
+            format!("{card} {field} is not a valid logical value: '{token}'"),
+        ));
+    }
     Ok(())
 }
 
@@ -1808,27 +1812,27 @@ fn validate_card_words_fortran(
         }
         68 => {
             if let Some(mode) = words.get(1).map(|s| s.trim().to_ascii_uppercase())
-                && !matches!(mode.as_str(), "NONE" | "RPA" | "FSR" | "REGULAR") {
-                    return Err(parse_error(
-                        line_num,
-                        format!("invalid COREHOLE mode '{mode}'"),
-                    ));
-                }
+                && !matches!(mode.as_str(), "NONE" | "RPA" | "FSR" | "REGULAR")
+            {
+                return Err(parse_error(
+                    line_num,
+                    format!("invalid COREHOLE mode '{mode}'"),
+                ));
+            }
         }
         71 => {
             required_i32(words, 1, line_num, card, "target index")?;
         }
-        72
-            if words.len() > 1 => {
-                let iegrid = required_i32(words, 1, line_num, card, "iegrid")?;
-                if iegrid == 2 {
-                    let _ = required_word(words, 2, line_num, card, "grid filename")?;
-                } else if iegrid == 3 {
-                    required_i32(words, 2, line_num, card, "egrid3a")?;
-                    required_f64(words, 3, line_num, card, "egrid3b")?;
-                    required_f64(words, 4, line_num, card, "egrid3c")?;
-                }
+        72 if words.len() > 1 => {
+            let iegrid = required_i32(words, 1, line_num, card, "iegrid")?;
+            if iegrid == 2 {
+                let _ = required_word(words, 2, line_num, card, "grid filename")?;
+            } else if iegrid == 3 {
+                required_i32(words, 2, line_num, card, "egrid3a")?;
+                required_f64(words, 3, line_num, card, "egrid3b")?;
+                required_f64(words, 4, line_num, card, "egrid3c")?;
             }
+        }
         73 => {
             let icoord = required_i32(words, 1, line_num, card, "icoord")?;
             if !(1..=6).contains(&icoord) {
@@ -1902,14 +1906,13 @@ fn validate_card_words_fortran(
                 optional_f64(words, 3, line_num, card, "cosmdff")?;
             }
         }
-        90
-            if words
-                .get(1)
-                .map(|s| s.eq_ignore_ascii_case("card"))
-                .unwrap_or(false)
-            => {
-                required_i32(words, 2, line_num, card, "nlines")?;
-            }
+        90 if words
+            .get(1)
+            .map(|s| s.eq_ignore_ascii_case("card"))
+            .unwrap_or(false) =>
+        {
+            required_i32(words, 2, line_num, card, "nlines")?;
+        }
         91 => {
             if words.len() < 3 {
                 return Err(parse_error(
