@@ -13,7 +13,7 @@
 //! by calling [`init`] at the very top of `main()`, before any GUI
 //! initialization:
 //!
-//! ```no_run
+//! ```text
 //! fn main() {
 //!     feff10::worker::init(); // never returns in worker processes
 //!     // ... GUI setup ...
