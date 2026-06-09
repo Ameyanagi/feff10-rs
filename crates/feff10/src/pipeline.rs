@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use crate::config::FeffConfig;
+use crate::config::{FeffConfig, StageIsolation};
 use crate::error::{Error, PipelineError};
 use crate::output::{FeffOutputs, FeffTable, PathsDat};
 use crate::stage::Stage;
@@ -127,7 +127,12 @@ impl FeffPipeline {
             callback(stage, StageProgress::Starting);
 
             let start = Instant::now();
-            run_stage_isolated(stage, &self.config.work_dir, self.config.stage_timeout)?;
+            run_stage_isolated(
+                stage,
+                &self.config.work_dir,
+                self.config.stage_timeout,
+                self.config.stage_isolation,
+            )?;
             let duration = start.elapsed();
 
             callback(stage, StageProgress::Finished { duration });
@@ -168,6 +173,144 @@ impl FeffPipeline {
 /// stages communicate via files and `stop` is only called on error paths.
 #[cfg(unix)]
 fn run_stage_isolated(
+    stage: Stage,
+    work_dir: &std::path::Path,
+    timeout: Option<Duration>,
+    isolation: StageIsolation,
+) -> Result<(), Error> {
+    match isolation {
+        StageIsolation::Fork => run_stage_forked(stage, work_dir, timeout),
+        StageIsolation::Worker => run_stage_worker(stage, work_dir, timeout),
+        StageIsolation::InProcess => run_stage_in_process(stage, work_dir),
+        StageIsolation::Auto => {
+            if !fork_unsafe_host() {
+                run_stage_forked(stage, work_dir, timeout)
+            } else if crate::worker::installed() {
+                run_stage_worker(stage, work_dir, timeout)
+            } else {
+                Err(Error::Pipeline(PipelineError {
+                    stage: stage.executable_name().to_string(),
+                    exit_code: None,
+                    stderr: "this process is fork-unsafe (GUI host): call \
+                             feff10::worker::init() at the top of main(), or run the \
+                             pipeline from a separate process"
+                        .to_string(),
+                    feff_error: None,
+                }))
+            }
+        }
+    }
+}
+
+/// Re-exec the current executable as a single-stage worker (fork+exec).
+/// The host must have called [`crate::worker::init`] in `main()`.
+fn run_stage_worker(
+    stage: Stage,
+    work_dir: &std::path::Path,
+    timeout: Option<Duration>,
+) -> Result<(), Error> {
+    let exe = std::env::current_exe()?;
+    let mut child = std::process::Command::new(exe)
+        .env(crate::worker::ENV_STAGE, stage.executable_name())
+        .env(crate::worker::ENV_DIR, work_dir)
+        .spawn()?;
+    let start = Instant::now();
+    loop {
+        match child.try_wait()? {
+            Some(status) => {
+                if status.success() {
+                    return Ok(());
+                }
+                return Err(Error::Pipeline(PipelineError {
+                    stage: stage.executable_name().to_string(),
+                    exit_code: status.code(),
+                    stderr: format!("worker exited with {status}"),
+                    feff_error: None,
+                }));
+            }
+            None => {
+                if let Some(t) = timeout
+                    && start.elapsed() > t
+                {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return Err(Error::Pipeline(PipelineError {
+                        stage: stage.executable_name().to_string(),
+                        exit_code: None,
+                        stderr: format!("timed out after {}s", t.as_secs()),
+                        feff_error: None,
+                    }));
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+    }
+}
+
+/// `fork()` without `exec()` is not viable in every process. On macOS, a
+/// process that has initialized AppKit/Metal (any GUI app embedding this
+/// library) holds Objective-C runtime and dispatch state that makes the
+/// forked child abort before the Fortran stage can run. Detect that by
+/// scanning the loaded images.
+#[cfg(target_os = "macos")]
+fn fork_unsafe_host() -> bool {
+    unsafe extern "C" {
+        fn _dyld_image_count() -> u32;
+        fn _dyld_get_image_name(image_index: u32) -> *const std::os::raw::c_char;
+    }
+    unsafe {
+        let count = _dyld_image_count();
+        for i in 0..count {
+            let name = _dyld_get_image_name(i);
+            if name.is_null() {
+                continue;
+            }
+            let name = std::ffi::CStr::from_ptr(name).to_bytes();
+            for marker in [
+                &b"AppKit.framework"[..],
+                &b"Metal.framework"[..],
+                &b"UIKit.framework"[..],
+            ] {
+                if name.windows(marker.len()).any(|w| w == marker) {
+                    return true;
+                }
+            }
+        }
+    }
+    false
+}
+
+#[cfg(all(unix, not(target_os = "macos")))]
+fn fork_unsafe_host() -> bool {
+    false
+}
+
+/// Run a stage on a dedicated big-stack thread in this process (the
+/// Windows behavior, also used for fork-unsafe Unix hosts). Stage state is
+/// not isolated and `stop` on Fortran error paths terminates the host, but
+/// stages communicate via files so sequential runs behave like the forked
+/// path in practice.
+fn run_stage_in_process(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
+    let _cwd_guard = CwdGuard::enter(work_dir)?;
+    // FEFF stages assume the generous main-thread stack of a standalone
+    // executable; give them one explicitly.
+    let handle = std::thread::Builder::new()
+        .name(format!("feff-{}", stage.executable_name()))
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || unsafe { stage.call_ffi() })
+        .map_err(Error::Io)?;
+    handle.join().map_err(|_| {
+        Error::Pipeline(PipelineError {
+            stage: stage.executable_name().to_string(),
+            exit_code: None,
+            stderr: "stage panicked".to_string(),
+            feff_error: None,
+        })
+    })
+}
+
+#[cfg(unix)]
+fn run_stage_forked(
     stage: Stage,
     work_dir: &std::path::Path,
     timeout: Option<Duration>,
@@ -291,11 +434,18 @@ fn check_child_status(stage: Stage, status: libc::c_int) -> Result<(), Error> {
 fn run_stage_isolated(
     stage: Stage,
     work_dir: &std::path::Path,
-    _timeout: Option<Duration>,
+    timeout: Option<Duration>,
+    isolation: StageIsolation,
 ) -> Result<(), Error> {
-    let _cwd_guard = CwdGuard::enter(work_dir)?;
-    unsafe { stage.call_ffi() };
-    Ok(())
+    match isolation {
+        StageIsolation::Worker => run_stage_worker(stage, work_dir, timeout),
+        // Worker processes also isolate Fortran module state between
+        // stages; prefer them when the host installed the hook.
+        StageIsolation::Auto if crate::worker::installed() => {
+            run_stage_worker(stage, work_dir, timeout)
+        }
+        _ => run_stage_in_process(stage, work_dir),
+    }
 }
 
 struct CwdGuard {
