@@ -164,3 +164,29 @@ fn xes_cu() {
 fn xes_bn() {
     run_and_compare("XES/BN", "referencexmu.dat", 0, 3);
 }
+
+/// In-process isolation is only reliable for single-stage runs (Fortran
+/// module state persists within a process); verify rdinp works that way.
+#[test]
+fn in_process_isolation_runs_single_stage() {
+    use feff10::config::StageIsolation;
+    use feff10::stage::Stage;
+
+    let inp_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../feff10-cli/examples/bundled/exafs-sf6.inp");
+    let work_dir = tempfile::tempdir().unwrap();
+    std::fs::copy(&inp_path, work_dir.path().join("feff.inp")).unwrap();
+    let input = FeffInput::from_file(work_dir.path().join("feff.inp")).unwrap();
+
+    let config = FeffConfigBuilder::new()
+        .work_dir(work_dir.path())
+        .input(input)
+        .stages(vec![Stage::Rdinp])
+        .stage_isolation(StageIsolation::InProcess)
+        .build()
+        .unwrap();
+
+    FeffPipeline::new(config)
+        .run()
+        .expect("in-process rdinp failed");
+}

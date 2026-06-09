@@ -4,6 +4,7 @@ pub mod input;
 pub mod output;
 pub mod pipeline;
 pub mod stage;
+pub mod worker;
 
 // Re-exports for convenience
 pub use config::{FeffConfig, FeffConfigBuilder};

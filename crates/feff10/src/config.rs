@@ -5,6 +5,35 @@ use crate::error::Error;
 use crate::input::FeffInput;
 use crate::stage::Stage;
 
+/// How each Fortran stage is isolated from the host process.
+///
+/// FEFF stages are compiled into this library; per-stage isolation matches
+/// the original FEFF behavior of separate executables. On Unix the default
+/// is to `fork()` a child per stage — but a forked child of a fork-unsafe
+/// host (a macOS process that has loaded AppKit/Metal, i.e. any GUI
+/// application) aborts in the Objective-C runtime before the stage runs
+/// (observed as "killed by signal 4"). `Auto` detects that case and falls
+/// back to in-process execution.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum StageIsolation {
+    /// Fork per stage on Unix unless the host is fork-unsafe (then run
+    /// in-process). Always in-process on Windows.
+    #[default]
+    Auto,
+    /// Always fork per stage (Unix only; ignored on Windows).
+    Fork,
+    /// Re-exec the host executable as a single-stage worker process
+    /// (fork+exec — safe in GUI hosts). Requires the host to call
+    /// [`crate::worker::init`] at the top of `main()`.
+    Worker,
+    /// Run each stage on a dedicated big-stack thread in this process.
+    /// WARNING: FEFF's Fortran modules keep allocated state between stages,
+    /// so multi-stage pipelines can fail (e.g. "allocate already allocated
+    /// variable"); only reliable for single-stage runs. `stage_timeout` is
+    /// not enforced and a Fortran `stop` terminates the host process.
+    InProcess,
+}
+
 /// Configuration for a FEFF calculation.
 #[derive(Debug, Clone)]
 pub struct FeffConfig {
@@ -14,8 +43,10 @@ pub struct FeffConfig {
     pub input: FeffInput,
     /// Which stages to run. If empty, derived from CONTROL card.
     pub stages: Vec<Stage>,
-    /// Maximum time per stage before killing it. Unix only.
+    /// Maximum time per stage before killing it. Unix only, forked stages only.
     pub stage_timeout: Option<Duration>,
+    /// How stages are isolated from the host process.
+    pub stage_isolation: StageIsolation,
 }
 
 /// Builder for FeffConfig.
@@ -24,6 +55,7 @@ pub struct FeffConfigBuilder {
     input: Option<FeffInput>,
     stages: Option<Vec<Stage>>,
     stage_timeout: Option<Duration>,
+    stage_isolation: StageIsolation,
 }
 
 impl FeffConfigBuilder {
@@ -33,6 +65,7 @@ impl FeffConfigBuilder {
             input: None,
             stages: None,
             stage_timeout: None,
+            stage_isolation: StageIsolation::default(),
         }
     }
 
@@ -61,6 +94,11 @@ impl FeffConfigBuilder {
         self
     }
 
+    pub fn stage_isolation(mut self, isolation: StageIsolation) -> Self {
+        self.stage_isolation = isolation;
+        self
+    }
+
     pub fn build(self) -> Result<FeffConfig, Error> {
         let work_dir = self
             .work_dir
@@ -82,6 +120,7 @@ impl FeffConfigBuilder {
             input,
             stages,
             stage_timeout: self.stage_timeout,
+            stage_isolation: self.stage_isolation,
         })
     }
 }
@@ -195,5 +234,17 @@ END
             .build()
             .unwrap();
         assert_eq!(config.stage_timeout, None);
+        assert_eq!(config.stage_isolation, StageIsolation::Auto);
+    }
+
+    #[test]
+    fn builder_sets_stage_isolation() {
+        let config = FeffConfigBuilder::new()
+            .work_dir("/tmp")
+            .input(minimal_input())
+            .stage_isolation(StageIsolation::InProcess)
+            .build()
+            .unwrap();
+        assert_eq!(config.stage_isolation, StageIsolation::InProcess);
     }
 }

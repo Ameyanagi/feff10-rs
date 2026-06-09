@@ -20,3 +20,7 @@ which = "7"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[[test]]
+name = "worker_mode"
+harness = false
