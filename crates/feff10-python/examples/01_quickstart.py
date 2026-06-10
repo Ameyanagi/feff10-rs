@@ -1,6 +1,6 @@
 # /// script
 # requires-python = ">=3.9"
-# dependencies = ["feff10-rs"]
+# dependencies = ["feff10-rs", "matplotlib"]
 # ///
 """Quick start: run a Cu K-edge EXAFS calculation in one line.
 
@@ -8,7 +8,10 @@ Usage:
     uv run examples/01_quickstart.py
 """
 
+from pathlib import Path
+
 import feff10
+import matplotlib.pyplot as plt
 
 # Define a Cu FCC cluster inline
 inp = feff10.FeffInput(
@@ -40,3 +43,19 @@ print(f"  {'total':>10}: {result.total_duration_secs:.3f}s")
 xmu = feff10.FeffTable.from_file(f"{result.work_dir}/xmu.dat")
 print(f"\nOutput: {xmu.nrows} data points, {xmu.ncols} columns")
 print(xmu)
+
+# Plot Energy (col 0) vs XMU/mu(E) (col 3) and save figure
+energy = xmu[0]
+xmu_values = xmu[3]
+
+fig, ax = plt.subplots(figsize=(8, 5))
+ax.plot(energy, xmu_values, lw=1.8)
+ax.set_xlabel("Energy (eV)")
+ax.set_ylabel("xmu (mu(E))")
+ax.set_title("Cu K-edge xmu.dat")
+ax.grid(alpha=0.25)
+fig.tight_layout()
+
+plot_path = Path(result.work_dir) / "xmu_energy_vs_xmu.png"
+fig.savefig(plot_path, dpi=150)
+print(f"\nSaved plot: {plot_path}")

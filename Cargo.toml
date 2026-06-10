@@ -5,7 +5,7 @@ exclude = ["crates/feff10-python"]
 
 [workspace.package]
 edition = "2024"
-version = "0.2.1"
+version = "0.2.2"
 license = "MIT OR Apache-2.0"
 repository = "https://github.com/Ameyanagi/feff10-rs"
 homepage = "https://github.com/Ameyanagi/feff10-rs"
