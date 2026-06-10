@@ -14,7 +14,7 @@ readme = "README.md"
 prebuilt = ["feff10-sys/prebuilt"]
 
 [dependencies]
-feff10-sys = { path = "../feff10-sys", version = "0.2.0" }
+feff10-sys = { path = "../feff10-sys", version = "0.2.1" }
 tempfile = "3"
 which = "7"
 
