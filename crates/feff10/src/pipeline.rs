@@ -248,36 +248,22 @@ fn run_stage_worker(
 }
 
 /// `fork()` without `exec()` is not viable in every process. On macOS, a
-/// process that has initialized AppKit/Metal (any GUI app embedding this
-/// library) holds Objective-C runtime and dispatch state that makes the
-/// forked child abort before the Fortran stage can run. Detect that by
-/// scanning the loaded images.
+/// process with an *initialized* GUI (NSApplication started — any AppKit/
+/// gpui/winit app embedding this library) holds Objective-C runtime and
+/// dispatch state that makes the forked child abort before the Fortran
+/// stage can run. AppKit merely being linked is fine (e.g. test binaries of
+/// GUI crates), so detect via AppKit's `NSApp` global, which stays nil
+/// until `[NSApplication sharedApplication]` runs.
 #[cfg(target_os = "macos")]
 fn fork_unsafe_host() -> bool {
-    unsafe extern "C" {
-        fn _dyld_image_count() -> u32;
-        fn _dyld_get_image_name(image_index: u32) -> *const std::os::raw::c_char;
-    }
     unsafe {
-        let count = _dyld_image_count();
-        for i in 0..count {
-            let name = _dyld_get_image_name(i);
-            if name.is_null() {
-                continue;
-            }
-            let name = std::ffi::CStr::from_ptr(name).to_bytes();
-            for marker in [
-                &b"AppKit.framework"[..],
-                &b"Metal.framework"[..],
-                &b"UIKit.framework"[..],
-            ] {
-                if name.windows(marker.len()).any(|w| w == marker) {
-                    return true;
-                }
-            }
+        let sym = libc::dlsym(libc::RTLD_DEFAULT, c"NSApp".as_ptr());
+        if sym.is_null() {
+            return false; // AppKit not loaded at all
         }
+        let nsapp = *(sym as *const *const std::ffi::c_void);
+        !nsapp.is_null()
     }
-    false
 }
 
 #[cfg(all(unix, not(target_os = "macos")))]
