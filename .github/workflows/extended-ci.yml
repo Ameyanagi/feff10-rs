@@ -1,6 +1,8 @@
 name: Extended CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -153,3 +155,19 @@ jobs:
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo test --workspace --lib --target x86_64-pc-windows-gnu
+
+      - name: Worker isolation and Cu path regression
+        if: runner.os != 'Windows'
+        env:
+          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
+          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
+        run: cargo test -p feff10 --test worker_mode
+
+      - name: Worker isolation and Cu path regression (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
+        run: |
+          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
+          cargo test -p feff10 --target x86_64-pc-windows-gnu --test worker_mode

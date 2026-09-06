@@ -103,6 +103,15 @@ impl FeffPipeline {
     where
         F: FnMut(Stage, StageProgress),
     {
+        self.validate_isolation()?;
+
+        // Lock before touching input or error files: another pipeline may use
+        // the same directory, and in-process execution changes the host cwd.
+        let _exec_lock = match FEFF_EXEC_LOCK.lock() {
+            Ok(lock) => lock,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+
         // Ensure working directory exists
         fs::create_dir_all(&self.config.work_dir)?;
 
@@ -117,12 +126,6 @@ impl FeffPipeline {
         let feff_error_path = self.config.work_dir.join(".feff.error");
         let _ = fs::remove_file(&feff_error_path);
 
-        // Recover from poison so one failed run does not permanently disable FEFF execution.
-        let _exec_lock = match FEFF_EXEC_LOCK.lock() {
-            Ok(lock) => lock,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-
         for &stage in &self.config.stages {
             callback(stage, StageProgress::Starting);
 
@@ -132,15 +135,17 @@ impl FeffPipeline {
                 &self.config.work_dir,
                 self.config.stage_timeout,
                 self.config.stage_isolation,
-            )?;
+            )
+            .map_err(|mut error| {
+                if let Error::Pipeline(ref mut failure) = error {
+                    failure.feff_error = read_feff_error(&feff_error_path);
+                }
+                error
+            })?;
             let duration = start.elapsed();
 
-            callback(stage, StageProgress::Finished { duration });
-
             // Check for FEFF error (written to .feff.error by the Fortran error module)
-            let feff_error = fs::read_to_string(&feff_error_path)
-                .ok()
-                .and_then(|s| if s.trim().is_empty() { None } else { Some(s) });
+            let feff_error = read_feff_error(&feff_error_path);
 
             if feff_error.is_some() {
                 return Err(Error::Pipeline(PipelineError {
@@ -151,6 +156,7 @@ impl FeffPipeline {
                 }));
             }
 
+            callback(stage, StageProgress::Finished { duration });
             stage_results.push(StageResult { stage, duration });
         }
 
@@ -159,18 +165,49 @@ impl FeffPipeline {
             work_dir: self.config.work_dir.clone(),
         })
     }
+
+    fn validate_isolation(&self) -> Result<(), Error> {
+        let isolation = self.config.stage_isolation;
+        let needs_worker = isolation == StageIsolation::Worker
+            || (isolation == StageIsolation::Auto && requires_worker());
+        if needs_worker && !crate::worker::installed() {
+            return Err(Error::Config(
+                "stage isolation requires a worker process: call feff10::worker::init() \
+                 at the top of main(), before GUI or other application initialization"
+                    .into(),
+            ));
+        }
+        if isolation == StageIsolation::Fork && !cfg!(unix) {
+            return Err(Error::Config(
+                "Fork isolation is only available on Unix; use Auto with feff10::worker::init()"
+                    .into(),
+            ));
+        }
+        if isolation == StageIsolation::InProcess {
+            if self.config.stages.len() > 1 {
+                return Err(Error::Config(
+                    "InProcess isolation cannot run multiple FEFF stages: Fortran allocations \
+                     persist between calls; use Auto or Worker isolation"
+                        .into(),
+                ));
+            }
+            if self.config.stage_timeout.is_some() {
+                return Err(Error::Config(
+                    "stage_timeout requires Fork or Worker isolation".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
 }
 
-/// Run a single FEFF stage in a forked child process (Unix) or in-process (Windows).
-///
-/// On Unix, each stage runs in its own process via `fork()` to isolate Fortran
-/// module state, I/O unit state, and memory allocations — matching the original
-/// FEFF behavior where each stage was a separate executable.
-///
-/// On Windows, the stage runs directly in-process since `fork()` is unavailable.
-/// This means Fortran `stop` on error will terminate the host process, and global
-/// state is not fully isolated between stages. In practice this is fine because
-/// stages communicate via files and `stop` is only called on error paths.
+fn read_feff_error(path: &Path) -> Option<String> {
+    fs::read_to_string(path)
+        .ok()
+        .filter(|s| !s.trim().is_empty())
+}
+
+/// Run each stage in a fresh process unless InProcess was explicitly requested.
 #[cfg(unix)]
 fn run_stage_isolated(
     stage: Stage,
@@ -209,24 +246,27 @@ fn run_stage_worker(
     work_dir: &std::path::Path,
     timeout: Option<Duration>,
 ) -> Result<(), Error> {
+    // Validate even when called outside the pipeline to avoid recursively
+    // re-executing a host that has no worker hook.
+    if !crate::worker::installed() {
+        return Err(Error::Config(
+            "Worker isolation requires feff10::worker::init() at the top of main()".into(),
+        ));
+    }
     let exe = std::env::current_exe()?;
     let mut child = std::process::Command::new(exe)
         .env(crate::worker::ENV_STAGE, stage.executable_name())
         .env(crate::worker::ENV_DIR, work_dir)
         .spawn()?;
     let start = Instant::now();
+    if timeout.is_none() {
+        let status = child.wait()?;
+        return worker_status(stage, status);
+    }
     loop {
         match child.try_wait()? {
             Some(status) => {
-                if status.success() {
-                    return Ok(());
-                }
-                return Err(Error::Pipeline(PipelineError {
-                    stage: stage.executable_name().to_string(),
-                    exit_code: status.code(),
-                    stderr: format!("worker exited with {status}"),
-                    feff_error: None,
-                }));
+                return worker_status(stage, status);
             }
             None => {
                 if let Some(t) = timeout
@@ -244,6 +284,29 @@ fn run_stage_worker(
                 std::thread::sleep(Duration::from_millis(50));
             }
         }
+    }
+}
+
+fn worker_status(stage: Stage, status: std::process::ExitStatus) -> Result<(), Error> {
+    if status.success() {
+        return Ok(());
+    }
+    Err(Error::Pipeline(PipelineError {
+        stage: stage.executable_name().to_string(),
+        exit_code: status.code(),
+        stderr: format!("worker exited with {status}"),
+        feff_error: None,
+    }))
+}
+
+fn requires_worker() -> bool {
+    #[cfg(unix)]
+    {
+        fork_unsafe_host()
+    }
+    #[cfg(not(unix))]
+    {
+        true
     }
 }
 
@@ -271,11 +334,8 @@ fn fork_unsafe_host() -> bool {
     false
 }
 
-/// Run a stage on a dedicated big-stack thread in this process (the
-/// Windows behavior, also used for fork-unsafe Unix hosts). Stage state is
-/// not isolated and `stop` on Fortran error paths terminates the host, but
-/// stages communicate via files so sequential runs behave like the forked
-/// path in practice.
+/// Run a single stage on a dedicated big-stack thread in this process.
+/// Allocated Fortran state persists; `stop` terminates the host process.
 fn run_stage_in_process(stage: Stage, work_dir: &std::path::Path) -> Result<(), Error> {
     let _cwd_guard = CwdGuard::enter(work_dir)?;
     // FEFF stages assume the generous main-thread stack of a standalone
@@ -301,7 +361,9 @@ fn run_stage_forked(
     work_dir: &std::path::Path,
     timeout: Option<Duration>,
 ) -> Result<(), Error> {
-    let _cwd_guard = CwdGuard::enter(work_dir)?;
+    use std::os::unix::ffi::OsStrExt;
+    let directory = std::ffi::CString::new(work_dir.as_os_str().as_bytes())
+        .map_err(|_| Error::Config("work_dir contains a NUL byte".into()))?;
 
     let pid = unsafe { libc::fork() };
 
@@ -311,6 +373,11 @@ fn run_stage_forked(
             // ── Child process ──
             // Call the Fortran subroutine. If it returns normally, exit(0).
             // If the Fortran code calls `stop`, the process terminates directly.
+            // Change cwd only in the child, leaving the embedding host and
+            // its other threads in their original working directory.
+            if unsafe { libc::chdir(directory.as_ptr()) } != 0 {
+                unsafe { libc::_exit(126) };
+            }
             unsafe { stage.call_ffi() };
             unsafe { libc::_exit(0) };
         }
@@ -427,10 +494,11 @@ fn run_stage_isolated(
         StageIsolation::Worker => run_stage_worker(stage, work_dir, timeout),
         // Worker processes also isolate Fortran module state between
         // stages; prefer them when the host installed the hook.
-        StageIsolation::Auto if crate::worker::installed() => {
-            run_stage_worker(stage, work_dir, timeout)
-        }
-        _ => run_stage_in_process(stage, work_dir),
+        StageIsolation::Auto => run_stage_worker(stage, work_dir, timeout),
+        StageIsolation::InProcess => run_stage_in_process(stage, work_dir),
+        StageIsolation::Fork => Err(Error::Config(
+            "Fork isolation is only available on Unix".into(),
+        )),
     }
 }
 
@@ -454,7 +522,67 @@ impl Drop for CwdGuard {
 
 #[cfg(test)]
 mod tests {
-    use super::{CwdGuard, PipelineResult};
+    use super::{CwdGuard, FeffPipeline, PipelineResult};
+    use crate::{FeffConfigBuilder, FeffInput, Stage, config::StageIsolation};
+
+    fn rejected_isolation(isolation: StageIsolation, stages: Vec<Stage>, timeout: bool) -> String {
+        let tmp = tempfile::tempdir().unwrap();
+        let inp = tmp.path().join("feff.inp");
+        std::fs::write(&inp, "original input").unwrap();
+        let mut builder = FeffConfigBuilder::new()
+            .work_dir(tmp.path())
+            .input(FeffInput::default())
+            .stages(stages)
+            .stage_isolation(isolation);
+        if timeout {
+            builder = builder.stage_timeout(std::time::Duration::from_secs(1));
+        }
+        let err = FeffPipeline::new(builder.build().unwrap())
+            .run()
+            .unwrap_err();
+        assert_eq!(std::fs::read_to_string(inp).unwrap(), "original input");
+        err.to_string()
+    }
+
+    #[test]
+    fn worker_without_hook_is_rejected_before_writing_input() {
+        assert!(
+            rejected_isolation(StageIsolation::Worker, vec![Stage::Rdinp], false)
+                .contains("worker::init")
+        );
+    }
+
+    #[test]
+    fn in_process_pipeline_is_rejected_before_ffi() {
+        assert!(
+            rejected_isolation(
+                StageIsolation::InProcess,
+                vec![Stage::Pot, Stage::Xsph],
+                false
+            )
+            .contains("multiple FEFF stages")
+        );
+    }
+
+    #[test]
+    fn in_process_timeout_is_not_silently_ignored() {
+        assert!(
+            rejected_isolation(StageIsolation::InProcess, vec![Stage::Rdinp], true)
+                .contains("stage_timeout")
+        );
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    fn auto_requires_worker_on_windows() {
+        assert!(
+            rejected_isolation(StageIsolation::Auto, vec![Stage::Rdinp], false)
+                .contains("worker::init")
+        );
+        assert!(
+            rejected_isolation(StageIsolation::Fork, vec![Stage::Rdinp], false).contains("Unix")
+        );
+    }
 
     #[test]
     fn cwd_guard_restores_previous_directory() {

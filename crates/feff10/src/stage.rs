@@ -103,7 +103,9 @@ impl Stage {
     ///
     /// The caller must ensure:
     /// - The current working directory is set to the FEFF working directory
+    /// - This process has fresh Fortran state (no previous stage calls)
     /// - No other FEFF stage is running concurrently (Fortran global state)
+    /// - A Fortran STOP may terminate the process
     pub unsafe fn call_ffi(&self) {
         // SAFETY: Each call invokes a Fortran subroutine that operates on files
         // in the current working directory. The caller guarantees cwd is set

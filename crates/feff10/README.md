@@ -97,6 +97,35 @@ println!("paths parsed: {}", paths.len());
 println!("chi rows: {}", chi.nrows());
 ```
 
+## Stage isolation and path output
+
+Each FEFF stage needs a fresh process because Fortran module allocations persist
+between calls. Rust applications should install the worker hook before application
+initialization:
+
+```rust,no_run
+fn main() -> Result<(), feff10::Error> {
+    feff10::worker::init();
+    let result = feff10::run("feff.inp", "./work")?;
+    println!("Outputs: {}", result.work_dir.display());
+    Ok(())
+}
+```
+
+`StageIsolation::Auto` forks on ordinary Unix hosts and uses workers on Windows
+or in macOS hosts with an initialized `NSApplication`. A missing required worker
+hook returns a configuration error before changing input files. Explicit `Worker`
+also requires the hook. The CLI installs it automatically.
+
+`InProcess` is only for a single stage in a fresh host process; it rejects
+multi-stage pipelines and timeouts. Sequential calls can still retain allocations,
+and a Fortran fatal error can terminate that host.
+
+To request individual `feffNNNN.dat` files, use `PRINT 0 0 0 0 0 3` and include the
+`ff2x` stage. `paths.dat` contains enumerated paths; amplitude filtering can produce
+fewer individual path files. For the bundled Cu input with `RPATH 5.2`, the regression
+test checks 14 files, finite amplitudes, and first-path geometry.
+
 ## Features
 
 - `prebuilt` — Skip Fortran compilation and use a prebuilt library

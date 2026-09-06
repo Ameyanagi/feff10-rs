@@ -89,9 +89,15 @@ jobs:
         run: cargo test -p feff10 --test integration -- --test-threads=1
         timeout-minutes: 30
 
+      - name: Worker isolation and Cu path regression
+        env:
+          FEFF_FC: gfortran
+        run: cargo test -p feff10 --test worker_mode
+
       - name: Test prebuilt feature
         run: |
           set -euo pipefail
-          libdir=$(find target/debug/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit | xargs dirname | xargs realpath)
+          library=$(find target/debug/build/feff10-sys-*/out -name 'libfeff10.a' -print -quit)
+          libdir=$(cd "$(dirname "$library")" && pwd)
           echo "Using prebuilt lib from: $libdir"
-          FEFF10_LIB_DIR="$libdir" cargo build --features prebuilt
+          FEFF10_LIB_DIR="$libdir" cargo test -p feff10 --features prebuilt --test worker_mode

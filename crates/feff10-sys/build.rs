@@ -108,7 +108,7 @@ fn main() {
     }
 
     // 7. Append `objects` target to Makefile (compiles all .o files without linking)
-    append_objects_target(&build_src);
+    append_objects_target(&build_src, &compiler);
 
     // 8. Run `make objects`
     run_make_objects(&build_src, &compiler, &flags);
@@ -629,8 +629,8 @@ fn patch_driver_content(content: &str, stage: &str, fortran_name: &str) -> Strin
     output
 }
 
-/// Patch PAR/parallel.f90: replace `stop ' '` in par_stop with `return`.
-/// This makes par_stop non-fatal so execution returns to the caller.
+/// Make fatal errors terminate the isolated stage with a nonzero status.
+/// Returning from par_stop lets callers continue with invalid or missing data.
 fn patch_par_stop(parallel_f90: &Path) {
     if !parallel_f90.exists() {
         return;
@@ -638,13 +638,12 @@ fn patch_par_stop(parallel_f90: &Path) {
     let content = fs::read_to_string(parallel_f90)
         .unwrap_or_else(|e| panic!("Failed to read {}: {e}", parallel_f90.display()));
 
-    // Replace `stop ' '` with `return` inside the par_stop subroutine
-    let patched = content.replace("stop ' '", "return");
+    let patched = content.replace("stop ' '", "stop 1");
 
     fs::write(parallel_f90, patched)
         .unwrap_or_else(|e| panic!("Failed to write {}: {e}", parallel_f90.display()));
 
-    eprintln!("feff10-sys: patched PAR/parallel.f90 (par_stop: stop → return)");
+    eprintln!("feff10-sys: patched PAR/parallel.f90 (par_stop: stop 1)");
 }
 
 // ---------------------------------------------------------------------------
@@ -653,7 +652,7 @@ fn patch_par_stop(parallel_f90: &Path) {
 
 /// Append an `objects` target to the copied Makefile.
 /// This target compiles all .o files needed by the 18 pipeline stages without linking.
-fn append_objects_target(build_src: &Path) {
+fn append_objects_target(build_src: &Path, compiler: &str) {
     let makefile = build_src.join("Makefile");
     let mut f = fs::OpenOptions::new()
         .append(true)
@@ -676,6 +675,23 @@ fn append_objects_target(build_src: &Path) {
     )
     .unwrap();
     writeln!(f, "objects: $(ALL_LIB_OBJ)").unwrap();
+
+    if compiler.contains("ifx") {
+        // ifx 2024.0.1 miscompiles mmtr at -O3: valid bcoef/rotation inputs
+        // produce an all-zero termination matrix. GENFMT then calculates
+        // 0/0 path-importance ratios and silently discards every path (#1).
+        // -O1 restores the GNU/reference amplitudes. Keep the workaround
+        // local to this routine; other stages retain the requested flags.
+        // An explicit recipe avoids target-specific FLAGS propagating to
+        // the module prerequisites, and works with make 3.81 on macOS.
+        writeln!(f, "GENFMT/mmtr.o: GENFMT/mmtr.f90").unwrap();
+        writeln!(
+            f,
+            "\tcd GENFMT; $(F90) -c $(FLAGS) $(FPPTASK) $(INCLUDEFLAGS) -O1 mmtr.f90"
+        )
+        .unwrap();
+        eprintln!("feff10-sys: using -O1 for GENFMT/mmtr.f90 (ifx correctness workaround)");
+    }
 
     eprintln!("feff10-sys: appended `objects` target to Makefile");
 }

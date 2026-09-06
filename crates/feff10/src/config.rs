@@ -10,17 +10,17 @@ use crate::stage::Stage;
 /// FEFF stages are compiled into this library; per-stage isolation matches
 /// the original FEFF behavior of separate executables. On Unix the default
 /// is to `fork()` a child per stage — but a forked child of a fork-unsafe
-/// host (a macOS process that has loaded AppKit/Metal, i.e. any GUI
-/// application) aborts in the Objective-C runtime before the stage runs
-/// (observed as "killed by signal 4"). `Auto` detects that case and falls
-/// back to in-process execution.
+/// host (such as a macOS process with an initialized NSApplication) may
+/// abort before the stage runs. Windows and fork-unsafe Unix hosts require
+/// a worker process and the [`crate::worker::init`] hook in `main()`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum StageIsolation {
-    /// Fork per stage on Unix unless the host is fork-unsafe (then run
-    /// in-process). Always in-process on Windows.
+    /// Fork per stage on Unix unless the host is fork-unsafe. Use workers
+    /// on Windows and in fork-unsafe hosts; return an error if the worker
+    /// hook is missing.
     #[default]
     Auto,
-    /// Always fork per stage (Unix only; ignored on Windows).
+    /// Always fork per stage (returns an error on Windows).
     Fork,
     /// Re-exec the host executable as a single-stage worker process
     /// (fork+exec — safe in GUI hosts). Requires the host to call
@@ -29,8 +29,9 @@ pub enum StageIsolation {
     /// Run each stage on a dedicated big-stack thread in this process.
     /// WARNING: FEFF's Fortran modules keep allocated state between stages,
     /// so multi-stage pipelines can fail (e.g. "allocate already allocated
-    /// variable"); only reliable for single-stage runs. `stage_timeout` is
-    /// not enforced and a Fortran `stop` terminates the host process.
+    /// variable"). Multiple stages and `stage_timeout` are rejected. Even
+    /// single-stage calls can leave state behind; use a fresh process for
+    /// each call. A Fortran `stop` terminates the host process.
     InProcess,
 }
 
@@ -43,7 +44,7 @@ pub struct FeffConfig {
     pub input: FeffInput,
     /// Which stages to run. If empty, derived from CONTROL card.
     pub stages: Vec<Stage>,
-    /// Maximum time per stage before killing it. Unix only, forked stages only.
+    /// Maximum time per stage before killing it (Fork and Worker isolation).
     pub stage_timeout: Option<Duration>,
     /// How stages are isolated from the host process.
     pub stage_isolation: StageIsolation,

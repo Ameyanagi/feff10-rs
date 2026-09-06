@@ -2,7 +2,7 @@
 
 Rust wrapper for [FEFF10](http://feffproject.org/), a real-space multiple-scattering code for ab initio calculations of X-ray absorption spectra (EXAFS, XANES), electronic structure, and related properties.
 
-The 18 Fortran modules of FEFF10 are compiled into a single static library (`libfeff10.a`) and linked directly into the Rust binary via FFI — no external executables or runtime dependencies required.
+The 18 Fortran modules of FEFF10 are compiled into a single static library (`libfeff10.a`) and linked directly into the Rust binary via FFI — no external FEFF stage executables required. Windows builds require the bundled MinGW runtime DLLs.
 
 ## Features
 
@@ -46,7 +46,7 @@ FEFF_FC=flang-new cargo build --release
 FEFF_PORTABLE=1 cargo build --release
 ```
 
-On Linux, the build system automatically detects MKL (from oneAPI) and falls back to OpenBLAS or system LAPACK. On macOS, the default is the built-in naive solver for stability; set `FEFF_BLAS='-framework Accelerate'` to opt in to Accelerate. All dependencies are linked statically — the resulting binary has no special runtime requirements.
+On Linux, the build system automatically detects MKL (from oneAPI) and falls back to OpenBLAS or system LAPACK. On macOS, the default is the built-in naive solver for stability; set `FEFF_BLAS='-framework Accelerate'` to opt in to Accelerate. The Fortran runtime and MKL are merged where supported. OpenBLAS/system BLAS and Windows MinGW runtimes can remain dynamic dependencies.
 
 ### Build environment variables
 
@@ -93,14 +93,9 @@ Each release includes `libfeff10.a` (static library) and `feff10.h` (C header) f
 ```c
 #include "feff10.h"
 
-// Write feff.inp, chdir to working directory, then:
+// In a fresh process: chdir to the calculation directory and run ONE stage.
 feff_rdinp();
-feff_pot();
-feff_xsph();
-feff_fms();
-feff_path();
-feff_genfmt();
-feff_ff2x();
+// Exit this process; the parent starts a fresh process for the next stage.
 ```
 
 Linker flags (platform-dependent):
@@ -159,7 +154,7 @@ feff10-rs/
 │   │   ├── src/stage.rs       # Stage enum + FFI dispatch
 │   │   ├── src/input.rs       # feff.inp parser
 │   │   └── src/output.rs      # xmu.dat reader + comparison
-│   └── feff10-rs/            # CLI binary
+│   └── feff10-cli/           # CLI binary
 └── Cargo.toml
 ```
 
@@ -167,7 +162,36 @@ feff10-rs/
 
 1. **Build time** (`build.rs`): The Fortran `program` entry points are patched to `subroutine ... bind(C)` in a copy of the source. All objects are compiled and archived into `libfeff10.a`, merged with MKL and the Fortran runtime. With `--features prebuilt`, this step is skipped and a prebuilt library is used instead.
 
-2. **Runtime**: Each FEFF stage runs in a `fork()`-ed child process to isolate Fortran module state (global allocatable arrays, I/O units). This matches the original FEFF behavior where each stage was a separate executable.
+2. **Runtime**: Each FEFF stage runs in a forked child or a re-executed worker process to isolate Fortran module state (global allocatable arrays, I/O units). This matches the original FEFF behavior where each stage was a separate executable.
+
+## Stage isolation and path output
+
+Each FEFF stage needs a fresh process because Fortran module allocations persist
+between calls. Rust applications should install the worker hook before application
+initialization:
+
+```rust,no_run
+fn main() -> Result<(), feff10::Error> {
+    feff10::worker::init();
+    let result = feff10::run("feff.inp", "./work")?;
+    println!("Outputs: {}", result.work_dir.display());
+    Ok(())
+}
+```
+
+`StageIsolation::Auto` forks on ordinary Unix hosts and uses workers on Windows
+or in macOS hosts with an initialized `NSApplication`. A missing required worker
+hook returns a configuration error before changing input files. Explicit `Worker`
+also requires the hook. The CLI installs it automatically.
+
+`InProcess` is only for a single stage in a fresh host process; it rejects
+multi-stage pipelines and timeouts. Sequential calls can still retain allocations,
+and a Fortran fatal error can terminate that host.
+
+To request individual `feffNNNN.dat` files, use `PRINT 0 0 0 0 0 3` and include the
+`ff2x` stage. `paths.dat` contains enumerated paths; amplitude filtering can produce
+fewer individual path files. For the bundled Cu input with `RPATH 5.2`, the regression
+test checks 14 files, finite amplitudes, and first-path geometry.
 
 ## License
 

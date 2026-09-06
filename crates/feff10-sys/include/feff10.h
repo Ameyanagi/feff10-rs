@@ -6,12 +6,12 @@
  * Usage:
  *   1. Write a feff.inp file in the working directory
  *   2. chdir() to that directory
- *   3. Call stages in pipeline order (or a subset via CONTROL flags)
+ *   3. Launch a fresh process for EACH stage, in pipeline order
  *
  * IMPORTANT:
  *   - All functions use the current working directory for file I/O
- *   - Fortran global state is NOT thread-safe — run in a forked process
- *     or ensure single-threaded access
+ *   - Fortran global allocations persist between stages. Single-threaded
+ *     access alone is insufficient: each process must call only ONE stage
  *   - Each stage reads/writes intermediate files consumed by later stages
  *
  * Pipeline order:
