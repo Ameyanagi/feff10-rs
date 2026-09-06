@@ -21,7 +21,7 @@ impl PyFeffConfig {
     ///     work_dir: Working directory for the calculation.
     ///     input: Parsed FeffInput object.
     ///     stages: Optional list of stages to run (default: derived from CONTROL card).
-    ///     stage_timeout: Optional timeout in seconds per stage (Unix only).
+    ///     stage_timeout: Optional timeout in seconds per worker stage.
     #[new]
     #[pyo3(signature = (work_dir, input, stages=None, stage_timeout=None))]
     fn new(

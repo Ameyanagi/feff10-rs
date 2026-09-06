@@ -171,3 +171,18 @@ jobs:
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo test -p feff10 --target x86_64-pc-windows-gnu --test worker_mode
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test installed Python wheel
+        if: runner.os != 'Windows'
+        run: bash scripts/test-python.sh
+
+      - name: Test installed Python wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
+          bash scripts/test-python.sh x86_64-pc-windows-gnu

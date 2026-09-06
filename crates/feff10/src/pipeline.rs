@@ -86,11 +86,35 @@ pub enum StageProgress {
 /// Orchestrates FEFF executable pipeline.
 pub struct FeffPipeline {
     config: FeffConfig,
+    worker_command: Option<(PathBuf, Vec<std::ffi::OsString>)>,
 }
 
 impl FeffPipeline {
     pub fn new(config: FeffConfig) -> Self {
-        Self { config }
+        Self {
+            config,
+            worker_command: None,
+        }
+    }
+
+    /// Use an external worker command for every stage.
+    ///
+    /// This supports interpreter hosts that cannot re-execute their own `main`.
+    /// The command must call [`crate::worker::init`] before application setup;
+    /// it receives the stage and working directory through the worker environment
+    /// variables. Each stage starts a fresh command, with the configured timeout.
+    /// Selecting this command also selects [`StageIsolation::Worker`].
+    pub fn with_worker_command(
+        mut self,
+        executable: impl Into<PathBuf>,
+        args: impl IntoIterator<Item = impl Into<std::ffi::OsString>>,
+    ) -> Self {
+        self.worker_command = Some((
+            executable.into(),
+            args.into_iter().map(Into::into).collect(),
+        ));
+        self.config.stage_isolation = StageIsolation::Worker;
+        self
     }
 
     /// Run the full pipeline.
@@ -130,13 +154,22 @@ impl FeffPipeline {
             callback(stage, StageProgress::Starting);
 
             let start = Instant::now();
-            run_stage_isolated(
-                stage,
-                &self.config.work_dir,
-                self.config.stage_timeout,
-                self.config.stage_isolation,
-            )
-            .map_err(|mut error| {
+            let result = if let Some((executable, args)) = &self.worker_command {
+                run_stage_command(
+                    stage,
+                    &self.config.work_dir,
+                    self.config.stage_timeout,
+                    std::process::Command::new(executable).args(args),
+                )
+            } else {
+                run_stage_isolated(
+                    stage,
+                    &self.config.work_dir,
+                    self.config.stage_timeout,
+                    self.config.stage_isolation,
+                )
+            };
+            result.map_err(|mut error| {
                 if let Error::Pipeline(ref mut failure) = error {
                     failure.feff_error = read_feff_error(&feff_error_path);
                 }
@@ -170,7 +203,7 @@ impl FeffPipeline {
         let isolation = self.config.stage_isolation;
         let needs_worker = isolation == StageIsolation::Worker
             || (isolation == StageIsolation::Auto && requires_worker());
-        if needs_worker && !crate::worker::installed() {
+        if needs_worker && self.worker_command.is_none() && !crate::worker::installed() {
             return Err(Error::Config(
                 "stage isolation requires a worker process: call feff10::worker::init() \
                  at the top of main(), before GUI or other application initialization"
@@ -254,7 +287,21 @@ fn run_stage_worker(
         ));
     }
     let exe = std::env::current_exe()?;
-    let mut child = std::process::Command::new(exe)
+    run_stage_command(
+        stage,
+        work_dir,
+        timeout,
+        &mut std::process::Command::new(exe),
+    )
+}
+
+fn run_stage_command(
+    stage: Stage,
+    work_dir: &Path,
+    timeout: Option<Duration>,
+    command: &mut std::process::Command,
+) -> Result<(), Error> {
+    let mut child = command
         .env(crate::worker::ENV_STAGE, stage.executable_name())
         .env(crate::worker::ENV_DIR, work_dir)
         .spawn()?;

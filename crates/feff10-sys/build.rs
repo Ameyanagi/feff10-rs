@@ -900,8 +900,30 @@ fn merge_archives_macos(raw_archive: &Path, combined_o: &Path, extra_libs: &[Pat
         other => panic!("feff10-sys: unsupported macOS architecture: {other}"),
     };
 
-    let mut cmd = Command::new("ld");
-    cmd.arg("-r")
+    // Recent Apple linkers require a platform version even for relocatable
+    // output. Use the selected Xcode SDK and honor an explicit deployment target.
+    let sdk = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-version"])
+        .output()
+        .expect("Failed to locate the macOS SDK");
+    assert!(
+        sdk.status.success(),
+        "Failed to determine the macOS SDK version"
+    );
+    let sdk_version = String::from_utf8(sdk.stdout).expect("Invalid macOS SDK version");
+    let deployment_target = env::var("MACOSX_DEPLOYMENT_TARGET")
+        .unwrap_or_else(|_| if ld_arch == "arm64" { "11.0" } else { "10.13" }.into());
+    println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
+    println!("cargo:rerun-if-env-changed=DEVELOPER_DIR");
+
+    let mut cmd = Command::new("xcrun");
+    cmd.args(["--sdk", "macosx", "ld", "-r"])
+        .args([
+            "-platform_version",
+            "macos",
+            &deployment_target,
+            sdk_version.trim(),
+        ])
         .arg("-arch")
         .arg(ld_arch)
         .arg("-force_load")

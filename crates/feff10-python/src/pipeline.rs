@@ -5,8 +5,21 @@ use pyo3::prelude::*;
 
 use crate::config::PyFeffConfig;
 use crate::error::to_pyerr;
-use crate::output::{discover_outputs_from_work_dir, PyFeffOutputs, PyFeffTable, PyPathsDat};
+use crate::output::{PyFeffOutputs, PyFeffTable, PyPathsDat, discover_outputs_from_work_dir};
 use crate::stage::PyStage;
+
+pub(crate) fn python_pipeline(
+    py: Python<'_>,
+    config: feff10::config::FeffConfig,
+) -> PyResult<FeffPipeline> {
+    let executable: String = py.import("sys")?.getattr("executable")?.extract()?;
+    if executable.is_empty() {
+        return Err(to_pyerr(feff10::Error::Config(
+            "Python worker requires a nonempty sys.executable".into(),
+        )));
+    }
+    Ok(FeffPipeline::new(config).with_worker_command(executable, ["-m", "feff10._worker"]))
+}
 
 #[pyclass(name = "StageProgress", from_py_object)]
 #[derive(Clone)]
@@ -156,10 +169,10 @@ pub struct PyFeffPipeline {
 #[pymethods]
 impl PyFeffPipeline {
     #[new]
-    fn new(config: &PyFeffConfig) -> Self {
-        Self {
-            pipeline: FeffPipeline::new(config.inner.clone()),
-        }
+    fn new(py: Python<'_>, config: &PyFeffConfig) -> PyResult<Self> {
+        Ok(Self {
+            pipeline: python_pipeline(py, config.inner.clone())?,
+        })
     }
 
     /// Run the full pipeline without progress reporting.
@@ -172,7 +185,7 @@ impl PyFeffPipeline {
 
     /// Run with a progress callback: callback(stage: Stage, progress: StageProgress).
     ///
-    /// The GIL is released during FEFF stage execution (fork+wait) and only
+    /// The GIL is released during FEFF worker execution and only
     /// re-acquired to invoke the callback between stages. If the callback
     /// raises an exception, it is captured and re-raised after the pipeline
     /// completes (or the current stage finishes).

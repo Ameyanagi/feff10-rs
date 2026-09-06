@@ -40,18 +40,26 @@ has CLI and library interfaces; UI recommendations below concern those interface
 - Release preparation also fixes the publishing retry loops: exhausted retries now
   fail the workflow. Immediate success, delayed success, and exhausted failure were
   checked for both dependent crates with a stubbed publisher.
+- PR validation exposed a newer Apple linker requirement for `-platform_version`
+  during archive merging. The build now supplies the selected SDK version and
+  deployment target through the Xcode linker.
+- Python now launches `sys.executable -m feff10._worker` for each stage through a
+  per-pipeline worker command. All three calculation entry points share this route;
+  no Rust `main` hook is needed in the interpreter. Installed-wheel CI covers fatal
+  error recovery, repeated Cu calculations, progress callbacks, and Unicode paths.
 
 The released v0.2.2 assets are unchanged. The ifx fix and fatal-stop change require
 rebuilding and publishing the native archives in a subsequent release. This branch
-has not published a release or closed the issue. Windows runtime validation must
-complete on the newly configured Windows CI jobs.
+has not published a release or closed the issue. Full Linux Intel and Windows
+release builds, archive regressions, and packaged-binary smoke tests passed in
+GitHub Actions during PR validation. Checks are rerun for subsequent fixes.
 
 ## Recommended next work
 
 | Priority | Area | Finding and evidence | Proposed improvement |
 |---|---|---|---|
 | High | Calculation workflow | [`Stage::control_index`](../crates/feff10/src/stage.rs) maps POT to flag 1, XSPH to 2, and FMS to 3 (zero-based). [`rdinp.f90`](../feff10/src/RDINP/rdinp.f90) reads POT/XSPH/FMS from flags 0/1/2. The all-ones regression cannot expose this. | Correct the scheduling map and give RDINP its own rule. Test incremental CONTROL configurations against native FEFF, including reuse of existing potentials. |
-| High | Python execution | [`config.rs`](../crates/feff10-python/src/config.rs) and [`lib.rs`](../crates/feff10-python/src/lib.rs) do not expose a worker entry point or isolation choice. Python cannot install a Rust hook in the interpreter's `main`. | Add a Python-aware subprocess worker (`python -m ...`) or a packaged helper executable. Run installed-wheel calculations on Windows and macOS GUI/notebook hosts before publishing wheels. The current Rust guard prevents the previous Windows host abort but does not provide that Python execution route. |
+| High | Python execution | The missing interpreter worker route is fixed during PR validation: [`pipeline.rs`](../crates/feff10-python/src/pipeline.rs) now launches the installed Python worker on every platform. | Keep installed-wheel regression tests as release gates; extend coverage to packaged GUI/notebook hosts and embedded interpreters with custom module paths. |
 | High | Output correctness | [`FeffTable`](../crates/feff10/src/output.rs) accepts ragged rows in permissive mode, creating columns of different lengths; `r_squared`/`interp` assume matching lengths and can index out of bounds. Strict mode also accepts `NaN`/infinity. | Validate comparison inputs, finite values, increasing grids, and column lengths; return a structured error for invalid spectra. Give permissive parsing explicit missing-value semantics. |
 | High | Release reliability | The false-success retry loops in [`publish.yml`](../.github/workflows/publish.yml) are fixed in this branch. Packaging verification still explicitly checks only `feff10-sys`. | Extend pre-publication packaging validation to all packages and keep version checks synchronized with the Python package. |
 | High | Input/work-directory UX | [`cmd_run` and `cmd_bench`](../crates/feff10-cli/src/main.rs) stage only `feff.inp`. Benchmarking parses the copied file, so relative INCLUDE/LOAD paths resolve in the wrong directory. CIF and Debye matrix files are also needed by some calculations. | Parse includes from the original location and provide an explicit way to stage referenced auxiliary files. Record the resolved input and dependencies in the run directory. |
@@ -65,8 +73,8 @@ complete on the newly configured Windows CI jobs.
 | Lower | Output API/UI | [`OutputKind`](../crates/feff10/src/output.rs) classifies `feffNNNN.dat` as generic tables even though they contain geometry and specialized headers. Python table iteration clones all columns and then clones each yielded column again. | Add a structured scattering-path output type with named physical columns and units. Provide a concise CLI path summary and optional spectrum preview/export. Add contiguous NumPy export and remove redundant copies when profiling justifies it. |
 | Lower | Documentation | Root, crate, C-header, and Python docs duplicate build/runtime claims, while prebuilt metadata is reported as “unknown.” | Maintain a tested platform/backend support table and executable quickstarts. Explain GNU/Intel archive choices, dynamic dependencies, Windows worker setup, and the difference between enumerated and retained paths. |
 
-Suggested order: repair CONTROL scheduling and output validation, add the Python
-worker route and wheel tests, then improve run/benchmark diagnostics and build
+Suggested order: repair CONTROL scheduling and output validation, extend Python
+host coverage, then improve run/benchmark diagnostics and build
 incrementality. Benchmark optimization changes only against verified numerical
 outputs; a fast empty spectrum is not a successful performance result.
 
@@ -87,6 +95,7 @@ outputs; a fast empty spectrum is not a successful performance result.
   zero at `-O2` and `-O3`. The corrected path tables are finite and the EXAFS
   spectrum is nonzero. Comparison against macOS GNU path tables has a maximum
   scaled difference of approximately `8.85e-5` (`abs(a-b)/max(1,abs(b))`).
-- The Linux diagnostic archive reused the release's other objects and replaced
-  the affected routine. A complete Linux source/release build and native Windows
-  execution remain CI validation steps; no new release has been published.
+- The initial Linux diagnostic archive reused the release's other objects and
+  replaced the affected routine. Subsequent full Intel Linux and native Windows
+  builds passed archive and executable regressions in GitHub Actions. No new
+  release has been published at the time of this report.
