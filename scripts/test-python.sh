@@ -4,6 +4,11 @@ set -euo pipefail
 artifact_root=${CARGO_TARGET_DIR:-target}
 build_target=${1:-}
 build_args=()
+if command -v cygpath >/dev/null 2>&1 && [ -n "${pythonLocation:-}" ]; then
+  # MSYS2 starts with a restricted PATH; setup-python exposes its native path.
+  python_bin=$(cygpath -u "$pythonLocation")
+  export PATH="$python_bin:$python_bin/Scripts:$PATH"
+fi
 if [ -n "$build_target" ]; then
   artifact_root="$artifact_root/$build_target"
   build_args+=(--target "$build_target")
