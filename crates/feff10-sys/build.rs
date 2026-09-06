@@ -164,15 +164,12 @@ fn main() {
         // libgfortran.a + libquadmath.a are the core Fortran runtime.
         // macOS additionally needs:
         //   libgcc_eh.a — provides __emutls_get_address (GCC emulated TLS)
-        //   libgcc.a (x86_64 only) — provides ___cpu_model for CPU feature dispatch
-        //     in gfortran's matmul (AVX/SSE paths); not needed on ARM64.
+        //   libgcc.a — CPU feature dispatch on x86_64 and arithmetic helpers,
+        //     including __multc3 required by GCC 16 on ARM64.
         let mut libs: Vec<&str> = vec!["libgfortran.a", "libquadmath.a"];
         if cfg!(target_os = "macos") {
             libs.push("libgcc_eh.a");
-            let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-            if target_arch == "x86_64" {
-                libs.push("libgcc.a");
-            }
+            libs.push("libgcc.a");
         }
         for lib_name in libs {
             if let Some(path) = find_gfortran_static_lib(&compiler, lib_name) {
