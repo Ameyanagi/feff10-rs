@@ -172,6 +172,24 @@ fn in_process_isolation_runs_single_stage() {
     use feff10::config::StageIsolation;
     use feff10::stage::Stage;
 
+    // Keep the test runner free of Fortran state. Subsequent Auto/Fork tests
+    // inherit its memory, including any allocations and I/O units left by RDINP.
+    // InProcess is supported only for a single call in a fresh process.
+    const CHILD: &str = "FEFF10_TEST_IN_PROCESS_CHILD";
+    if std::env::var_os(CHILD).is_none() {
+        let status = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "in_process_isolation_runs_single_stage",
+                "--nocapture",
+            ])
+            .env(CHILD, "1")
+            .status()
+            .expect("failed to launch the isolated InProcess test");
+        assert!(status.success(), "InProcess test exited with {status}");
+        return;
+    }
+
     let inp_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../feff10-cli/examples/bundled/exafs-sf6.inp");
     let work_dir = tempfile::tempdir().unwrap();
