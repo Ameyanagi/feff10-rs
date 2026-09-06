@@ -18,6 +18,9 @@ pip install feff10-rs
 | macOS | Intel, Apple Silicon | 3.9 – 3.14+ |
 | Windows | x86_64 | 3.9 – 3.14+ |
 
+Linux ARM64 wheels require glibc 2.39 or newer (for example, Ubuntu 24.04),
+matching the native release archive's runtime baseline.
+
 Calculations run each FEFF stage in a fresh Python worker process using the current
 interpreter. This isolates Fortran state and fatal errors on every platform,
 including Windows and macOS GUI/notebook hosts. The installed `feff10` package

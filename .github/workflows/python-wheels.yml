@@ -7,11 +7,21 @@ on:
         description: 'Release tag to download prebuilt libraries from (e.g., v0.1.1)'
         required: true
         type: string
+      dry-run:
+        description: 'Build and test wheels without publishing to PyPI'
+        required: false
+        default: false
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
         description: 'Release tag to download prebuilt libraries from (e.g., v0.1.1)'
         required: true
+      dry-run:
+        description: 'Build and test wheels without publishing to PyPI'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -32,7 +42,10 @@ jobs:
           - os: ubuntu-24.04-arm
             target: aarch64-unknown-linux-gnu
             asset: libfeff10-linux-aarch64.a
-            manylinux: auto
+            # The release archive uses glibc's ARM64 vector math library.
+            # Link on the same Ubuntu 24.04 baseline and record its actual ABI.
+            manylinux: '2_39'
+            container: 'off'
           - os: macos-15-intel
             target: x86_64-apple-darwin
             asset: libfeff10-macos-x86_64.a
@@ -72,6 +85,14 @@ jobs:
           # Rename to the canonical name expected by build.rs
           cp "prebuilt/${{ matrix.asset }}" prebuilt/libfeff10.a
 
+      - name: Download matching Fortran runtime DLLs (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ steps.tag.outputs.tag }}" --pattern '*.dll' --dir prebuilt
+
       # Windows: gfortran runtime is linked dynamically (not merged into .a)
       - name: Install MSYS2 and gfortran (Windows)
         if: runner.os == 'Windows'
@@ -87,7 +108,8 @@ jobs:
         run: |
           LIB_DIR=$(dirname "$(gfortran -print-file-name=libgfortran.a)")
           echo "LIB_DIR=$LIB_DIR"
-          echo "LIBRARY_PATH=$LIB_DIR" >> "$GITHUB_ENV"
+          echo "LIBRARY_PATH=$(cygpath -m "$LIB_DIR")" >> "$GITHUB_ENV"
+          echo "$(cygpath -m /mingw64/bin)" >> "$GITHUB_PATH"
 
       - uses: actions/setup-python@v5
         with:
@@ -102,15 +124,19 @@ jobs:
           # -i python3.12: needed for manylinux Docker builds to pick up abi3
           args: --release --out dist --features prebuilt -i python3.12
           manylinux: ${{ matrix.manylinux || 'auto' }}
+          container: ${{ matrix.container || '' }}
           working-directory: crates/feff10-python
 
       - name: Repair wheel (Windows)
         if: runner.os == 'Windows'
         shell: bash
+        env:
+          RELEASE_DLL_DIR: ${{ github.workspace }}/prebuilt
         run: |
           pip install delvewheel
           for whl in crates/feff10-python/dist/*.whl; do
-            delvewheel repair "$whl" --wheel-dir crates/feff10-python/dist/ --no-mangle-all
+            delvewheel repair "$whl" --wheel-dir crates/feff10-python/dist/ \
+              --add-path "$RELEASE_DLL_DIR" --no-mangle-all
           done
 
       - name: List wheels
@@ -133,6 +159,7 @@ jobs:
 
   publish:
     needs: [build-wheels]
+    if: ${{ !inputs.dry-run }}
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
