@@ -197,10 +197,13 @@ jobs:
         id: fc
         run: |
           # brew installs gfortran as gfortran-NN, find the versioned name
-          FC=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | head -1 || true)
-          if [ -z "$FC" ]; then
-            FC=$(which gfortran 2>/dev/null || true)
-          fi
+          FC=""
+          for candidate in "$(brew --prefix gcc)"/bin/gfortran-*; do
+            if [ -x "$candidate" ]; then
+              FC="$candidate"
+              break
+            fi
+          done
           if [ -z "$FC" ]; then
             echo "ERROR: gfortran not found"
             exit 1
@@ -450,10 +453,13 @@ jobs:
       - name: Find gfortran
         id: fc
         run: |
-          FC=$(ls /usr/local/bin/gfortran-* 2>/dev/null | head -1 || true)
-          if [ -z "$FC" ]; then
-            FC=$(which gfortran 2>/dev/null || true)
-          fi
+          FC=""
+          for candidate in "$(brew --prefix gcc)"/bin/gfortran-*; do
+            if [ -x "$candidate" ]; then
+              FC="$candidate"
+              break
+            fi
+          done
           if [ -z "$FC" ]; then
             echo "ERROR: gfortran not found"
             exit 1
