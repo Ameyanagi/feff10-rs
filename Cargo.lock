@@ -215,7 +215,7 @@ checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
 
 [[package]]
 name = "feff10"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "feff10-sys",
  "libc",
@@ -225,7 +225,7 @@ dependencies = [
 
 [[package]]
 name = "feff10-cli"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "clap",
  "feff10",
@@ -238,7 +238,7 @@ dependencies = [
 
 [[package]]
 name = "feff10-sys"
-version = "0.2.2"
+version = "0.2.3"
 dependencies = [
  "sha2",
  "which",
