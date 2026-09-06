@@ -21,7 +21,7 @@
 //! ```
 //!
 //! With the hook installed, [`StageIsolation::Auto`](crate::config::StageIsolation)
-//! transparently uses worker processes when the host is fork-unsafe.
+//! transparently uses worker processes on Windows and when the Unix host is fork-unsafe.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -48,15 +48,19 @@ pub fn installed() -> bool {
 /// `StageIsolation::Auto` may use worker processes) and returns.
 pub fn init() {
     INSTALLED.store(true, Ordering::Relaxed);
-    let (Ok(stage_name), Ok(dir)) = (std::env::var(ENV_STAGE), std::env::var(ENV_DIR)) else {
+    let Some(stage_name) = std::env::var_os(ENV_STAGE) else {
         return;
+    };
+    let Some(dir) = std::env::var_os(ENV_DIR) else {
+        eprintln!("feff10 worker: missing {ENV_DIR}");
+        std::process::exit(64);
     };
     let Some(stage) = Stage::all()
         .iter()
         .copied()
         .find(|s| s.executable_name() == stage_name)
     else {
-        eprintln!("feff10 worker: unknown stage '{stage_name}'");
+        eprintln!("feff10 worker: unknown stage '{stage_name:?}'");
         std::process::exit(64);
     };
     let code = run_stage(stage, Path::new(&dir));
@@ -68,9 +72,17 @@ fn run_stage(stage: Stage, dir: &Path) -> i32 {
         eprintln!("feff10 worker: cannot enter '{}': {e}", dir.display());
         return 66;
     }
-    // Fresh process: safe to call the stage directly, exactly like the
-    // original standalone FEFF executables. Fortran `stop` terminates this
-    // worker only.
-    unsafe { stage.call_ffi() };
-    0
+    // Windows executables have a small default main-thread stack. Keep
+    // Fortran on a generous stack, including in freshly spawned workers.
+    let result = std::thread::Builder::new()
+        .name(format!("feff-{stage}"))
+        .stack_size(64 * 1024 * 1024)
+        .spawn(move || unsafe { stage.call_ffi() });
+    if let Ok(thread) = result
+        && thread.join().is_ok()
+    {
+        return 0;
+    }
+    eprintln!("feff10 worker: stage thread failed");
+    70
 }

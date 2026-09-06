@@ -1,6 +1,8 @@
 name: Extended CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -60,10 +62,13 @@ jobs:
         if: matrix.compiler == 'gfortran' && runner.os == 'macOS'
         id: macos-gfortran
         run: |
-          FC=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | head -1 || true)
-          if [ -z "$FC" ]; then
-            FC=$(which gfortran 2>/dev/null || true)
-          fi
+          FC=""
+          for candidate in "$(brew --prefix gcc)"/bin/gfortran-*; do
+            if [ -x "$candidate" ]; then
+              FC="$candidate"
+              break
+            fi
+          done
           if [ -z "$FC" ]; then
             echo "ERROR: gfortran not found"
             exit 1
@@ -150,6 +155,39 @@ jobs:
       - name: Unit tests (Windows)
         if: runner.os == 'Windows'
         shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
         run: |
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo test --workspace --lib --target x86_64-pc-windows-gnu
+
+      - name: Worker isolation and Cu path regression
+        if: runner.os != 'Windows'
+        env:
+          FEFF_FC: ${{ steps.compiler-env.outputs.fc }}
+          LIBRARY_PATH: ${{ steps.compiler-env.outputs.library_path }}
+        run: cargo test -p feff10 --test worker_mode
+
+      - name: Worker isolation and Cu path regression (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        env:
+          FEFF_FC: gfortran
+        run: |
+          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
+          cargo test -p feff10 --target x86_64-pc-windows-gnu --test worker_mode
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test installed Python wheel
+        if: runner.os != 'Windows'
+        run: bash scripts/test-python.sh
+
+      - name: Test installed Python wheel (Windows)
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: |
+          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
+          bash scripts/test-python.sh x86_64-pc-windows-gnu

@@ -55,7 +55,14 @@ fn run(
     work_dir: &str,
 ) -> PyResult<pipeline::PyPipelineResult> {
     let feff_input = resolve_input(input)?;
-    let result = py.detach(|| feff10::run_input(feff_input, work_dir));
+    feff_input.validate().map_err(to_pyerr)?;
+    let config = feff10::FeffConfigBuilder::new()
+        .input(feff_input)
+        .work_dir(work_dir)
+        .build()
+        .map_err(to_pyerr)?;
+    let pipeline = pipeline::python_pipeline(py, config)?;
+    let result = py.detach(|| pipeline.run());
     pipeline::convert_result(result)
 }
 
@@ -73,6 +80,12 @@ fn run(
 fn validate(input: &Bound<'_, PyAny>) -> PyResult<()> {
     let feff_input = resolve_input(input)?;
     feff_input.validate().map_err(to_pyerr)
+}
+
+/// Private entry point used only by `python -m feff10._worker`.
+#[pyfunction]
+fn _worker_init() {
+    feff10::worker::init();
 }
 
 #[pymodule]
@@ -108,6 +121,7 @@ fn _feff10(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // Convenience functions
     m.add_function(wrap_pyfunction!(run, m)?)?;
     m.add_function(wrap_pyfunction!(validate, m)?)?;
+    m.add_function(wrap_pyfunction!(_worker_init, m)?)?;
 
     Ok(())
 }

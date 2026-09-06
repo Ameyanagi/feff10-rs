@@ -468,6 +468,7 @@ fn eprint_json<T: Serialize>(value: &T) -> CliResult {
 }
 
 fn main() {
+    feff10::worker::init();
     let cli = Cli::parse();
 
     let result = match cli.command {

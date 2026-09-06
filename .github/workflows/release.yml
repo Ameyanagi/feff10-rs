@@ -82,6 +82,9 @@ jobs:
           name: test-report-linux
           path: test-report-linux.md
 
+      - name: Test prebuilt archive and Cu paths
+        run: bash scripts/test-prebuilt.sh release
+
       - name: Package
         run: |
           cp target/release/feff10-rs feff10-linux-x86_64
@@ -155,6 +158,9 @@ jobs:
           name: test-report-linux-compact
           path: test-report-linux-compact.md
 
+      - name: Test prebuilt archive and Cu paths
+        run: bash scripts/test-prebuilt.sh release
+
       - name: Package
         run: |
           cp target/release/feff10-rs feff10-linux-x86_64-compact
@@ -191,10 +197,13 @@ jobs:
         id: fc
         run: |
           # brew installs gfortran as gfortran-NN, find the versioned name
-          FC=$(ls /opt/homebrew/bin/gfortran-* /usr/local/bin/gfortran-* 2>/dev/null | head -1 || true)
-          if [ -z "$FC" ]; then
-            FC=$(which gfortran 2>/dev/null || true)
-          fi
+          FC=""
+          for candidate in "$(brew --prefix gcc)"/bin/gfortran-*; do
+            if [ -x "$candidate" ]; then
+              FC="$candidate"
+              break
+            fi
+          done
           if [ -z "$FC" ]; then
             echo "ERROR: gfortran not found"
             exit 1
@@ -252,6 +261,9 @@ jobs:
           name: test-report-macos
           path: test-report-macos.md
 
+      - name: Test prebuilt archive and Cu paths
+        run: bash scripts/test-prebuilt.sh release
+
       - name: Package
         run: |
           cp target/release/feff10-rs feff10-macos-arm64
@@ -299,12 +311,18 @@ jobs:
           export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
           cargo build --release --target x86_64-pc-windows-gnu -p feff10-cli
 
+      - name: Test prebuilt archive and Cu paths
+        shell: msys2 {0}
+        run: |
+          export PATH="/c/Users/runneradmin/.cargo/bin:/mingw64/bin:$PATH"
+          bash scripts/test-prebuilt.sh release x86_64-pc-windows-gnu
+
       - name: Test summary
         shell: msys2 {0}
         run: |
           echo "### Windows (gfortran, x86_64)" > test-report-windows.md
           echo "- Build: success" >> test-report-windows.md
-          echo "- Integration tests: skipped (no fork() — Fortran global state not isolated)" >> test-report-windows.md
+          echo "- Prebuilt worker integration: passed (Cu path geometry, finite amplitudes, repeat runs, fatal error isolation)" >> test-report-windows.md
           cat test-report-windows.md >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test report
@@ -397,6 +415,9 @@ jobs:
           name: test-report-linux-aarch64
           path: test-report-linux-aarch64.md
 
+      - name: Test prebuilt archive and Cu paths
+        run: bash scripts/test-prebuilt.sh release
+
       - name: Package
         run: |
           cp target/release/feff10-rs feff10-linux-aarch64
@@ -432,10 +453,13 @@ jobs:
       - name: Find gfortran
         id: fc
         run: |
-          FC=$(ls /usr/local/bin/gfortran-* 2>/dev/null | head -1 || true)
-          if [ -z "$FC" ]; then
-            FC=$(which gfortran 2>/dev/null || true)
-          fi
+          FC=""
+          for candidate in "$(brew --prefix gcc)"/bin/gfortran-*; do
+            if [ -x "$candidate" ]; then
+              FC="$candidate"
+              break
+            fi
+          done
           if [ -z "$FC" ]; then
             echo "ERROR: gfortran not found"
             exit 1
@@ -491,6 +515,9 @@ jobs:
         with:
           name: test-report-macos-x86_64
           path: test-report-macos-x86_64.md
+
+      - name: Test prebuilt archive and Cu paths
+        run: bash scripts/test-prebuilt.sh release
 
       - name: Package
         run: |
@@ -656,8 +683,10 @@ jobs:
           $BIN init -t exafs --edge K --element Cu -o "$TEMP/smoke-init/feff.inp"
           test -f "$TEMP/smoke-init/feff.inp"
           $BIN validate "$TEMP/smoke-init/feff.inp"
+          echo "=== run (EXAFS SF6 from bundled example) ==="
+          $BIN run "$TEMP/smoke-example" -w "$TEMP/smoke-run"
+          test -s "$TEMP/smoke-run/chi.dat"
           echo "=== All smoke tests passed ==="
-          # Note: 'run' subcommand skipped on Windows (no fork() for Fortran isolation)
 
   smoke-test-linux-aarch64:
     needs: build-linux-aarch64

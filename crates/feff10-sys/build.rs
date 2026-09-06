@@ -108,7 +108,7 @@ fn main() {
     }
 
     // 7. Append `objects` target to Makefile (compiles all .o files without linking)
-    append_objects_target(&build_src);
+    append_objects_target(&build_src, &compiler);
 
     // 8. Run `make objects`
     run_make_objects(&build_src, &compiler, &flags);
@@ -164,15 +164,12 @@ fn main() {
         // libgfortran.a + libquadmath.a are the core Fortran runtime.
         // macOS additionally needs:
         //   libgcc_eh.a — provides __emutls_get_address (GCC emulated TLS)
-        //   libgcc.a (x86_64 only) — provides ___cpu_model for CPU feature dispatch
-        //     in gfortran's matmul (AVX/SSE paths); not needed on ARM64.
+        //   libgcc.a — CPU feature dispatch on x86_64 and arithmetic helpers,
+        //     including __multc3 required by GCC 16 on ARM64.
         let mut libs: Vec<&str> = vec!["libgfortran.a", "libquadmath.a"];
         if cfg!(target_os = "macos") {
             libs.push("libgcc_eh.a");
-            let target_arch = env::var("CARGO_CFG_TARGET_ARCH").unwrap_or_default();
-            if target_arch == "x86_64" {
-                libs.push("libgcc.a");
-            }
+            libs.push("libgcc.a");
         }
         for lib_name in libs {
             if let Some(path) = find_gfortran_static_lib(&compiler, lib_name) {
@@ -629,8 +626,8 @@ fn patch_driver_content(content: &str, stage: &str, fortran_name: &str) -> Strin
     output
 }
 
-/// Patch PAR/parallel.f90: replace `stop ' '` in par_stop with `return`.
-/// This makes par_stop non-fatal so execution returns to the caller.
+/// Make fatal errors terminate the isolated stage with a nonzero status.
+/// Returning from par_stop lets callers continue with invalid or missing data.
 fn patch_par_stop(parallel_f90: &Path) {
     if !parallel_f90.exists() {
         return;
@@ -638,13 +635,12 @@ fn patch_par_stop(parallel_f90: &Path) {
     let content = fs::read_to_string(parallel_f90)
         .unwrap_or_else(|e| panic!("Failed to read {}: {e}", parallel_f90.display()));
 
-    // Replace `stop ' '` with `return` inside the par_stop subroutine
-    let patched = content.replace("stop ' '", "return");
+    let patched = content.replace("stop ' '", "stop 1");
 
     fs::write(parallel_f90, patched)
         .unwrap_or_else(|e| panic!("Failed to write {}: {e}", parallel_f90.display()));
 
-    eprintln!("feff10-sys: patched PAR/parallel.f90 (par_stop: stop → return)");
+    eprintln!("feff10-sys: patched PAR/parallel.f90 (par_stop: stop 1)");
 }
 
 // ---------------------------------------------------------------------------
@@ -653,7 +649,7 @@ fn patch_par_stop(parallel_f90: &Path) {
 
 /// Append an `objects` target to the copied Makefile.
 /// This target compiles all .o files needed by the 18 pipeline stages without linking.
-fn append_objects_target(build_src: &Path) {
+fn append_objects_target(build_src: &Path, compiler: &str) {
     let makefile = build_src.join("Makefile");
     let mut f = fs::OpenOptions::new()
         .append(true)
@@ -676,6 +672,23 @@ fn append_objects_target(build_src: &Path) {
     )
     .unwrap();
     writeln!(f, "objects: $(ALL_LIB_OBJ)").unwrap();
+
+    if compiler.contains("ifx") {
+        // ifx 2024.0.1 miscompiles mmtr at -O3: valid bcoef/rotation inputs
+        // produce an all-zero termination matrix. GENFMT then calculates
+        // 0/0 path-importance ratios and silently discards every path (#1).
+        // -O1 restores the GNU/reference amplitudes. Keep the workaround
+        // local to this routine; other stages retain the requested flags.
+        // An explicit recipe avoids target-specific FLAGS propagating to
+        // the module prerequisites, and works with make 3.81 on macOS.
+        writeln!(f, "GENFMT/mmtr.o: GENFMT/mmtr.f90").unwrap();
+        writeln!(
+            f,
+            "\tcd GENFMT; $(F90) -c $(FLAGS) $(FPPTASK) $(INCLUDEFLAGS) -O1 mmtr.f90"
+        )
+        .unwrap();
+        eprintln!("feff10-sys: using -O1 for GENFMT/mmtr.f90 (ifx correctness workaround)");
+    }
 
     eprintln!("feff10-sys: appended `objects` target to Makefile");
 }
@@ -884,8 +897,30 @@ fn merge_archives_macos(raw_archive: &Path, combined_o: &Path, extra_libs: &[Pat
         other => panic!("feff10-sys: unsupported macOS architecture: {other}"),
     };
 
-    let mut cmd = Command::new("ld");
-    cmd.arg("-r")
+    // Recent Apple linkers require a platform version even for relocatable
+    // output. Use the selected Xcode SDK and honor an explicit deployment target.
+    let sdk = Command::new("xcrun")
+        .args(["--sdk", "macosx", "--show-sdk-version"])
+        .output()
+        .expect("Failed to locate the macOS SDK");
+    assert!(
+        sdk.status.success(),
+        "Failed to determine the macOS SDK version"
+    );
+    let sdk_version = String::from_utf8(sdk.stdout).expect("Invalid macOS SDK version");
+    let deployment_target = env::var("MACOSX_DEPLOYMENT_TARGET")
+        .unwrap_or_else(|_| if ld_arch == "arm64" { "11.0" } else { "10.13" }.into());
+    println!("cargo:rerun-if-env-changed=MACOSX_DEPLOYMENT_TARGET");
+    println!("cargo:rerun-if-env-changed=DEVELOPER_DIR");
+
+    let mut cmd = Command::new("xcrun");
+    cmd.args(["--sdk", "macosx", "ld", "-r"])
+        .args([
+            "-platform_version",
+            "macos",
+            &deployment_target,
+            sdk_version.trim(),
+        ])
         .arg("-arch")
         .arg(ld_arch)
         .arg("-force_load")

@@ -18,6 +18,11 @@ pip install feff10-rs
 | macOS | Intel, Apple Silicon | 3.9 – 3.14+ |
 | Windows | x86_64 | 3.9 – 3.14+ |
 
+Calculations run each FEFF stage in a fresh Python worker process using the current
+interpreter. This isolates Fortran state and fatal errors on every platform,
+including Windows and macOS GUI/notebook hosts. The installed `feff10` package
+must be importable by `sys.executable`; no worker setup is required in user code.
+
 ## Quick Start
 
 ```python

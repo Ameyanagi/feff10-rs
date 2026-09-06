@@ -448,6 +448,8 @@ END
             raw: r#"TITLE overlap mode
 CONTROL 1 1 1 1 1 1
 PRINT 0 0 0 0 0 0
+OVERLAP 0
+1 1 2.0
 OVERLAP 1
 0 1 2.0
 POTENTIALS
@@ -578,8 +580,9 @@ COREHOLE FSR
 COORDINATES 3
 POTENTIALS
 0 29 Cu
+1 29 Cu
 ATOMS
-0.0 0.0 0.0 0 Cu
+0.0 0.0 0.0 1 Cu
 END
 "#,
         },
