@@ -81,6 +81,7 @@ fn main() {
     //    This transforms the 18 Fortran executables into library entry points
     //    callable from Rust via FFI.
     patch_drivers_for_library(&build_src);
+    patch_array_format_defaults(&build_src);
 
     // 5. Detect BLAS/LAPACK and generate Compiler.mk
     let (blas_ldflags, deptype, blas_type) = detect_blas_full(&compiler);
@@ -624,6 +625,41 @@ fn patch_driver_content(content: &str, stage: &str, fortran_name: &str) -> Strin
         output.push('\n');
     }
     output
+}
+
+/// Initialize the numeric array writers' optional format before emitting it.
+/// Upstream leaves `FlType` undefined when `FileType` is omitted. In `gg.bin`,
+/// a newline in those stack bytes splits a header and makes MKGTR consume it
+/// as array data. Some writers also leave the numeric format selector undefined.
+/// Patch only the copied build sources; preserve the upstream submodule.
+fn patch_array_format_defaults(build_src: &Path) {
+    let path = build_src.join("IOMODS/m_iomod.f90");
+    let mut source = fs::read_to_string(&path).expect("Failed to read m_iomod.f90");
+    for name in [
+        "WriteInt2D",
+        "WriteReal2D",
+        "WriteDouble2D",
+        "WriteComplex2D",
+        "WriteDComplex2D",
+    ] {
+        let start = source
+            .find(&format!("  SUBROUTINE {name}("))
+            .unwrap_or_else(|| panic!("Missing Fortran writer {name}"));
+        let end = start
+            + source[start..]
+                .find(&format!("  END SUBROUTINE {name}"))
+                .unwrap_or_else(|| panic!("Missing end of Fortran writer {name}"));
+        let body = &source[start..end];
+        let marker = "    IF(PRESENT(FileType)) THEN";
+        assert_eq!(
+            body.matches(marker).count(),
+            1,
+            "Unexpected {name} format control"
+        );
+        let offset = start + body.find(marker).unwrap();
+        source.insert_str(offset, "    FlType = 'TXT'\n    iFlType = itxt\n");
+    }
+    fs::write(path, source).expect("Failed to initialize Fortran array formats");
 }
 
 /// Make fatal errors terminate the isolated stage with a nonzero status.
