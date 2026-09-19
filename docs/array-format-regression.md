@@ -1,6 +1,6 @@
 # Array-format header regression
 
-This is an unreleased correction to the Fortran build used by `feff10-sys`.
+This correction is prepared for the 0.2.4 Fortran build used by `feff10-sys`.
 Existing 0.2.3 prebuilt libraries are not repaired by rebuilding only the Rust
 wrapper; new native archives are required for each supported platform.
 
