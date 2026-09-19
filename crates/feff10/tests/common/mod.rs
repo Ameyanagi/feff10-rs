@@ -10,6 +10,20 @@ pub fn copper_input() -> FeffInput {
 }
 
 pub fn assert_copper_paths(dir: &Path) {
+    // A successful read is insufficient: an uninitialized format label only
+    // fails intermittently, when its bytes contain a newline. Require the
+    // actual default format in every emitted Green-function array section.
+    let green = std::fs::read(dir.join("gg.bin")).unwrap();
+    let green = std::str::from_utf8(&green).expect("gg.bin must contain text, not stack bytes");
+    let formats: Vec<_> = green
+        .lines()
+        .filter(|line| line.starts_with("#DF#"))
+        .collect();
+    assert!(!formats.is_empty(), "missing gg.bin array sections");
+    for line in formats {
+        assert_eq!(line, "#DF# This section written in TXT .");
+    }
+
     let count = std::fs::read_dir(dir)
         .unwrap()
         .map(|entry| entry.unwrap().file_name().to_string_lossy().into_owned())
